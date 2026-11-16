@@ -48,12 +48,8 @@
       <section class="card card--padded story-step" aria-labelledby="step-on-title">
         <span class="story-step__number" aria-hidden="true">1</span>
         <div class="story-step__body">
-          <h2 id="step-on-title" class="section-title">{{ form.mode.label }}</h2>
-          <div class="choice-group" role="radiogroup" aria-labelledby="step-on-title">
-            {% for choice in form.mode %}
-              <label class="choice">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>
-            {% endfor %}
-          </div>
+          <h2 id="step-on-title" class="section-title">Turn on auto replies</h2>
+          {% include "components/checkbox_field.html" with field=form.enabled %}
         </div>
       </section>
 
@@ -67,62 +63,14 @@
         </div>
       </section>
 
-      <section class="card card--padded story-step" aria-labelledby="step-rules-title">
-        <span class="story-step__number" aria-hidden="true">3</span>
-        <div class="story-step__body">
-          <h2 id="step-rules-title" class="section-title">Special cases <span class="story-step__optional">Optional</span></h2>
-          <details class="story-step__details"{% if account_rules or post_rules %} open{% endif %}>
-            <summary>Handle some comments differently, like spam or price questions</summary>
-            <div class="story-step__body">
-              {% if post_rules %}
-                <h3 class="story-step__subtitle">On single posts, these come first</h3>
-                <ul class="rule-chain">
-                  {% for rule in post_rules %}{% include "agent/rule_item.html" with show_post=True %}{% endfor %}
-                </ul>
-                <h3 class="story-step__subtitle">On every post</h3>
-              {% endif %}
-
-              <ul class="rule-chain">
-                {% for rule in account_rules %}
-                  {% if forloop.first %}{% include "agent/rule_item.html" with prefix="If" %}{% else %}{% include "agent/rule_item.html" with prefix="Else if" %}{% endif %}
-                {% empty %}
-                  <li class="rule rule--empty">
-                    <p>No special cases yet.</p>
-                    <div class="rule-chain__actions">
-                      <button type="submit" formaction="{% url 'agent-starter-rules' account.pk %}" formnovalidate class="btn btn--primary btn--sm">Add ready made ones</button>
-                      <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Write your own</a>
-                    </div>
-                  </li>
-                {% endfor %}
-                {% if account_rules or post_rules %}
-                  <li class="rule rule-chain__otherwise">
-                    <div class="rule__header">
-                      <span class="rule__if">Otherwise</span>
-                      <span class="rule__name">{{ profile.get_fallback_action_display }}</span>
-                    </div>
-                  </li>
-                {% endif %}
-              </ul>
-
-              {% if account_rules %}
-                <div class="rule-chain__actions">
-                  <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Add a special case</a>
-                </div>
-              {% endif %}
-            </div>
-          </details>
-        </div>
-      </section>
-
       <section class="card card--padded story-step" aria-labelledby="step-safe-title">
-        <span class="story-step__number" aria-hidden="true">4</span>
+        <span class="story-step__number" aria-hidden="true">3</span>
         <div class="story-step__body">
           <h2 id="step-safe-title" class="section-title">Sent slowly to keep your account safe</h2>
           <details class="story-step__details">
             <summary>How Hookd keeps you safe</summary>
             <ul class="agent-limits">
               <li>One reply at a time, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart. At most {{ limits.MAX_PER_HOUR }} an hour and {{ limits.MAX_PER_DAY }} a day.</li>
-              <li>Each person gets at most one automatic reply per post a day.</li>
               <li>The same reply sent again and again waits for your approval instead.</li>
               <li>Only comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, and never your own.</li>
               <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>

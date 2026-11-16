@@ -66,3 +66,32 @@ document.addEventListener('click', async (event) => {
     window.location.href = link.href
   }
 })
+
+// Photo thumbnails: <input type="file" data-photo-preview="list-id"> shows the chosen images in #list-id.
+document.addEventListener('change', (event) => {
+  const input = event.target.closest('input[data-photo-preview]')
+  const list = input && document.getElementById(input.dataset.photoPreview)
+  if (!list) return
+  list.replaceChildren(
+    ...Array.from(input.files).map((file) => {
+      const item = document.createElement('li')
+      const image = document.createElement('img')
+      image.src = URL.createObjectURL(file)
+      image.alt = file.name
+      item.append(image)
+      return item
+    }),
+  )
+  list.hidden = input.files.length === 0
+})
+
+// Character counter: <textarea data-char-count="message-id"> writes "n / max characters" into #message-id.
+const updateCharCount = (field) => {
+  const message = document.getElementById(field.dataset.charCount)
+  if (message) message.textContent = `${field.value.length} / ${field.maxLength} characters`
+}
+document.addEventListener('input', (event) => {
+  const field = event.target.closest('textarea[data-char-count]')
+  if (field) updateCharCount(field)
+})
+document.querySelectorAll('textarea[data-char-count]').forEach(updateCharCount)

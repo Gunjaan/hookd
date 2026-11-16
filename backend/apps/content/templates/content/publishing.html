@@ -8,44 +8,65 @@
     <header class="page-header">
       <div>
         <h1 class="page-header__title">Publishing</h1>
-        <p class="page-header__description">Posts published from Hookd. Videos can take a few minutes to process.</p>
+        <p class="page-header__description">Turn a product photo into a ready to post Instagram post, then post it from here.</p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Create a post</a>
       </div>
     </header>
 
     {% include "components/messages.html" %}
 
-    {% if not jobs %}
-      <div class="empty-state card card--padded">
-        <p>Nothing published from Hookd yet.</p>
-        <a href="{% url 'studio' %}" class="btn btn--primary btn--md">Open studio</a>
-      </div>
-    {% else %}
-      <ul class="job-list">
-        {% for job in jobs %}
-          <li class="job card" data-busy-scope>
-            <div class="job__info">
-              <div class="job__title">
-                <span class="job__kind">{{ job.get_kind_display }}</span>
-                <span class="badge badge--{{ job.status|job_tone }}">{{ job.get_status_display }}</span>
-                <span class="job__account">@{{ job.account.username }}</span>
+    <section class="studio__section" aria-labelledby="drafts-title">
+      <h2 id="drafts-title" class="section-title">Drafts</h2>
+      {% if creatives %}
+        <ul class="post-grid">
+          {% for creative in creatives %}{% include "creatives/draft_card.html" %}{% endfor %}
+        </ul>
+      {% else %}
+        <div class="card card--padded how-it-works">
+          <ol class="how-it-works__steps">
+            <li><strong>Add a product photo.</strong> Any phone photo works.</li>
+            <li><strong>Pick a look.</strong> On a model, studio, lifestyle or flat lay, one photo or a carousel.</li>
+            <li><strong>Get a ready post.</strong> Photos plus a caption and hashtags you can edit, then post.</li>
+          </ol>
+          <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Create your first post</a>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="studio__section" aria-labelledby="published-title">
+      <h2 id="published-title" class="section-title">Published from Hookd</h2>
+      {% if not jobs %}
+        <p class="hint">Nothing published from Hookd yet. Videos can take a few minutes to process after posting.</p>
+      {% else %}
+        <ul class="job-list">
+          {% for job in jobs %}
+            <li class="job card" data-busy-scope>
+              <div class="job__info">
+                <div class="job__title">
+                  <span class="job__kind">{{ job.get_kind_display }}</span>
+                  <span class="badge badge--{{ job.status|job_tone }}">{{ job.get_status_display }}</span>
+                  <span class="job__account">@{{ job.account.username }}</span>
+                </div>
+                <p class="job__caption">{{ job.caption|default:"No caption"|truncatechars:120 }}</p>
+                {% if job.error %}<p class="job__error">{{ job.error }}</p>{% endif %}
+                <p class="hint">{{ job.created_at|date:"j M Y, H:i" }}</p>
               </div>
-              <p class="job__caption">{{ job.caption|default:"No caption"|truncatechars:120 }}</p>
-              {% if job.error %}<p class="job__error">{{ job.error }}</p>{% endif %}
-              <p class="hint">{{ job.created_at|date:"j M Y, H:i" }}</p>
-            </div>
-            <div class="job__actions">
-              {% if job.status == 'processing' %}
-                <form method="post" action="{% url 'publish-check' job.pk %}" class="inline-form">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn--secondary btn--sm">Check status</button>
-                </form>
-              {% elif job.post %}
-                <a href="{% url 'post-detail' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
-              {% endif %}
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
-    {% endif %}
+              <div class="job__actions">
+                {% if job.status == 'processing' %}
+                  <form method="post" action="{% url 'publish-check' job.pk %}" class="inline-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--secondary btn--sm">Check status</button>
+                  </form>
+                {% elif job.post %}
+                  <a href="{% url 'post-detail' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
   </div>
 {% endblock %}

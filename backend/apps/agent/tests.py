@@ -13,8 +13,9 @@ from django.utils import timezone
 
 from apps.accounts.model_querysets import create_user
 from apps.agent import services
-from apps.agent.constants import FallbackAction, ReplyStatus, RuleAction
-from apps.agent.models import AgentProfile, CommentReply, PostBrain, ReplyRule
+from apps.agent.constants import ReplyStatus
+from apps.agent.engines.base import AgentDecision
+from apps.agent.models import AgentProfile, CommentReply, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
@@ -66,12 +67,6 @@ class AgentTestCase(TestCase):
             author_username=author,
             text=text,
             commented_at=timezone.now() - age,
-        )
-
-    def rule(self, name="Size", keywords="size", action=RuleAction.AUTO_REPLY, post=None, how_to_reply="", position=0):
-        return ReplyRule.objects.create(
-            account=self.account, post=post, name=name, keywords=keywords, action=action,
-            how_to_reply=how_to_reply, position=position,
         )
 
     def handle(self, comment: Comment) -> str:
@@ -175,25 +170,18 @@ class DecisionTests(AgentTestCase):
             self.assertEqual(self.handle(comment), ReplyStatus.SKIPPED)
             self.assertEqual(comment.agent_reply.decision["reason"], reason)
 
-    def test_ignore_rule_skips(self):
-        self.rule(name="Spam", keywords="follow back", action=RuleAction.IGNORE)
-        comment = self.comment("pls follow back")
-        self.assertEqual(self.handle(comment), ReplyStatus.SKIPPED)
-        self.assertIn('Rule "Spam" says ignore', comment.agent_reply.decision["reason"])
+    def test_spam_is_skipped(self):
+        spam = AgentDecision(intent="spam", language="English", reply_text="", confidence=0.9, reason="Promo.")
+        with mock.patch.object(services, "get_engine") as engine:
+            engine.return_value.decide.return_value = spam
+            engine.return_value.name = "fake"
+            comment = self.comment("check my profile")
+            self.assertEqual(self.handle(comment), ReplyStatus.SKIPPED)
+        self.assertEqual(comment.agent_reply.decision["reason"], "Spam, not answered.")
 
-    def test_review_rule_drafts_from_the_video_brain(self):
+    def test_answer_from_the_video_brain_sends_on_its_own(self):
         PostBrain.objects.create(post=self.post, knowledge="Sizes S, M and L in stock, XL sold out")
-        self.rule(action=RuleAction.REVIEW)
         comment = self.comment("is size XL available?")
-        self.assertEqual(self.handle(comment), ReplyStatus.PENDING_REVIEW)
-        reply = comment.agent_reply
-        self.assertEqual(reply.draft_text, "@fan1 Sizes S, M and L in stock, XL sold out")
-        self.assertEqual(reply.rule.name, "Size")
-        self.queued.assert_not_called()
-
-    def test_auto_rule_with_a_fact_sends(self):
-        self.rule(keywords="shipping")
-        comment = self.comment("is shipping free?")
         self.reply_ok(comment)
         with self.captureOnCommitCallbacks(execute=True):
             outcome = services.handle_new_comment(comment.pk)
@@ -203,36 +191,22 @@ class DecisionTests(AgentTestCase):
         self.assertEqual(reply.reply_external_id, "r1")
         method, path, data = self.graph.calls[-1]
         self.assertEqual((method, path), ("POST", f"{comment.external_id}/replies"))
-        self.assertEqual(data["message"], "@fan1 Free shipping above Rs 999")
+        self.assertEqual(data["message"], "@fan1 Sizes S, M and L in stock, XL sold out")
 
-    def test_post_rule_beats_account_rule(self):
-        self.rule(name="Account", keywords="price", action=RuleAction.IGNORE)
-        self.rule(name="Post", keywords="price", action=RuleAction.REVIEW, post=self.post, how_to_reply="Rs 1499")
-        comment = self.comment("price?")
+    def test_praise_is_thanked_on_its_own(self):
+        self.assertEqual(self.handle(self.comment("Loved it")), ReplyStatus.QUEUED)
+
+    def test_missing_information_waits_for_review(self):
+        comment = self.comment("which branch is this?")
         self.assertEqual(self.handle(comment), ReplyStatus.PENDING_REVIEW)
-        self.assertEqual(comment.agent_reply.rule.name, "Post")
+        self.assertIn("Missing information", comment.agent_reply.decision["reason"])
+        self.queued.assert_not_called()
 
-    def test_unmatched_comment_follows_the_fallback(self):
-        self.assertEqual(self.handle(self.comment("hello")), ReplyStatus.PENDING_REVIEW)
-        self.profile.fallback_action = FallbackAction.IGNORE
-        self.profile.save()
-        self.assertEqual(self.handle(self.comment("hello again", author="fan2")), ReplyStatus.SKIPPED)
-
-    def test_low_confidence_goes_to_review(self):
-        self.rule(keywords="wow")
-        comment = self.comment("wow")
-        self.assertEqual(self.handle(comment), ReplyStatus.PENDING_REVIEW)
-        self.assertIn("Low confidence", comment.agent_reply.decision["reason"])
-
-    def test_second_auto_reply_to_the_same_person_on_a_post_goes_to_review(self):
-        self.rule(keywords="shipping")
+    def test_the_same_person_can_get_several_replies(self):
         self.assertEqual(self.handle(self.comment("shipping?")), ReplyStatus.QUEUED)
-        comment = self.comment("shipping cost?")
-        self.assertEqual(self.handle(comment), ReplyStatus.PENDING_REVIEW)
-        self.assertIn("already got a reply", comment.agent_reply.decision["reason"])
+        self.assertEqual(self.handle(self.comment("returns?")), ReplyStatus.QUEUED)
 
     def test_repeated_identical_text_goes_to_review(self):
-        self.rule(keywords="shipping")
         for index in range(3):
             self.assertEqual(self.handle(self.comment("shipping?", author=f"fan{index}")), ReplyStatus.QUEUED)
         comment = self.comment("shipping?", author="fan9")
@@ -240,8 +214,9 @@ class DecisionTests(AgentTestCase):
         self.assertIn("same reply", comment.agent_reply.decision["reason"])
 
     def test_text_the_platform_would_reject_goes_to_review(self):
-        self.rule(keywords="link", how_to_reply="https://a.test and https://b.test")
-        comment = self.comment("link?")
+        self.profile.knowledge = "Links https://a.test and https://b.test"
+        self.profile.save()
+        comment = self.comment("links?")
         self.assertEqual(self.handle(comment), ReplyStatus.PENDING_REVIEW)
         self.assertIn("at most 1 link", comment.agent_reply.decision["reason"])
 
@@ -381,64 +356,22 @@ class InboxTests(AgentTestCase):
 class SetupPageTests(AgentTestCase):
     def test_settings_page_saves(self):
         url = reverse("agent-account", args=[self.account.pk])
-        self.assertContains(self.client.get(url), "What should the agent know?")
-        response = self.client.post(url, {"mode": "review", "voice": "Friendly", "knowledge": "Open 10 to 7"})
+        page = self.client.get(url)
+        self.assertContains(page, "What should the agent know?")
+        self.assertNotContains(page, "Special cases")
+        response = self.client.post(url, {"voice": "Friendly", "knowledge": "Open 10 to 7"})
         self.assertRedirects(response, url)
         self.profile.refresh_from_db()
-        self.assertTrue(self.profile.enabled)
-        self.assertEqual(self.profile.fallback_action, "review")
-        self.assertEqual(self.profile.knowledge, "Open 10 to 7")
-
-    def test_special_cases_only_needs_rules(self):
-        url = reverse("agent-account", args=[self.account.pk])
-        self.assertNotContains(self.client.get(url), "Only handle my special cases")
-        self.assertEqual(self.client.post(url, {"mode": "ignore"}).status_code, 200)
-        self.client.post(reverse("agent-starter-rules", args=[self.account.pk]))
-        self.assertRedirects(self.client.post(url, {"mode": "ignore"}), url)
-        self.profile.refresh_from_db()
-        self.assertTrue(self.profile.enabled)
-        self.assertEqual(self.profile.fallback_action, "ignore")
-
-    def test_turning_off_keeps_the_fallback(self):
-        url = reverse("agent-account", args=[self.account.pk])
-        self.client.post(url, {"mode": "review"})
-        self.assertRedirects(self.client.post(url, {"mode": "off"}), url)
-        self.profile.refresh_from_db()
         self.assertFalse(self.profile.enabled)
-        self.assertEqual(self.profile.fallback_action, "review")
+        self.assertEqual(self.profile.knowledge, "Open 10 to 7")
+        self.assertRedirects(self.client.post(url, {"enabled": "on"}), url)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.enabled)
 
     def test_agent_home_redirects_to_first_account(self):
         self.assertRedirects(
             self.client.get(reverse("agent")), reverse("agent-account", args=[self.account.pk]), fetch_redirect_response=False
         )
-
-    def test_starter_rules_are_added_once(self):
-        url = reverse("agent-starter-rules", args=[self.account.pk])
-        self.client.post(url)
-        self.assertEqual(ReplyRule.objects.filter(account=self.account).count(), len(services.STARTER_RULES))
-        self.assertFalse(ReplyRule.objects.filter(action=RuleAction.AUTO_REPLY).exists())
-        self.client.post(url)
-        self.assertEqual(ReplyRule.objects.filter(account=self.account).count(), len(services.STARTER_RULES))
-
-    def test_rule_create_edit_and_delete(self):
-        response = self.client.post(
-            reverse("agent-rule-new", args=[self.account.pk]) + f"?post={self.post.pk}",
-            {"name": "Price", "keywords": "price", "action": "auto_reply", "how_to_reply": "Rs 1499", "enabled": "on"},
-        )
-        self.assertRedirects(response, reverse("post-detail", args=[self.post.pk]), fetch_redirect_response=False)
-        rule = ReplyRule.objects.get(name="Price")
-        self.assertEqual(rule.post, self.post)
-
-        self.client.post(reverse("agent-rule-edit", args=[rule.pk]), {"name": "Price", "keywords": "price, cost", "action": "review"})
-        rule.refresh_from_db()
-        self.assertEqual((rule.keywords, rule.action, rule.enabled), ("price, cost", "review", False))
-
-        self.client.post(reverse("agent-rule-delete", args=[rule.pk]))
-        self.assertFalse(ReplyRule.objects.exists())
-
-    def test_rule_needs_keywords_or_a_condition(self):
-        response = self.client.post(reverse("agent-rule-new", args=[self.account.pk]), {"name": "Empty", "action": "review"})
-        self.assertContains(response, "Add words to look for or describe the comment.")
 
     def test_video_brain_is_saved_from_the_post_page(self):
         with mock.patch("apps.content.services.post_insights", side_effect=lambda post, **_: post):
@@ -450,7 +383,6 @@ class SetupPageTests(AgentTestCase):
 
     def test_preview_shows_the_reply_and_stores_nothing(self):
         PostBrain.objects.create(post=self.post, knowledge="Sizes S, M and L in stock")
-        self.rule(keywords="size")
         response = self.client.post(
             reverse("agent-preview", args=[self.account.pk]), {"text": "M size available?", "post": self.post.pk}
         )
@@ -462,15 +394,81 @@ class SetupPageTests(AgentTestCase):
     def test_other_users_get_404(self):
         other = create_user(email="other@example.com", password="a-strong-pass-123")
         self.client.force_login(other)
-        rule = self.rule()
         reply = CommentReply.objects.create(comment=self.comment(), status=ReplyStatus.PENDING_REVIEW, final_text="hi")
         for method, url in [
             ("get", reverse("agent-account", args=[self.account.pk])),
             ("get", reverse("agent-preview", args=[self.account.pk])),
-            ("get", reverse("agent-rule-edit", args=[rule.pk])),
-            ("post", reverse("agent-rule-delete", args=[rule.pk])),
             ("post", reverse("agent-post-brain", args=[self.post.pk])),
             ("post", reverse("agent-reply-approve", args=[reply.pk])),
             ("post", reverse("agent-reply-reject", args=[reply.pk])),
         ]:
             self.assertEqual(getattr(self.client, method)(url).status_code, 404, url)
+
+
+class GeminiReplyEngineTests(AgentTestCase):
+    def setUp(self):
+        super().setUp()
+        from apps.agent.engines.gemini import GeminiReplyEngine
+
+        self.engine = GeminiReplyEngine()
+
+    def context(self, **fields):
+        from apps.agent.engines.base import AgentContext
+
+        defaults = {
+            "comment_text": "price kya hai?",
+            "author_username": "fan1",
+            "account_username": "asha.store",
+            "voice": "",
+            "account_knowledge": "Free shipping above Rs 999",
+            "post_knowledge": "Price: Rs 799",
+        }
+        return AgentContext(**{**defaults, **fields})
+
+    @override_settings(AGENT_REPLY_MODEL="cheap-model")
+    def test_decision_from_the_model_answer(self):
+        answer = {"intent": "price", "language": "Hindi (Hinglish)", "reply_text": " @fan1 Rs 799 hai! ", "confidence": 1.4, "reason": "Price fact."}
+        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=answer) as call:
+            decision = self.engine.decide(self.context())
+        self.assertEqual(
+            (decision.reply_text, decision.confidence, decision.language),
+            ("@fan1 Rs 799 hai!", 1.0, "Hindi (Hinglish)"),
+        )
+        model, contents = call.call_args.args
+        self.assertEqual(model, "cheap-model")
+        sent = json.loads(contents[0])
+        self.assertEqual(sent["post_facts"], "Price: Rs 799")
+        self.assertNotIn("rules", sent)
+        self.assertNotIn("voice", sent)
+        self.assertEqual(call.call_args.kwargs["max_output_tokens"], 400)
+
+    def test_unreadable_confidence_is_zero(self):
+        answer = {"intent": "x", "language": "English", "reply_text": "@fan1 hi", "confidence": "bad", "reason": ""}
+        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=answer):
+            decision = self.engine.decide(self.context())
+        self.assertEqual(decision.confidence, 0.0)
+
+    def test_system_prompt_is_constant(self):
+        from apps.agent.engines.prompts import REPLY_SCHEMA, REPLY_SYSTEM
+
+        self.assertNotIn("{", REPLY_SYSTEM)
+        self.assertNotIn("rule_id", REPLY_SCHEMA["properties"])
+
+    def test_engine_failure_goes_to_review(self):
+        from apps.core.gemini import GeminiError
+
+        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.gemini.GeminiReplyEngine"):
+            with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
+                outcome = self.handle(self.comment("price?"))
+        self.assertEqual(outcome, ReplyStatus.PENDING_REVIEW)
+        reply = CommentReply.objects.get()
+        self.assertEqual(reply.draft_text, "")
+        self.assertIn("Down.", reply.decision["reason"])
+
+    def test_preview_shows_engine_failure(self):
+        from apps.core.gemini import GeminiError
+
+        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.gemini.GeminiReplyEngine"):
+            with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
+                response = self.client.post(reverse("agent-preview", args=[self.account.pk]), {"text": "price?", "post": ""})
+        self.assertContains(response, "Down.")

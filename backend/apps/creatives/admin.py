@@ -1,0 +1,25 @@
+from django.contrib import admin
+
+from apps.creatives.models import Creative, CreativeSlide, CreativeSource
+
+
+class CreativeSourceInline(admin.TabularInline):
+    model = CreativeSource
+    extra = 0
+    readonly_fields = ["token", "position", "file"]
+
+
+class CreativeSlideInline(admin.TabularInline):
+    model = CreativeSlide
+    extra = 0
+    readonly_fields = ["position", "role", "prompt", "tweak", "status", "image", "error"]
+
+
+@admin.register(Creative)
+class CreativeAdmin(admin.ModelAdmin):
+    list_display = ["pk", "user", "status", "look", "format_choice", "created_at"]
+    list_filter = ["status", "look", "format_choice"]
+    search_fields = ["caption", "notes", "error"]
+    raw_id_fields = ["user", "publish_job"]
+    readonly_fields = ["brief", "created_at", "updated_at"]
+    inlines = [CreativeSourceInline, CreativeSlideInline]

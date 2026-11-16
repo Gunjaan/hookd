@@ -1,0 +1,23 @@
+<svg class="mascot{% if size %} mascot--{{ size }}{% endif %}" viewBox="0 0 200 200" role="img" aria-label="Hooky, the Hookd agent" focusable="false">
+  <defs>
+    <g id="mascot-shape-{{ uid }}">
+      <path d="M100 52c32 0 52 21 52 49s-20 48-50 48H84l-19 15 4-19c-13-9-21-25-21-44 0-28 20-49 52-49z"/>
+      <path d="M100 52c0-14 9-22 18-19 8 3 7 13-1 14" fill="none"/>
+    </g>
+  </defs>
+  <g class="mascot__float">
+    <use href="#mascot-shape-{{ uid }}" class="mascot__ring mascot__ring--5"/>
+    <use href="#mascot-shape-{{ uid }}" class="mascot__ring mascot__ring--4"/>
+    <use href="#mascot-shape-{{ uid }}" class="mascot__ring mascot__ring--3"/>
+    <use href="#mascot-shape-{{ uid }}" class="mascot__ring mascot__ring--2"/>
+    <use href="#mascot-shape-{{ uid }}" class="mascot__ring mascot__ring--1"/>
+    <use href="#mascot-shape-{{ uid }}" class="mascot__body"/>
+    <ellipse class="mascot__cheek" cx="76" cy="110" rx="8" ry="4.5"/>
+    <ellipse class="mascot__cheek" cx="124" cy="110" rx="8" ry="4.5"/>
+    <ellipse class="mascot__eye" cx="86" cy="96" rx="5" ry="6.5"/>
+    <ellipse class="mascot__eye" cx="114" cy="96" rx="5" ry="6.5"/>
+    <circle class="mascot__shine" cx="87.8" cy="93.5" r="1.6"/>
+    <circle class="mascot__shine" cx="115.8" cy="93.5" r="1.6"/>
+    <path class="mascot__smile" d="M91 111q9 9 18 0"/>
+  </g>
+</svg>

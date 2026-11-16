@@ -5,10 +5,6 @@ class ReplyNotFound(HookdError):
     default_message = "Reply not found."
 
 
-class RuleNotFound(HookdError):
-    default_message = "Rule not found."
-
-
 class ReplyNotEditable(HookdError):
     default_message = "This reply can no longer be changed."
 

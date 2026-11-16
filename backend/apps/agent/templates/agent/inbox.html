@@ -39,7 +39,7 @@
             </div>
             <p class="comment__text">{{ reply.comment.text }}</p>
             <p class="hint">
-              {% if reply.rule %}Rule: {{ reply.rule.name }} · {% endif %}{{ reply.decision.reason }}
+              {{ reply.decision.reason }}
               {% if reply.decision.confidence is not None %} · Confidence {{ reply.decision.confidence|floatformat:2 }}{% endif %}
             </p>
             {% if reply.error %}<p class="job__error">{{ reply.error }}</p>{% endif %}

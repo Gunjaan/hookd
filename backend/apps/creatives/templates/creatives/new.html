@@ -1,0 +1,98 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Create a post{% endblock %}
+
+{% block content %}
+  <div class="studio studio--narrow">
+    <a href="{% url 'publishing' %}" class="back-link">Back to publishing</a>
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">Create a post</h1>
+        <p class="page-header__description">Add a photo of your product. Hookd turns it into post ready photos with a caption and hashtags you can edit.</p>
+      </div>
+    </header>
+
+    {% include "components/messages.html" %}
+    {% include "components/form_errors.html" %}
+
+    <form method="post" enctype="multipart/form-data" class="story" data-busy-scope>
+      {% csrf_token %}
+
+      <section class="card card--padded story-step" aria-labelledby="step-photos-title">
+        <span class="story-step__number" aria-hidden="true">1</span>
+        <div class="story-step__body">
+          <h2 id="step-photos-title" class="section-title">Add your product photos</h2>
+          <label class="dropzone{% if form.photos.errors %} dropzone--error{% endif %}" for="{{ form.photos.auto_id }}">
+            <span class="dropzone__title">Choose up to 3 photos</span>
+            <span class="dropzone__hint">{{ form.photos.help_text }}</span>
+            <input
+              id="{{ form.photos.auto_id }}"
+              name="{{ form.photos.html_name }}"
+              type="file"
+              multiple
+              required
+              accept=".jpg,.jpeg,.png,.webp"
+              aria-describedby="photos-message"
+              class="dropzone__input"
+              data-photo-preview="photo-preview"
+            />
+          </label>
+          <ul id="photo-preview" class="photo-preview" aria-label="Chosen photos" hidden></ul>
+          {% if form.photos.errors %}
+            <p id="photos-message" class="field__message field__message--error">{{ form.photos.errors.0 }}</p>
+          {% else %}
+            <ul id="photos-message" class="tips">
+              <li>Show the whole product in daylight, on any plain surface.</li>
+              <li>Add one close up of the logo, print or label so Hookd keeps it exact.</li>
+            </ul>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="card card--padded story-step" aria-labelledby="step-look-title">
+        <span class="story-step__number" aria-hidden="true">2</span>
+        <div class="story-step__body">
+          <h2 id="step-look-title" class="section-title">Pick a look</h2>
+          <div class="look-grid" role="radiogroup" aria-labelledby="step-look-title">
+            {% for choice, hint in form.look_options %}
+              <label class="look-choice">
+                {{ choice.tag }}
+                <span class="look-choice__title">{{ choice.choice_label }}</span>
+                <span class="look-choice__hint">{{ hint }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <section class="card card--padded story-step" aria-labelledby="step-format-title">
+        <span class="story-step__number" aria-hidden="true">3</span>
+        <div class="story-step__body">
+          <h2 id="step-format-title" class="section-title">One photo or a carousel?</h2>
+          <div class="look-grid look-grid--three" role="radiogroup" aria-labelledby="step-format-title">
+            {% for choice, hint in form.format_options %}
+              <label class="look-choice">
+                {{ choice.tag }}
+                <span class="look-choice__title">{{ choice.choice_label }}</span>
+                <span class="look-choice__hint">{{ hint }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <section class="card card--padded story-step" aria-labelledby="step-notes-title">
+        <span class="story-step__number" aria-hidden="true">4</span>
+        <div class="story-step__body">
+          <h2 id="step-notes-title" class="section-title">Anything special? <span class="story-step__optional">Optional</span></h2>
+          <p class="hint">Who should wear it, the mood, a festival, an offer or price to mention. Hookd never changes your product or its branding.</p>
+          {% include "components/textarea_field.html" with field=form.notes %}
+        </div>
+      </section>
+
+      <div class="story__actions">
+        <button type="submit" class="btn btn--primary btn--lg">Create my post</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

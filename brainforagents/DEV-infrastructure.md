@@ -71,8 +71,9 @@ A second shell into the running container: `docker exec -it hookd_app_dev bash`.
 - **Redis:** Celery broker only (see above). Not used as a cache.
 - **Cache:** `LocMemCache` (`CACHES` in settings). Per process, cleared on restart. Holds the studio's recent posts
   and account insights (`DEV-content.md`).
-- **Uploads:** `MEDIA_ROOT = backend/media/` (gitignored). Only publish uploads live there, deleted once published or
-  failed. Served to platforms by the `publish-asset` view, so no web server config is needed.
+- **Uploads:** `MEDIA_ROOT = backend/media/` (gitignored). Publish uploads (`publish/`, deleted once published or
+  failed, served to platforms by the `publish-asset` view) and post studio photos (`creatives/sources/` and
+  `creatives/slides/`, deleted with their draft, served to the owner by `creative-file`). No web server config needed.
 
 ## Environment variables
 
@@ -95,6 +96,10 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `EMAIL_HOST_USER` | | `support@hookd.world` | Mailbox to log in with. Also the sender: `DEFAULT_FROM_EMAIL = SERVER_EMAIL = Hookd <EMAIL_HOST_USER>`, so mail passes SPF and DMARC |
 | `EMAIL_HOST_PASSWORD` | for real mail | | That mailbox's password |
 | `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` |
+| `GEMINI_API_KEY` | for AI | | Google AI Studio key for the post studio and the reply agent (`apps/core/gemini.py`) |
+| `GEMINI_COPY_MODEL` | | `gemini-3.5-flash-lite` | Text model that plans shots and writes captions |
+| `GEMINI_IMAGE_MODEL` | | `gemini-nano-banana-2.1` | Image model that renders post photos |
+| `GEMINI_REPLY_MODEL` | | `gemini-3.5-flash-lite` | Text model that writes comment replies (`DEV-agent.md`). The reply agent uses Gemini only when `GEMINI_API_KEY` is set |
 
 ### Email (GoDaddy Workspace Email)
 
@@ -108,7 +113,8 @@ fail authentication and SPF. Test from the container after changing `.env` and r
 is blocked, so try the other port.
 
 The reply agent's engine and sending limits are plain settings (`HOOKD_REPLY_ENGINE`, `AGENT_REPLY_LIMITS`), not env
-vars; see `DEV-agent.md`.
+vars; see `DEV-agent.md`. The post studio engines and daily cap are too (`HOOKD_COPY_ENGINE`, `HOOKD_IMAGE_ENGINE`,
+`CREATIVE_DAILY_LIMIT`); see `DEV-creatives.md`.
 
 ## Time zone
 
@@ -147,6 +153,8 @@ Conventions: a task only calls one service function (`apps/content/tasks.py` is 
 | `apps.accounts.tasks.send_access_request(details)` | `accounts.services.request_access` | Emails an access request to `SUPPORT_EMAIL`. Retries up to 5 times with backoff on SMTP or network errors. Returns `sent` |
 | `apps.agent.tasks.handle_comment(comment_id)` | `comments.services.record_incoming_comments` (on commit) | Runs the reply agent on a new webhook comment. Returns the outcome (`queued`, `pending_review`, `skipped`, `ignored`, `exists`, `missing`) |
 | `apps.agent.tasks.send_reply(reply_id)` | `agent.services.schedule_reply` (on commit, `eta` = the send slot) | Sends one reply within the limits; returns `sent`, `failed`, `capped`, `paused`, `rate_limited`, `not_due` or `not_queued`. Redis may redeliver long `eta` tasks after its visibility timeout; the claim and `not_due` checks make that harmless |
+| `apps.creatives.tasks.generate_creative(creative_id)` | `creatives.services.start_creative` (on commit) | One copy engine call plans the post, then queues a render per slide. Returns the draft status |
+| `apps.creatives.tasks.render_slide(slide_id)` | `generate_creative` and `regenerate_slide` (on commit) | One image engine call for one slide, then settles the draft. Returns the slide status |
 | `apps.content.tasks.poll_publish_job(job_id)` | `content.services.schedule_publish_poll` | Checks a processing upload, re-queues itself every 20 s until published, failed or timed out. Returns the job status (`processing`, `published`, `failed`, `missing`) |
 
 ### Task results

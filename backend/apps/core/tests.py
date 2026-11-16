@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
@@ -17,8 +19,13 @@ class LandingViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Your very own agent to get the world")
-        self.assertContains(response, "Every post becomes memory")
+        self.assertContains(response, 'id="pipeline"')
+        self.assertContains(response, 'id="learns"')
+        self.assertContains(response, "Hooky")
         self.assertContains(response, 'id="faq"')
+        self.assertContains(response, "data-highlights")
+        self.assertContains(response, "data-highlight")
+        self.assertContains(response, "js/landing.js")
 
     def test_signed_in_user_sees_landing_with_studio_link(self):
         user = create_user(email="creator@example.com", password="a-strong-pass-123")
@@ -49,3 +56,21 @@ class CryptoTests(SimpleTestCase):
             crypto._cipher.cache_clear()
             with self.assertRaises(crypto.DecryptionError):
                 crypto.decrypt(ciphertext)
+
+
+class GeminiTests(TestCase):
+    @override_settings(GEMINI_API_KEY="")
+    def test_missing_key(self):
+        from apps.core.gemini import GeminiUnavailable, generate
+
+        with self.assertRaises(GeminiUnavailable):
+            generate("model", ["hi"], None)
+
+    @override_settings(GEMINI_API_KEY="key")
+    def test_non_json_answer_is_an_error(self):
+        from apps.core.gemini import GeminiError, generate_json
+
+        with mock.patch("apps.core.gemini.genai.Client") as client:
+            client.return_value.models.generate_content.return_value.text = "not json"
+            with self.assertRaises(GeminiError):
+                generate_json("model", ["hi"], system="s", schema={}, max_output_tokens=10)

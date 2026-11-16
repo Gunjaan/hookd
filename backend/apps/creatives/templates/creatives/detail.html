@@ -1,0 +1,178 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Draft{% endblock %}
+
+{% block head %}
+  {% if creative.is_working %}<meta http-equiv="refresh" content="4" />{% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="studio">
+    <a href="{% url 'publishing' %}" class="back-link">Back to publishing</a>
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">
+          {% if creative.status == 'ready' %}Your post is ready{% elif creative.status == 'published' %}Posted{% elif creative.status == 'failed' %}This draft did not work{% else %}Making your post{% endif %}
+        </h1>
+        <p class="page-header__description">{{ creative.get_look_display }} · {{ creative.get_format_choice_display }}{% if creative.brief.product %} · {{ creative.brief.product }}{% endif %}</p>
+      </div>
+      <div class="page-header__actions">
+        <form method="post" action="{% url 'creative-delete' creative.pk %}" class="inline-form" data-confirm="Delete this draft and its photos?">
+          {% csrf_token %}
+          <button type="submit" class="btn btn--ghost btn--md">Delete draft</button>
+        </form>
+      </div>
+    </header>
+
+    {% include "components/messages.html" %}
+
+    {% if creative.status == 'planning' %}
+      <section class="card card--padded progress" aria-live="polite">
+        <span class="spinner spinner--lg" aria-hidden="true"></span>
+        <ol class="progress-steps">
+          <li class="progress-steps__item progress-steps__item--active">Reading your product and its branding</li>
+          <li class="progress-steps__item">Planning the shots and writing the caption</li>
+          <li class="progress-steps__item">Making the photos</li>
+        </ol>
+        <p class="hint">This takes about a minute. The page updates by itself.</p>
+      </section>
+    {% elif creative.status == 'failed' and not slides %}
+      <div class="alert alert--danger"><div class="alert__body">{{ creative.error }}</div></div>
+      <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Try again</a>
+    {% else %}
+      {% if creative.status == 'failed' %}
+        <div class="alert alert--danger"><div class="alert__body">{{ creative.error }} Use "Redo this photo" to try again.</div></div>
+      {% elif rendering %}
+        <div class="alert alert--info" aria-live="polite">
+          <div class="alert__body">Making photo {{ ready_count|add:1 }} of {{ slides|length }}. The page updates by itself.</div>
+        </div>
+      {% endif %}
+
+      <div class="creative">
+        <section class="ig-preview card" aria-label="Post preview">
+          <div class="ig-preview__head">
+            {% with account=accounts.0 %}
+              {% include "components/avatar.html" with src=account.avatar_url name=account.username|default:"you" size=32 %}
+              <span class="ig-preview__name">{% if account %}{{ account.username }}{% else %}your account{% endif %}</span>
+            {% endwith %}
+          </div>
+          <ol class="slides" aria-label="Photos">
+            {% for slide in slides %}
+              <li class="slide" id="slide-{{ slide.pk }}">
+                <div class="slide__media">
+                  {% if slide.status == 'ready' %}
+                    <img src="{% url 'creative-file' 'slide' slide.pk %}?v={{ slide.updated_at|date:'U' }}" alt="Photo {{ forloop.counter }}: {{ slide.role }}" />
+                  {% elif slide.status == 'pending' %}
+                    <span class="slide__state"><span class="spinner spinner--md" aria-hidden="true"></span>Making photo {{ forloop.counter }}</span>
+                  {% else %}
+                    <span class="slide__state slide__state--error">{{ slide.error }}</span>
+                  {% endif %}
+                  {% if slides|length > 1 %}<span class="badge badge--neutral slide__count">{{ forloop.counter }}/{{ slides|length }}</span>{% endif %}
+                </div>
+                {% if creative.status != 'published' and slide.status != 'pending' %}
+                  <form method="post" action="{% url 'creative-slide-redo' slide.pk %}" class="slide__redo" data-busy-scope>
+                    {% csrf_token %}
+                    <label for="tweak-{{ slide.pk }}" class="visually-hidden">What should change in photo {{ forloop.counter }}?</label>
+                    <input id="tweak-{{ slide.pk }}" name="tweak" type="text" maxlength="{{ redo_form.tweak.field.max_length }}" placeholder="What should change? (optional)" class="field__input" />
+                    <button type="submit" class="btn btn--secondary btn--sm">Redo this photo</button>
+                  </form>
+                {% endif %}
+                {% if slide.status == 'ready' %}
+                  <a href="{% url 'creative-file' 'slide' slide.pk %}?download=1" class="slide__download">Download</a>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+          {% if slides|length > 1 %}<p class="hint ig-preview__swipe">Swipe to see all {{ slides|length }} photos</p>{% endif %}
+          <p class="ig-preview__caption">{{ full_caption|linebreaksbr }}</p>
+        </section>
+
+        <div class="creative__side">
+          {% if creative.status == 'published' %}
+            <section class="card card--padded creative__panel">
+              <h2 class="section-title">Posted</h2>
+              <p class="hint">This draft was sent to {{ creative.publish_job.account.username|default:"your account" }}.</p>
+              <a href="{% url 'publishing' %}" class="btn btn--secondary btn--md">See status</a>
+            </section>
+            {% if creative.answered_questions %}
+              <section class="card card--padded creative__panel" aria-labelledby="brain-known-title">
+                <h2 id="brain-known-title" class="section-title">Your reply agent knows</h2>
+                <ul class="brain-facts">
+                  {% for item in creative.answered_questions %}<li><strong>{{ item.label }}:</strong> {{ item.answer }}</li>{% endfor %}
+                </ul>
+                {% if creative.publish_job.post %}
+                  <a href="{% url 'post-detail' creative.publish_job.post.pk %}" class="btn btn--secondary btn--md">Edit on the post</a>
+                {% else %}
+                  <p class="hint">Saved to the agent as soon as the post is live.</p>
+                {% endif %}
+              </section>
+            {% endif %}
+          {% else %}
+            <section class="card card--padded creative__panel" aria-labelledby="copy-title">
+              <h2 id="copy-title" class="section-title">Caption and hashtags</h2>
+              <form id="draft-form" method="post" action="{% url 'creative-copy' creative.pk %}" class="creative__form" data-busy-scope>
+                {% csrf_token %}
+                <div class="field">
+                  <label for="{{ copy_form.caption.auto_id }}" class="field__label">Caption</label>
+                  <textarea id="{{ copy_form.caption.auto_id }}" name="caption" rows="9" maxlength="{{ copy_form.caption.field.max_length }}" class="field__input field__input--textarea" data-char-count="caption-count">{{ creative.caption }}</textarea>
+                  <p id="caption-count" class="field__message">Up to 2200 characters including hashtags.</p>
+                </div>
+                <div class="field">
+                  <label for="{{ copy_form.hashtags.auto_id }}" class="field__label">Hashtags</label>
+                  <textarea id="{{ copy_form.hashtags.auto_id }}" name="hashtags" rows="3" maxlength="{{ copy_form.hashtags.field.max_length }}" class="field__input field__input--textarea">{{ creative.hashtags }}</textarea>
+                  <p class="field__message">Separate with spaces. Up to 30.</p>
+                </div>
+                {% if accounts %}
+                  {% include "components/select_field.html" with field=publish_form.account %}
+                {% endif %}
+                <div class="creative__actions">
+                  <button type="submit" class="btn btn--secondary btn--md">Save draft</button>
+                  {% if accounts %}
+                    <button type="submit" formaction="{% url 'creative-publish' creative.pk %}" class="btn btn--primary btn--md"{% if creative.status != 'ready' %} disabled data-disabled{% endif %}>Post now</button>
+                  {% endif %}
+                </div>
+                {% if not accounts %}
+                  <p class="hint">Connect an Instagram account to post from here, or download the photos. <a href="{% url 'connections' %}">Connect an account</a></p>
+                {% elif creative.status != 'ready' %}
+                  <p class="hint">You can post once every photo is done.</p>
+                {% endif %}
+              </form>
+            </section>
+
+            {% if creative.brain_questions %}
+              <section class="card card--padded creative__panel" aria-labelledby="brain-title">
+                <div>
+                  <h2 id="brain-title" class="section-title">Teach your reply agent</h2>
+                  <p class="hint">Buyers will ask these in the comments. Your reply agent answers with what you write here, and never guesses. Leave any blank to answer those yourself.</p>
+                </div>
+                <ol class="brain-questions">
+                  {% for item in creative.brain_questions %}
+                    <li class="field">
+                      <label for="answer-{{ forloop.counter0 }}" class="field__label">{{ item.question }}</label>
+                      <input id="answer-{{ forloop.counter0 }}" name="answer_{{ forloop.counter0 }}" form="draft-form" type="text" value="{{ item.answer }}" maxlength="{{ answer_max_length }}" class="field__input" />
+                      <p class="field__message">{% if item.scope == 'account' %}Saved for all your posts{% else %}Saved for this post{% endif %}</p>
+                    </li>
+                  {% endfor %}
+                </ol>
+                <p class="hint">Saved with "Save draft" and "Post now". Answers reach the agent when the post goes live.</p>
+              </section>
+            {% endif %}
+
+            <section class="card card--padded creative__panel" aria-labelledby="rewrite-title">
+              <h2 id="rewrite-title" class="section-title">Want a different caption?</h2>
+              <form method="post" action="{% url 'creative-rewrite' creative.pk %}" class="creative__form" data-busy-scope>
+                {% csrf_token %}
+                <label for="{{ rewrite_form.instruction.auto_id }}" class="visually-hidden">What should change?</label>
+                <div class="creative__inline">
+                  <input id="{{ rewrite_form.instruction.auto_id }}" name="instruction" type="text" maxlength="{{ rewrite_form.instruction.field.max_length }}" placeholder="{{ rewrite_form.instruction.field.widget.attrs.placeholder }}" class="field__input" />
+                  <button type="submit" class="btn btn--secondary btn--md">Rewrite</button>
+                </div>
+                <p class="hint">Replaces the caption and hashtags above. Your photos stay the same.</p>
+              </form>
+            </section>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

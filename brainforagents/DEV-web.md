@@ -21,8 +21,11 @@ backend/
     css/components.css          Design system classes
     css/pages.css               Layout and feature blocks (auth, shell, provider, account, callback, not-found)
     css/landing.css             Public landing page only, loaded through the `head` block of core/landing.html
-    js/app.js                   Progressive enhancement only (confirm dialogs, busy buttons, load more links)
-    img/favicon.svg
+    js/landing.js               Landing page highlight boxes (see Landing page), loaded only by core/landing.html
+    js/app.js                   Progressive enhancement only (confirm dialogs, busy buttons, load more links,
+                                photo thumbnails, character counter)
+    img/favicon.svg             Brand icon: white geometric "h" plus rose dot on an ink rounded square (same art as brand/icon.svg)
+    img/hero-reels.jpg          Hero phone: an earring seller's Instagram reels grid, cropped to the phone frame (corners via `--radius-phone`)
   apps/accounts/
     forms.py                    SignupForm, LoginForm (plus the admin forms)
     views.py, urls.py           login, signup, logout
@@ -37,13 +40,17 @@ backend/
     views.py, urls.py           studio, dashboard, post detail, comments, compose, publishing, publish-asset
     templates/content/          see DEV-content.md
     templatetags/content_ui.py  metric_display, job_tone filters
+  apps/creatives/
+    forms.py, views.py, urls.py post studio: create, draft, redo, rewrite, publish, files (see DEV-creatives.md)
+    templates/creatives/        new.html, detail.html, draft_card.html
   apps/agent/
-    forms.py, views.py, urls.py agent settings, rules, preview, video brain, reply inbox (see DEV-agent.md)
-    templates/agent/            account.html, rule_item.html, rule_form.html, preview.html, inbox.html
+    forms.py, views.py, urls.py agent settings, preview, video brain, reply inbox (see DEV-agent.md)
+    templates/agent/            account.html, preview.html, inbox.html
     context_processors.py       agent_pending_count for the sidebar
   apps/core/templatetags/hookd_ui.py initials filter (avatar fallback)
   apps/core/templates/core/landing.html  Public landing page (see below)
   apps/core/templates/core/model_figure.html  Inline SVG AI model figure used by the landing page
+  apps/core/templates/core/mascot.html  Hooky, the inline SVG mascot (params: uid, size)
 ```
 
 Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [BASE_DIR / 'static']`,
@@ -52,8 +59,12 @@ Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [B
 
 ## Design system
 
-Tokens in `static/css/tokens.css`: brand primary `--color-primary` (#ff4f2b), ink `--color-ink`, neutral surfaces,
+Tokens in `static/css/tokens.css`: brand primary `--color-primary` (#db2777, rose pink), ink `--color-ink`, neutral surfaces,
 status colors with `-soft` backgrounds, Inter font, 4px spacing scale (`--space-1..8`), radii `sm/md/lg/full`.
+
+Brand kit in `brand/` at the repo root (not served): `logo.svg` / `logo.png` (ink), `logo-white.svg` / `logo-white.png`
+(for dark backgrounds), `icon.svg` / `icon-512.png` (app icon, also the favicon). The wordmark is hand drawn geometric
+SVG paths (no font needed). PNGs are exported from the SVGs with macOS `sips -s format png`.
 CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 
 | Class / partial | Variants | Notes |
@@ -73,7 +84,7 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `.spinner` | `--sm/--md/--lg` | |
 | `components/avatar.html` | `name`, `src`, `size` | Initials when no image or the image fails to load |
 | `.page-header` | | `__title`, `__description`, `__actions` |
-| `components/brand_logo.html` | `inverse` | |
+| `components/brand_logo.html` | `inverse` | Inline SVG "hookd." wordmark (`.logo`), letters use `currentColor`, the dot is `.logo__dot` (`--color-primary`), height `--logo-height`. Same paths as `brand/logo.svg`; change both together |
 | `.inline-form` | | `display: contents`, for forms that only wrap buttons |
 | `.field__input--textarea`, `--file` | | Textarea and file input variants of `.field__input` |
 | `.choice-group` / `.choice` | | Radio options as bordered pills; checked one is highlighted |
@@ -86,41 +97,76 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `.load-more` | | Centered wrapper for a load more link |
 
 Page blocks for the studio (`pages.css`): `.studio` (`--narrow`, `__account`, `__section`), `.post-grid`, `.post-card`,
-`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Story pages (agent settings, rule form): `.story` (form column), `.story__actions`,
-`.story-step` (numbered card; `__number`, `__body`, `__subtitle`, `__optional`, `__details`), stacked under 560px. Reply agent:
-`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.rule-chain` (IF / ELSE IF / OTHERWISE list),
-`.rule-list`, `.rule` (`--off`, `--empty`, `__header`, `__if`, `__name`, `__edit`, `__body`, `__condition`, `__then`, `__reply`),
-`.rule-chain__otherwise`, `.rule-chain__actions`, `.keyword-chip`, `.reply-card`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
-`--content-narrow-width`, `--media-max-height`.
+`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Story pages (agent settings, post studio): `.story` (form column), `.story__actions`,
+`.story-step` (numbered card; `__number`, `__body`, `__optional`, `__details`), stacked under 560px. Reply agent:
+`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.reply-card`. Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
+`__input`), `.photo-preview`, `.tips`, `.look-grid` (`--three`), `.look-choice` (`__title`, `__hint`; card radios), `.progress`,
+`.progress-steps` (`__item--active`), `.creative` (`__side`, `__panel`, `__form`, `__actions`, `__inline`), `.ig-preview` (`__head`, `__name`,
+`__swipe`, `__caption`), `.slides`, `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.draft-card` (`__media`,
+`__working`), `.how-it-works` (`__steps`), `.brain-questions`, `.brain-facts`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
+`--content-narrow-width`, `--media-max-height`, `--preview-width`, `--thumb-size`.
 
 `app.js` hooks: `<form data-confirm="...">` asks before submitting. `data-busy-scope` on a container disables all
 its buttons while one of its forms submits. Buttons that must stay disabled carry `data-disabled`.
 `<a data-load-more="<list id>">` appends the next page's items in place (details in `DEV-content.md`).
+`<input type="file" data-photo-preview="<list id>">` shows thumbnails of the chosen photos. `<textarea data-char-count="<id>">`
+writes "n / max characters" into the element with that id.
 
 ## Landing page
 
 `/` renders `core/landing.html` for everyone, so it is the first page people see (logout also returns here), the marketing page with the tagline "Your very own agent to get the world
-hookd". Sections: sticky nav (anchor links; log in and get started, or "Open studio" when signed in), hero with a CSS only mock (edited reel, agent replies
-in Hinglish and Tamil, a sale toast; messages rise in with a staggered animation, off under `prefers-reduced-motion`).
-Below the hero the page sells the small business flow (drop a product, AI models wear it, carousel with edits, caption and hashtags, the post is read into memory, agents
-answer buyers): an audience strip (`.audience`, business types as pills), the four step flow (`#flow`: drop product, AI models, post ready, agent
-takes over, then a `.flow__note` saying existing posts can skip to step 04), the studio showcase (`#studio`: flat lay upload, generated 4 photo carousel, edits, caption and hashtag
-suggestions), product memory and agents (`#agent`: memory card read from the post plus a sample reply, and an `.anywhere` callout: the agent replies on posts
-published outside Hookd too), a without / with
-Hookd comparison (`#compare`), an FAQ built on `<details>` (`#faq`, works without JS), a dark closing CTA and a footer
-with section links. All CTAs go to `signup` or `login`. The AI model shots are CSS only: `core/model_figure.html` is an
-inline SVG figure (`.model`, parts `__skin`, `__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in
-`.look--studio/street/cafe/beach` (carousel) and `.mini-look--*` (flow step) scenes that vary skin tone and pose through
-`--model-skin` and `--model-hair`. Classes in
-`landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.reel`, `.thread`,
-`.sale-toast`, `.section-intro`, `.audience`, `.flow`, `.flow-step`, `.mini-look`, `.mini-caption`, `.mini-tags`, `.flow__note`, `.anywhere`,
-`.studio-showcase`, `.showcase`, `.flatlay`, `.post-mock`, `.look`, `.suggest`, `.feature`, `.brain-card`
-(`__source`, `__chat`), `.checklist`, `.compare`, `.faq`, `.closing`, `.landing-footer` (`__brand`, `__links`).
-Landing tokens: `--text-3xl`, `--text-display`, `--leading-display`,
-`--tracking-display`, `--tracking-eyebrow`, `--space-9/10`, `--radius-xl`, `--shadow-lg`, `--color-ink-soft`,
-`--color-glow`, `--color-glow-cool`, `--color-inverse-muted/subtle`, `--transition-reveal`, `--landing-max-width`,
-and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,
-`--color-model-bottom`, `--color-scene-studio/street/cafe/beach`.
+hookd". Positioned as an AI social media manager for sellers and creators; the page sells the agent first (comment to order on Instagram); the photo studio is a secondary, bonus section near the end.
+
+Look: cream background, rounded pastel cards (butter, lilac, blush, sage, sky, peach, mint), black pill buttons (landing scoped overrides of `.btn`),
+the Urbanist display font (loaded in the page's `head` block) with italic `<em>` accents in headings, and Hooky the mascot.
+Hooky is `core/mascot.html`: an original inline SVG, a yellow chat bubble with a hook curl on top, cheeks and a smile, wrapped in pink to lilac glow rings
+drawn as stacked strokes of one shape (`.mascot`, `__ring--1..5`, `__body`, `__eye`, `__shine`, `__cheek`, `__smile`, `__float`, sizes `--xs` (no rings), `--md`,
+default full width). Include it with a unique `uid` per use (the shape's SVG id): `{% include "core/mascot.html" with uid="closing" size="md" %}`.
+Hooky appears in the "asks you" learn card and the closing card.
+
+Sections, in order: sticky nav (pill of anchor links Pipeline, How it decides, It learns, Studio, FAQ; log in and get started, or "Open studio" when signed in);
+hero with the title, then `.hero-flow` in place of a paragraph (a 5 step stepper with pastel icon circles: buyer comments, checks your brain, replies in their
+language, sends the link in DMs, order placed; steps rise in one after another) and `.hero__stage` (`.hero-visual`: a tilted `.hero-phone` image,
+`img/hero-reels.jpg`, with a smaller CSS `.reel` card floating over its lower left: pastel gradient, "Agent on" and answered chips, play button,
+"Handmade jhumkas, only 20 pieces", views and orders; beside it a `.thread` of four `.bubble`s: buyer comments in Hinglish and Tamil and the agent replies, with `.stage-tag` lead
+stages, rising in one after another); an audience strip (`.audience`, pills cycling
+pastel tints); the pipeline board (`#pipeline`: five pastel `.board__col` columns New comment, Answered, In DMs, Ordered, Follow up with `.lead` cards, the
+same buyer outlined as `.lead--focus` in every column, then three `.perk` cards: any language, any post including ones posted outside Hookd, any hour);
+how it decides (`#decide`: `.decide__map` diagram in a white card, comment into voice and brain, out to replies on its own, drafts for you, asks you);
+it learns (`#learns`: four pastel `.learn-step` cards: unknown question, `.ask-card` where Hooky asks the seller, the reply saved as a new
+`.brain-lines__new` line, the next buyer answered instantly); safe by design (`.safe`, three pastel `.safe-tile`s); the studio bonus (`#studio`: "One product
+photo in. A full launch and a trained sales agent out.", four `.bonus-tile`s: upload, AI models, caption and hashtags, agent already knows it); a without /
+with Hookd comparison (`#compare`); an FAQ of rounded `<details>` cards (`#faq`, works without JS); a blush closing card with Hooky; a footer with section
+links. All CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
+sideways inside itself on narrow screens. The AI model shots are CSS only: `core/model_figure.html` is an inline SVG figure (`.model`, parts `__skin`,
+`__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in `.mini-look--studio/street/cafe` scenes that vary skin tone and pose through
+`--model-skin` and `--model-hair`. Note: the "asks you, then learns" loop is marketing copy; the agent does not yet save inbox replies to the brain
+(`DEV-agent.md`).
+
+Highlight boxes (no library): `<main data-highlights>` scrolls normally. The bold part of each section heading (wrapped in
+`<span data-highlight>`) is the highlight; the hero has none. Each highlight has `margin-inline-end: var(--space-2)` so its box clears the
+words after it. `static/js/landing.js` adds one absolutely positioned
+`<svg class="highlight-boxes">` over `.landing` (above the content, so boxes show on filled cards) with two `.highlight-boxes__path` halves per
+highlight: a rounded box (padding `--highlight-pad`, corners `--highlight-radius`) that starts at the top middle and draws both sides at once until
+they meet at the bottom. A box starts drawing when its text is 70% down the screen and finishes after 20% of a screen of scrolling; headings that
+can never get that high (near the bottom of the page) finish at the very bottom. Drawing follows the scroll position (eased in a rAF loop), so
+boxes stay drawn below the reader and undraw when scrolling back up. Geometry is built in page coordinates on load, resize, font load and any size
+change of `.landing` (`ResizeObserver`, so opening a FAQ item moves the boxes). Off without JavaScript, under `prefers-reduced-motion`, and on
+screens narrower than 768px. Anchor links scroll with CSS `scroll-behavior: smooth` (reduced motion: instant) and sections have
+`scroll-margin-top` for the sticky nav.
+
+Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.hero-flow` (`__step`, `__step--butter/lilac/blush/sage/win`,
+`__icon`), `.hero__stage`, `.hero-visual`, `.hero-phone`, `.reel` (`__media`, `__chip`, `__play`, `__caption`, `__meta`), `.thread`, `.bubble` (`--fan`, `--agent`, `__who`), `.stage-tag`,
+`.mascot`, `.section-intro`, `.audience`, `.pipeline`, `.board` (`__col--butter/lilac/blush/sage/sky`, `__head`, `__count`), `.lead` (`--focus`, `__who`,
+`__avatar`, `__text`, `__tag--agent/won`), `.perk` (`--peach/mint/lilac`), `.decide`, `.decide-node`, `.decide-out`, `.learn`, `.learn-step`
+(`--butter/blush/lilac/sage`), `.pill`, `.ask-card`, `.brain-lines`, `.safe`, `.safe-tile` (`--peach/sky/mint`), `.bonus`, `.bonus-tile`, `.flatlay`,
+`.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.landing-footer`
+(`__brand`, `__links`), `.highlight-boxes` (`__path`).
+Landing tokens: `--font-display`, `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
+`--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, the pastels
+`--color-cream` and `--color-butter/lilac/blush/sage/peach/sky/mint` (each with `-soft`), the mascot colors `--color-mascot`, `--color-mascot-cheek`,
+`--color-mascot-ring-1..5`, and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,
+`--color-model-bottom`, `--color-scene-studio/street/cafe`.
 
 ## Routes (no namespace)
 
@@ -145,10 +191,11 @@ and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/
 | GET | `/studio/posts/<id>/` | `post-detail` | login | Post, insights, "Show comments" |
 | POST | `/studio/posts/<id>/insights/refresh/` | `post-insights-refresh` | login | Refetches insights |
 | GET | `/studio/posts/<id>/comments/` | `post-comments` | login | 25 comments; `?after=<cursor>` for the next page |
-| GET | `/studio/publishing/` | `publishing` | login | Publish jobs of all the user's accounts |
+| GET | `/studio/publishing/` | `publishing` | login | "Create a post", the user's post studio drafts, then publish jobs of all the user's accounts |
+| GET/POST | `/studio/publishing/new/`, `/studio/publishing/drafts/...`, `/studio/publishing/slides/<id>/redo/`, `/studio/publishing/files/...` | `creative-*` | login | Post studio pages, listed in `DEV-creatives.md` |
 | POST | `/studio/publishing/<id>/check/` | `publish-check` | login | Advances a processing job |
 | GET | `/publish-media/<token>/` | `publish-asset` | none | Upload file for the platform, only while its job is processing |
-| GET/POST | `/agent/...` | `agent`, `agent-account`, `agent-starter-rules`, `agent-preview`, `agent-rule-new`, `agent-rule-edit`, `agent-rule-delete`, `agent-post-brain`, `agent-inbox`, `agent-reply-approve`, `agent-reply-reject`, `agent-reply-retry` | login | Reply agent pages, listed in `DEV-agent.md` |
+| GET/POST | `/agent/...` | `agent`, `agent-account`, `agent-preview`, `agent-post-brain`, `agent-inbox`, `agent-reply-approve`, `agent-reply-reject`, `agent-reply-retry` | login | Reply agent pages, listed in `DEV-agent.md` |
 | GET, POST | `/webhooks/<platform>/` | `webhook` | none, CSRF exempt | Platform webhooks: GET handshake echoes the challenge, POST verifies the signature and stores comments. 403 on bad token or signature, 404 unknown platform. See `DEV-comments.md` |
 
 The callback path has no trailing slash because it must match `INSTAGRAM_REDIRECT_URI`. If the session was lost,

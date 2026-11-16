@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'apps.comments',
     'apps.content',
     'apps.agent',
+    'apps.creatives',
 ]
 
 MIDDLEWARE = [
@@ -228,9 +229,27 @@ HOOKD_PROVIDERS = [
 
 PROVIDER_HTTP_TIMEOUT_SECONDS = env_int('PROVIDER_HTTP_TIMEOUT_SECONDS', 15)
 
-# Comment reply agent (see brainforagents/DEV-agent.md)
 
-HOOKD_REPLY_ENGINE = 'apps.agent.engines.simulated.SimulatedReplyEngine'
+# Post studio (see brainforagents/DEV-creatives.md). Gemini plans, writes and renders for now; a Claude copy
+# engine replaces HOOKD_COPY_ENGINE later.
+
+GEMINI_API_KEY = env_str('GEMINI_API_KEY')
+HOOKD_COPY_ENGINE = 'apps.creatives.engines.gemini.GeminiCopyEngine'
+HOOKD_IMAGE_ENGINE = 'apps.creatives.engines.gemini.GeminiImageEngine'
+CREATIVE_COPY_MODEL = env_str('GEMINI_COPY_MODEL', 'gemini-3.5-flash-lite')
+CREATIVE_IMAGE_MODEL = env_str('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1')
+# New drafts per user per rolling 24 hours. Caps AI spend.
+CREATIVE_DAILY_LIMIT = 20
+
+# Comment reply agent (see brainforagents/DEV-agent.md). A low cost Gemini model writes replies for now (Claude
+# later). Without a key, and in tests, the keyword based simulated engine stands in.
+
+HOOKD_REPLY_ENGINE = (
+    'apps.agent.engines.gemini.GeminiReplyEngine'
+    if GEMINI_API_KEY and not TESTING
+    else 'apps.agent.engines.simulated.SimulatedReplyEngine'
+)
+AGENT_REPLY_MODEL = env_str('GEMINI_REPLY_MODEL', 'gemini-3.5-flash-lite')
 
 # Conservative sending limits per account, well inside Meta's rate limits and anti-spam rules.
 AGENT_REPLY_LIMITS = {
@@ -238,7 +257,6 @@ AGENT_REPLY_LIMITS = {
     'JITTER_SECONDS': 30,
     'MAX_PER_HOUR': 20,
     'MAX_PER_DAY': 150,
-    'MAX_PER_AUTHOR_PER_POST_PER_DAY': 1,
     'MAX_SAME_TEXT_PER_HOUR': 3,
     'MAX_COMMENT_AGE_HOURS': 24,
     'AUTO_REPLY_MIN_CONFIDENCE': 0.75,

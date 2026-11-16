@@ -13,4 +13,5 @@ urlpatterns = [
     path('', include('apps.integrations.urls')),
     path('', include('apps.content.urls')),
     path('', include('apps.agent.urls')),
+    path('', include('apps.creatives.urls')),
 ]

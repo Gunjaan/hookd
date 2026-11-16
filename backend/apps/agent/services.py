@@ -1,8 +1,8 @@
 """Reply agent: decides what to do with new comments and sends replies within Meta's limits.
 
-Flow: a webhook comment queues `handle_new_comment`, which asks the engine (`engines/`) for a decision, applies
-the creator's rule action and the safety checks, and either skips the comment, leaves a draft for review, or
-schedules the reply. `schedule_reply` hands out send slots at least MIN_SPACING_SECONDS apart per account, and
+Flow: a webhook comment queues `handle_new_comment`, which asks the engine (`engines/`) for a decision. Spam is
+skipped, a reply the brains cannot fully back (low confidence) or that fails a safety check waits for review, and
+everything else is scheduled. `schedule_reply` hands out send slots at least MIN_SPACING_SECONDS apart per account, and
 `send_reply` re-checks the hourly and daily caps and any rate limit pause right before calling the platform.
 """
 
@@ -17,16 +17,17 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.agent import model_querysets as queries
-from apps.agent.constants import FallbackAction, ReplyStatus, RuleAction
-from apps.agent.engines.base import AgentContext, AgentDecision, RuleSpec
+from apps.agent.constants import ReplyStatus
+from apps.agent.engines.base import AgentContext, AgentDecision
 from apps.agent.engines.registry import get_engine
-from apps.agent.exceptions import ReplyNotEditable, ReplyNotFound, ReplyTextRejected, RuleNotFound
-from apps.agent.models import AgentProfile, CommentReply, PostBrain, ReplyRule
+from apps.agent.exceptions import ReplyNotEditable, ReplyNotFound, ReplyTextRejected
+from apps.agent.models import AgentProfile, CommentReply, PostBrain
 from apps.comments import model_querysets as comment_queries
 from apps.comments.models import Comment
 from apps.content import model_querysets as post_queries
 from apps.content import services as content_services
 from apps.content.models import Post
+from apps.core.exceptions import HookdError
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.constants import Capability
 from apps.integrations.exceptions import ProviderAPIError, RateLimitedError, TokenExpiredError
@@ -42,38 +43,7 @@ OVERDUE_AFTER = timedelta(minutes=5)
 # A task that fires a little early (clock drift) still sends.
 EARLY_TOLERANCE = timedelta(seconds=5)
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
-
-STARTER_RULES = (
-    {
-        "name": "Spam or promotions",
-        "when": "Spam, self promotion, scams or abusive comments",
-        "keywords": "follow back, f4f, promo, promotion, check my profile, dm for collab, earn money",
-        "action": RuleAction.IGNORE,
-        "how_to_reply": "",
-    },
-    {
-        "name": "Price question",
-        "when": "Someone asks about the price or cost",
-        "keywords": "price, cost, how much, rate, kitna, kitne, kitni",
-        "action": RuleAction.REVIEW,
-        "how_to_reply": "Thanks for asking! The price is in the link in our bio, or DM us and we will help.",
-    },
-    {
-        "name": "Size or stock question",
-        "when": "Someone asks if a size, colour or item is available",
-        "keywords": "size, sizes, available, availability, stock, colour, color, xl, xxl",
-        "action": RuleAction.REVIEW,
-        "how_to_reply": "Thanks for asking! DM us the size you need and we will check it for you.",
-    },
-    {
-        "name": "Praise",
-        "when": "Someone compliments the post or the product",
-        "keywords": "love, amazing, beautiful, awesome, great, nice, wow, superb, ❤️, 😍, 🔥",
-        "action": RuleAction.REVIEW,
-        "how_to_reply": "Thank you so much, this means a lot!",
-    },
-)
-
+SPAM_INTENT = "spam"
 
 def _limit(name: str):
     return settings.AGENT_REPLY_LIMITS[name]
@@ -122,47 +92,6 @@ def pending_review_count(user) -> int:
     return queries.pending_review_count(user)
 
 
-# Rules
-
-
-def list_rules(account: SocialAccount) -> list[ReplyRule]:
-    return list(queries.list_rules_for_account(account))
-
-
-def list_post_rules(post: Post) -> list[ReplyRule]:
-    return list(queries.list_rules_for_post(post))
-
-
-def get_user_rule(*, user, rule_id: int) -> ReplyRule:
-    rule = queries.get_rule_for_user(user, rule_id)
-    if rule is None:
-        raise RuleNotFound()
-    return rule
-
-
-def create_rule(*, account: SocialAccount, post: Post | None, **fields) -> ReplyRule:
-    return queries.create_rule(account=account, post=post, position=queries.next_rule_position(account), **fields)
-
-
-def update_rule(rule: ReplyRule, **fields) -> ReplyRule:
-    return queries.update_rule(rule, **fields)
-
-
-def delete_rule(rule: ReplyRule) -> None:
-    queries.delete_rule(rule)
-
-
-def add_starter_rules(account: SocialAccount) -> int:
-    """Add the account wide starter rules the account does not have yet. Returns how many were added."""
-    existing = queries.rule_names(account)
-    added = 0
-    for spec in STARTER_RULES:
-        if spec["name"] not in existing:
-            create_rule(account=account, post=None, **spec)
-            added += 1
-    return added
-
-
 # Deciding
 
 
@@ -172,9 +101,8 @@ class Routing:
     reason: str
 
 
-def _context(*, account: SocialAccount, profile: AgentProfile, post: Post | None, brain: PostBrain | None, text: str, author: str) -> tuple[AgentContext, dict[int, ReplyRule]]:
-    rules = queries.rules_for_comment(account, post)
-    context = AgentContext(
+def _context(*, account: SocialAccount, profile: AgentProfile, post: Post | None, brain: PostBrain | None, text: str, author: str) -> AgentContext:
+    return AgentContext(
         comment_text=text,
         author_username=author,
         account_username=account.username,
@@ -182,45 +110,21 @@ def _context(*, account: SocialAccount, profile: AgentProfile, post: Post | None
         account_knowledge=profile.knowledge,
         post_caption=post.caption if post else "",
         post_knowledge=brain.knowledge if brain else "",
-        rules=[
-            RuleSpec(
-                id=rule.pk, name=rule.name, when=rule.when, keywords=rule.keyword_list,
-                action=rule.action, how_to_reply=rule.how_to_reply,
-            )
-            for rule in rules
-        ],
     )
-    return context, {rule.pk: rule for rule in rules}
 
 
-def _route(*, account: SocialAccount, profile: AgentProfile, decision: AgentDecision, rule: ReplyRule | None, comment: Comment | None) -> Routing:
-    """Apply the rule action, confidence threshold, platform text limits and anti-spam checks."""
-    if rule is not None:
-        action, label = rule.action, f'Rule "{rule.name}"'
-    else:
-        action = RuleAction.REVIEW if profile.fallback_action == FallbackAction.REVIEW else RuleAction.IGNORE
-        label = "No rule matched"
-
-    if action == RuleAction.IGNORE:
-        return Routing(ReplyStatus.SKIPPED, f"{label} says ignore.")
+def _route(*, account: SocialAccount, decision: AgentDecision, check_repeats: bool) -> Routing:
+    """Send when the engine is sure the brains answer the comment; otherwise, or when a safety check fails, review."""
+    if decision.intent.lower() == SPAM_INTENT:
+        return Routing(ReplyStatus.SKIPPED, "Spam, not answered.")
     problems = get_provider(account.platform).reply_text_problems(decision.reply_text)
     if problems:
         return Routing(ReplyStatus.PENDING_REVIEW, " ".join(problems))
-    if action == RuleAction.REVIEW:
-        return Routing(ReplyStatus.PENDING_REVIEW, f"{label} asks for review.")
     if decision.confidence < _limit("AUTO_REPLY_MIN_CONFIDENCE"):
-        return Routing(ReplyStatus.PENDING_REVIEW, f"Low confidence ({decision.confidence:.2f}).")
-    if comment is not None:
-        day_ago = timezone.now() - timedelta(days=1)
-        already = queries.outgoing_to_author_on_post_since(
-            account, author_external_id=comment.author_external_id,
-            media_external_id=comment.media_external_id, since=day_ago,
-        )
-        if already >= _limit("MAX_PER_AUTHOR_PER_POST_PER_DAY"):
-            return Routing(ReplyStatus.PENDING_REVIEW, "This person already got a reply on this post today.")
-        if _same_text_count(account, decision.reply_text) >= _limit("MAX_SAME_TEXT_PER_HOUR"):
-            return Routing(ReplyStatus.PENDING_REVIEW, "The same reply already went out several times this hour.")
-    return Routing(ReplyStatus.QUEUED, f"{label} replies automatically.")
+        return Routing(ReplyStatus.PENDING_REVIEW, f"Missing information: {decision.reason or 'the agent is not sure.'}")
+    if check_repeats and _same_text_count(account, decision.reply_text) >= _limit("MAX_SAME_TEXT_PER_HOUR"):
+        return Routing(ReplyStatus.PENDING_REVIEW, "The same reply already went out several times this hour.")
+    return Routing(ReplyStatus.QUEUED, "The brains have the answer, sent automatically.")
 
 
 def _normalized(text: str) -> str:
@@ -278,16 +182,24 @@ def handle_new_comment(comment_id: int) -> str:
         return ReplyStatus.SKIPPED
 
     engine = get_engine()
-    context, rules = _context(
+    context = _context(
         account=account, profile=profile, post=post, brain=brain, text=comment.text, author=comment.author_username
     )
-    decision = engine.decide(context)
-    rule = rules.get(decision.rule_id)
-    routing = _route(account=account, profile=profile, decision=decision, rule=rule, comment=comment)
+    try:
+        decision = engine.decide(context)
+    except HookdError as exc:
+        # The AI could not answer: the creator writes this one by hand in the inbox.
+        logger.warning("Reply engine failed for comment %s: %s", comment.pk, exc.message)
+        queries.create_reply_if_new(
+            comment,
+            status=ReplyStatus.PENDING_REVIEW,
+            decision={"engine": engine.name, "reason": f"The AI could not write a reply: {exc.message}"},
+        )
+        return ReplyStatus.PENDING_REVIEW
+    routing = _route(account=account, decision=decision, check_repeats=True)
     reply, created = queries.create_reply_if_new(
         comment,
         status=ReplyStatus.PENDING_REVIEW if routing.status == ReplyStatus.QUEUED else routing.status,
-        rule=rule,
         draft_text=decision.reply_text,
         final_text=decision.reply_text,
         decision=_decision_record(decision, engine.name, routing.reason),
@@ -305,7 +217,6 @@ def handle_new_comment(comment_id: int) -> str:
 @dataclass
 class Preview:
     decision: AgentDecision
-    rule: ReplyRule | None
     outcome: str
     reason: str
 
@@ -314,14 +225,13 @@ def preview_reply(*, account: SocialAccount, text: str, post: Post | None = None
     """What the agent would do with `text`. Stores and sends nothing."""
     profile = queries.get_or_create_profile(account)
     brain = queries.get_post_brain(post) if post else None
-    context, rules = _context(account=account, profile=profile, post=post, brain=brain, text=text, author="customer")
+    context = _context(account=account, profile=profile, post=post, brain=brain, text=text, author="customer")
     decision = get_engine().decide(context)
-    rule = rules.get(decision.rule_id)
     if brain is not None and not brain.agent_enabled:
         routing = Routing(ReplyStatus.SKIPPED, "The agent is off for this post.")
     else:
-        routing = _route(account=account, profile=profile, decision=decision, rule=rule, comment=None)
-    return Preview(decision=decision, rule=rule, outcome=routing.status, reason=routing.reason)
+        routing = _route(account=account, decision=decision, check_repeats=False)
+    return Preview(decision=decision, outcome=routing.status, reason=routing.reason)
 
 
 # Sending

@@ -6,7 +6,7 @@ from django.db.models import Count, F, QuerySet
 from django.utils import timezone
 
 from apps.agent.constants import ReplyStatus
-from apps.agent.models import AgentProfile, CommentReply, PostBrain, ReplyRule
+from apps.agent.models import AgentProfile, CommentReply, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.integrations.models import SocialAccount
@@ -52,51 +52,6 @@ def save_post_brain(post: Post, *, knowledge: str, agent_enabled: bool) -> PostB
     return brain
 
 
-# Rules
-
-def rules_for_comment(account: SocialAccount, post: Post | None) -> list[ReplyRule]:
-    """Enabled rules in matching order: this post's rules first, then the account wide rules."""
-    rules = ReplyRule.objects.filter(account=account, enabled=True)
-    post_rules = list(rules.filter(post=post)) if post else []
-    return post_rules + list(rules.filter(post__isnull=True))
-
-
-def list_rules_for_account(account: SocialAccount) -> QuerySet[ReplyRule]:
-    return ReplyRule.objects.filter(account=account).select_related("post").order_by("post_id", "position", "pk")
-
-
-def list_rules_for_post(post: Post) -> QuerySet[ReplyRule]:
-    return ReplyRule.objects.filter(post=post)
-
-
-def rule_names(account: SocialAccount) -> set[str]:
-    return set(ReplyRule.objects.filter(account=account, post__isnull=True).values_list("name", flat=True))
-
-
-def next_rule_position(account: SocialAccount) -> int:
-    last = ReplyRule.objects.filter(account=account).order_by("-position").values_list("position", flat=True).first()
-    return 0 if last is None else last + 1
-
-
-def create_rule(*, account: SocialAccount, post: Post | None, **fields) -> ReplyRule:
-    return ReplyRule.objects.create(account=account, post=post, **fields)
-
-
-def update_rule(rule: ReplyRule, **fields) -> ReplyRule:
-    for name, value in fields.items():
-        setattr(rule, name, value)
-    rule.save()
-    return rule
-
-
-def delete_rule(rule: ReplyRule) -> None:
-    rule.delete()
-
-
-def get_rule_for_user(user, rule_id: int) -> ReplyRule | None:
-    return ReplyRule.objects.select_related("account", "post").filter(account__user=user, pk=rule_id).first()
-
-
 # Replies
 
 def reply_exists(comment: Comment) -> bool:
@@ -139,16 +94,6 @@ def sent_times_since(account: SocialAccount, since: datetime) -> list[datetime]:
     )
 
 
-def outgoing_to_author_on_post_since(account: SocialAccount, *, author_external_id: str, media_external_id: str, since: datetime) -> int:
-    return CommentReply.objects.filter(
-        comment__account=account,
-        comment__author_external_id=author_external_id,
-        comment__media_external_id=media_external_id,
-        status__in=OUTGOING_STATUSES,
-        created_at__gte=since,
-    ).count()
-
-
 def outgoing_texts_since(account: SocialAccount, since: datetime) -> list[str]:
     return list(
         CommentReply.objects.filter(comment__account=account, status__in=OUTGOING_STATUSES, updated_at__gte=since)
@@ -159,7 +104,7 @@ def outgoing_texts_since(account: SocialAccount, since: datetime) -> list[str]:
 def list_replies_for_user(user, status: str, limit: int) -> list[CommentReply]:
     return list(
         CommentReply.objects.filter(comment__account__user=user, status=status)
-        .select_related("comment__account", "rule")
+        .select_related("comment__account")
         .order_by("-created_at")[:limit]
     )
 

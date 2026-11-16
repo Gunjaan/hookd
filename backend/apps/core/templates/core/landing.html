@@ -4,7 +4,9 @@
 {% block title %}Your very own agent to get the world hookd{% endblock %}
 
 {% block head %}
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,400;0,500;0,600;0,700;0,800;1,300;1,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{% static 'css/landing.css' %}" />
+  <script src="{% static 'js/landing.js' %}" defer></script>
 {% endblock %}
 
 {% block body %}
@@ -13,9 +15,10 @@
       <div class="landing-nav__inner">
         <a href="{% url 'home' %}" aria-label="Hookd home">{% include "components/brand_logo.html" %}</a>
         <nav class="landing-nav__links" aria-label="Sections">
-          <a href="#flow">How it works</a>
+          <a href="#pipeline">How it works</a>
+          <a href="#decide">How it decides</a>
+          <a href="#learns">It learns</a>
           <a href="#studio">Studio</a>
-          <a href="#agent">Agents</a>
           <a href="#faq">FAQ</a>
         </nav>
         <div class="landing-nav__actions">
@@ -29,20 +32,49 @@
       </div>
     </header>
 
-    <main>
+    <main data-highlights>
       <section class="hero">
-        <div class="hero__glow" aria-hidden="true"></div>
         <div class="landing-container hero__grid">
           <div class="hero__copy">
-            <p class="eyebrow">Hookd <span class="eyebrow__sep">/</span> AI community manager for creators and sellers</p>
-            <h1 class="hero__title">Your very own agent to get the world <span class="hero__accent">hookd.</span></h1>
-            <p class="hero__lede">
-              Drop a video or a product photo. Hookd polishes it, posts it, then answers every comment and DM in
-              your voice and your buyer's language, all the way to the sale. You make things. Your agent sells them.
-            </p>
+            <p class="eyebrow">AI social media manager for sellers and creators</p>
+            <h1 class="hero__title">Your very own agent to get the world <em class="hero__accent">hookd.</em></h1>
+
+            <ol class="hero-flow" aria-label="What your agent does with every comment">
+              <li class="hero-flow__step hero-flow__step--butter">
+                <span class="hero-flow__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+                </span>
+                Buyer comments
+              </li>
+              <li class="hero-flow__step hero-flow__step--lilac">
+                <span class="hero-flow__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+                </span>
+                Checks your brain
+              </li>
+              <li class="hero-flow__step hero-flow__step--blush">
+                <span class="hero-flow__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v6"/></svg>
+                </span>
+                Replies in their language
+              </li>
+              <li class="hero-flow__step hero-flow__step--sage">
+                <span class="hero-flow__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                </span>
+                Sends the link in DMs
+              </li>
+              <li class="hero-flow__step hero-flow__step--win">
+                <span class="hero-flow__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1 14H5z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+                </span>
+                Order placed
+              </li>
+            </ol>
+
             <div class="hero__actions">
               <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">{% if signups_open %}Get your agent{% else %}Request early access{% endif %}</a>
-              <a href="#flow" class="btn btn--secondary btn--lg">See the flow</a>
+              <a href="#pipeline" class="btn btn--secondary btn--lg">See it work</a>
             </div>
             <ul class="hero__proof">
               <li><strong>24/7</strong> replies, even at 2am</li>
@@ -51,46 +83,40 @@
             </ul>
           </div>
 
-          <div class="hero__stage" aria-label="Example: a reel, the agent replying to a comment, and the sale">
-            <div class="reel">
-              <div class="reel__media">
-                <span class="reel__chip">Auto captions</span>
-                <span class="reel__chip reel__chip--accent">Hook in 1.5s</span>
-                <span class="reel__play" aria-hidden="true"></span>
-                <p class="reel__caption">Handmade jhumkas, only 20 pieces</p>
-              </div>
-              <div class="reel__meta">
-                <span>12.4k views</span>
-                <span>318 comments</span>
+          <div class="hero__stage" aria-label="Example: a seller's reels and the agent replying to comments">
+            <div class="hero-visual">
+              <img class="hero-phone" src="{% static 'img/hero-reels.jpg' %}" width="746" height="1515"
+                   alt="An earring seller's Instagram reels grid: product shots and model photos with thousands of views each" />
+              <div class="reel">
+                <div class="reel__media">
+                  <span class="reel__chip reel__chip--accent">Agent on</span>
+                  <span class="reel__chip">318 answered</span>
+                  <span class="reel__play" aria-hidden="true"></span>
+                  <p class="reel__caption">Handmade jhumkas, only 20 pieces</p>
+                </div>
+                <div class="reel__meta">
+                  <span>12.4k views</span>
+                  <span>27 orders</span>
+                </div>
               </div>
             </div>
 
             <div class="thread">
-              <div class="thread__msg thread__msg--fan">
-                <span class="thread__who">priya.k</span>
+              <div class="bubble bubble--fan">
+                <span class="bubble__who">priya.k <span class="stage-tag">New lead</span></span>
                 <p>Price kitna hai? Bahut pyaare hain</p>
               </div>
-              <div class="thread__msg thread__msg--agent">
-                <span class="thread__who">you, via Hookd</span>
+              <div class="bubble bubble--agent">
+                <span class="bubble__who">you, via Hookd <span class="stage-tag stage-tag--inverse">Link in DMs</span></span>
                 <p>Thank you Priya! Rs 1,499 hai. Link aapke DMs mein bhej diya hai</p>
               </div>
-              <div class="thread__msg thread__msg--fan">
-                <span class="thread__who">arun_m</span>
+              <div class="bubble bubble--fan">
+                <span class="bubble__who">arun_m <span class="stage-tag">New lead</span></span>
                 <p>Chennai delivery irukka?</p>
               </div>
-              <div class="thread__msg thread__msg--agent">
-                <span class="thread__who">you, via Hookd</span>
+              <div class="bubble bubble--agent">
+                <span class="bubble__who">you, via Hookd <span class="stage-tag stage-tag--inverse">Link in DMs</span></span>
                 <p>Aamaa Arun! 3 naal la Chennai delivery. Link DM la anupiyirukken</p>
-              </div>
-            </div>
-
-            <div class="sale-toast">
-              <span class="sale-toast__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
-              </span>
-              <div>
-                <p class="sale-toast__title">New order, Rs 1,499</p>
-                <p class="sale-toast__body">priya.k paid from your DM link</p>
               </div>
             </div>
           </div>
@@ -99,7 +125,7 @@
 
       <section class="audience" aria-label="Who Hookd is for">
         <div class="landing-container audience__inner">
-          <p class="audience__label">Built for small businesses that sell on Instagram</p>
+          <p class="audience__label">Built for sellers and creators on Instagram</p>
           <ul class="audience__list">
             <li>Clothing labels</li>
             <li>Ethnic and occasion wear</li>
@@ -107,187 +133,259 @@
             <li>Footwear</li>
             <li>Bags and accessories</li>
             <li>Home and decor</li>
+            <li>Creators and influencers</li>
           </ul>
         </div>
       </section>
 
-      <section class="flow" id="flow">
+      <section class="pipeline" id="pipeline">
         <div class="landing-container">
-          <div class="section-intro">
-            <p class="eyebrow">How it works</p>
-            <h2 class="section-intro__title">One product photo in. A full launch and a trained sales agent out.</h2>
-            <p class="section-intro__lede">No photoshoot, no models, no copywriter, no one glued to the DMs. You upload, Hookd does the rest.</p>
+          <div class="section-intro section-intro--center">
+            <p class="eyebrow">One comment, start to finish</p>
+            <h2 class="section-intro__title"><span data-highlight>From a comment to a sale,</span> <em>while you sleep.</em></h2>
+            <p class="section-intro__lede">priya.k commented at 11:42 pm. You were asleep. Here is what your agent did.</p>
           </div>
 
-          <ol class="flow__steps">
-            <li class="flow-step">
-              <span class="flow-step__num">01</span>
-              <div class="flow-step__visual flow-step__visual--upload" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
-                <span>linen_shirt.jpg</span>
+          <ol class="journey">
+            <li class="journey__step journey__step--butter">
+              <span class="journey__time">11:42 pm</span>
+              <p class="journey__title">She comments</p>
+              <div class="journey__card">
+                <span class="bubble__who">priya.k</span>
+                <p>Price kitna hai? Bahut pyaare hain</p>
               </div>
-              <h3 class="flow-step__title">Drop your product</h3>
-              <p class="flow-step__body">A shirt on a hanger, pants on the floor, a phone photo on your counter. That is all we need.</p>
             </li>
-            <li class="flow-step">
-              <span class="flow-step__num">02</span>
-              <div class="flow-step__visual flow-step__visual--models" aria-hidden="true">
+            <li class="journey__step journey__step--lilac">
+              <span class="journey__time">11:42 pm</span>
+              <p class="journey__title">Agent replies</p>
+              <div class="journey__card journey__card--agent">
+                <span class="bubble__who">you, via Hookd</span>
+                <p>Rs 1,499 hai Priya! Link DMs mein</p>
+              </div>
+            </li>
+            <li class="journey__step journey__step--blush">
+              <span class="journey__time">11:43 pm</span>
+              <p class="journey__title">Link in her DMs</p>
+              <div class="journey__card">
+                <p>Handmade jhumkas, Rs 1,499</p>
+                <span class="journey__btn">Buy now</span>
+              </div>
+            </li>
+            <li class="journey__step journey__step--sage">
+              <span class="journey__time">11:51 pm</span>
+              <p class="journey__title">She orders</p>
+              <div class="journey__card journey__card--won">
+                <span class="journey__check" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+                </span>
+                <p>Paid Rs 1,499</p>
+              </div>
+            </li>
+            <li class="journey__step journey__step--sky">
+              <span class="journey__time">3 days later</span>
+              <p class="journey__title">Agent follows up</p>
+              <div class="journey__card journey__card--agent">
+                <span class="bubble__who">you, via Hookd</span>
+                <p>Loved them? Matching bangles are back</p>
+              </div>
+            </li>
+          </ol>
+
+          <div class="funnel" aria-label="Example: what the agent did overnight">
+            <p class="funnel__label">Same night, every comment:</p>
+            <ol class="funnel__steps">
+              <li><strong>12</strong> comments</li>
+              <li><strong>12</strong> answered</li>
+              <li><strong>6</strong> sent to DMs</li>
+              <li class="funnel__win"><strong>4</strong> orders</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="decide" id="decide">
+        <div class="landing-container">
+          <div class="section-intro section-intro--center">
+            <p class="eyebrow">How it decides</p>
+            <h2 class="section-intro__title"><span data-highlight>Your voice. Your brain.</span> <em>Your call.</em></h2>
+          </div>
+
+          <div class="decide__map">
+            <div class="decide-node decide-node--input">
+              <span class="decide-node__label">New comment</span>
+              <span class="decide-node__eg">"XL milega?"</span>
+            </div>
+
+            <span class="decide__arrow" aria-hidden="true"></span>
+
+            <div class="decide__sources">
+              <div class="decide-node">
+                <span class="decide-node__label">Your voice</span>
+                <span class="decide-node__eg">Playful, Hinglish, one emoji</span>
+              </div>
+              <div class="decide-node">
+                <span class="decide-node__label">Your brain</span>
+                <span class="decide-node__eg">Prices, sizes, delivery, every post</span>
+              </div>
+            </div>
+
+            <span class="decide__arrow" aria-hidden="true"></span>
+
+            <ul class="decide__outcomes">
+              <li class="decide-out decide-out--auto">
+                <span class="decide-out__dot" aria-hidden="true"></span>
+                <span><strong>Replies on its own</strong> when it knows the answer</span>
+              </li>
+              <li class="decide-out decide-out--draft">
+                <span class="decide-out__dot" aria-hidden="true"></span>
+                <span><strong>Drafts for you</strong> when you want to check first</span>
+              </li>
+              <li class="decide-out decide-out--ask">
+                <span class="decide-out__dot" aria-hidden="true"></span>
+                <span><strong>Asks you</strong> when it does not know</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="learn" id="learns">
+        <div class="landing-container">
+          <div class="section-intro section-intro--center">
+            <p class="eyebrow">It learns from you</p>
+            <h2 class="section-intro__title"><span data-highlight>Answer once.</span> <em>It never asks again.</em></h2>
+            <p class="section-intro__lede">When your agent does not know, it asks you. Your reply goes to the buyer and into the brain.</p>
+          </div>
+
+          <ol class="learn__steps">
+            <li class="learn-step learn-step--butter">
+              <span class="learn-step__num">01</span>
+              <p class="learn-step__title">A new question</p>
+              <div class="learn-step__body">
+                <div class="bubble bubble--fan">
+                  <span class="bubble__who">zara.h</span>
+                  <p>Dubai shipping hai?</p>
+                </div>
+                <span class="pill">Not in the brain</span>
+              </div>
+            </li>
+
+            <li class="learn-step learn-step--blush">
+              <span class="learn-step__num">02</span>
+              <p class="learn-step__title">Hooky asks you</p>
+              <div class="learn-step__body ask-card">
+                <p class="ask-card__head"><span class="ask-card__avatar" aria-hidden="true">{% include "core/mascot.html" with uid="ask" size="xs" %}</span>Your agent needs you</p>
+                <p class="ask-card__q">"Dubai shipping hai?"</p>
+                <p class="ask-card__reply">Yes, 7 days, Rs 900 shipping</p>
+                <span class="ask-card__btn">Reply and teach</span>
+              </div>
+            </li>
+
+            <li class="learn-step learn-step--lilac">
+              <span class="learn-step__num">03</span>
+              <p class="learn-step__title">Saved to the brain</p>
+              <div class="learn-step__body">
+                <ul class="brain-lines">
+                  <li>Price: Rs 1,499</li>
+                  <li>Delivery: 3 to 5 days, pan India</li>
+                  <li class="brain-lines__new">Dubai: 7 days, Rs 900 shipping</li>
+                </ul>
+              </div>
+            </li>
+
+            <li class="learn-step learn-step--sage">
+              <span class="learn-step__num">04</span>
+              <p class="learn-step__title">Next buyer, instant answer</p>
+              <div class="learn-step__body">
+                <div class="bubble bubble--fan">
+                  <span class="bubble__who">ali.r</span>
+                  <p>Dubai bhejoge?</p>
+                </div>
+                <div class="bubble bubble--agent">
+                  <span class="bubble__who">you, via Hookd</span>
+                  <p>Haan Ali! 7 days, Rs 900 shipping</p>
+                </div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="safe" aria-labelledby="safe-title">
+        <div class="landing-container">
+          <div class="section-intro section-intro--center">
+            <p class="eyebrow">Safe by design</p>
+            <h2 class="section-intro__title" id="safe-title"><span data-highlight>Sounds like you.</span> <em>Never like spam.</em></h2>
+          </div>
+          <ul class="safe__grid">
+            <li class="safe-tile safe-tile--peach">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+              </span>
+              <p class="safe-tile__title">You switch it on</p>
+              <p class="safe-tile__body">Start by approving drafts. Go hands free when you trust it.</p>
+            </li>
+            <li class="safe-tile safe-tile--sky">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              </span>
+              <p class="safe-tile__title">Paced like a person</p>
+              <p class="safe-tile__body">Replies are spaced out and capped, so Instagram never sees a bot.</p>
+            </li>
+            <li class="safe-tile safe-tile--mint">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+              </span>
+              <p class="safe-tile__title">Your voice, your call</p>
+              <p class="safe-tile__body">Tricky comments come to you. Turn the agent off any time.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="bonus" id="studio">
+        <div class="landing-container">
+          <div class="section-intro">
+            <p class="eyebrow">Bonus: the studio</p>
+            <h2 class="section-intro__title"><span data-highlight>One product photo in.</span> <em>A full launch and a trained sales agent out.</em></h2>
+            <p class="section-intro__lede">No photoshoot needed. Already have photos? Connect Instagram and skip straight to the agent.</p>
+          </div>
+
+          <ol class="bonus__row">
+            <li class="bonus-tile">
+              <div class="bonus-tile__visual">
+                <div class="flatlay" aria-hidden="true">
+                  <svg class="flatlay__garment" viewBox="0 0 120 120" width="72" height="72" focusable="false">
+                    <path d="M36 22c8-4 16-5 24-5s16 1 24 5l18 30-13 7-7-13v58H38V46l-7 13-13-7z"/>
+                    <path class="flatlay__seam" d="M52 19l8 10 8-10M60 29v48"/>
+                  </svg>
+                </div>
+              </div>
+              <p class="bonus-tile__label">You upload</p>
+            </li>
+            <li class="bonus-tile">
+              <div class="bonus-tile__visual" aria-hidden="true">
                 <span class="mini-look mini-look--studio">{% include "core/model_figure.html" %}</span>
                 <span class="mini-look mini-look--street">{% include "core/model_figure.html" %}</span>
                 <span class="mini-look mini-look--cafe">{% include "core/model_figure.html" %}</span>
               </div>
-              <h3 class="flow-step__title">AI models wear it</h3>
-              <p class="flow-step__body">Realistic on model shots in different poses and settings, true to your fabric, fit and color.</p>
+              <p class="bonus-tile__label">AI models wear it</p>
             </li>
-            <li class="flow-step">
-              <span class="flow-step__num">03</span>
-              <div class="flow-step__visual flow-step__visual--post" aria-hidden="true">
+            <li class="bonus-tile">
+              <div class="bonus-tile__visual bonus-tile__visual--post" aria-hidden="true">
                 <span class="mini-caption">Breezy linen for long summer days</span>
                 <span class="mini-tags"><span>#linenshirt</span><span>#summerstyle</span></span>
               </div>
-              <h3 class="flow-step__title">Your post is ready</h3>
-              <p class="flow-step__body">An edited carousel with a caption that sells and hashtags that reach the right buyers. Approve and post.</p>
+              <p class="bonus-tile__label">Caption and hashtags</p>
             </li>
-            <li class="flow-step">
-              <span class="flow-step__num">04</span>
-              <div class="flow-step__visual flow-step__visual--reply" aria-hidden="true">
+            <li class="bonus-tile bonus-tile--agent">
+              <div class="bonus-tile__visual bonus-tile__visual--agent" aria-hidden="true">
                 <span class="mini-bubble">Is XL available?</span>
                 <span class="mini-bubble mini-bubble--agent">Yes! Link in your DMs</span>
               </div>
-              <h3 class="flow-step__title">Your agent takes over</h3>
-              <p class="flow-step__body">Hookd reads the post into memory and answers every comment and DM about it, day and night.</p>
+              <p class="bonus-tile__label">Agent already knows it</p>
             </li>
           </ol>
-          <p class="flow__note"><strong>Already have your photos and posts?</strong> Skip to step 04. Connect Instagram and your agent starts replying on everything you have posted.</p>
-        </div>
-      </section>
-
-      <section class="studio-showcase" id="studio">
-        <div class="landing-container">
-          <div class="section-intro">
-            <p class="eyebrow">The studio</p>
-            <h2 class="section-intro__title">From a flat lay to a scroll stopping carousel.</h2>
-            <p class="section-intro__lede">Hookd turns a single product shot into a post that looks like you hired a photographer, a stylist and a social media manager.</p>
-          </div>
-
-          <div class="showcase">
-            <figure class="showcase__source">
-              <div class="flatlay" aria-hidden="true">
-                <svg class="flatlay__garment" viewBox="0 0 120 120" width="120" height="120" focusable="false">
-                  <path d="M36 22c8-4 16-5 24-5s16 1 24 5l18 30-13 7-7-13v58H38V46l-7 13-13-7z"/>
-                  <path class="flatlay__seam" d="M52 19l8 10 8-10M60 29v48"/>
-                </svg>
-              </div>
-              <figcaption>
-                <span class="showcase__label">You upload</span>
-                <span class="showcase__file">linen_shirt_sage.jpg</span>
-              </figcaption>
-            </figure>
-
-            <div class="showcase__arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            </div>
-
-            <div class="showcase__post">
-              <div class="post-mock" aria-label="Example carousel post generated by Hookd">
-                <div class="post-mock__header">
-                  <span class="post-mock__avatar" aria-hidden="true">TC</span>
-                  <div>
-                    <p class="post-mock__name">thread.and.co</p>
-                    <p class="post-mock__meta">Carousel, 4 photos</p>
-                  </div>
-                </div>
-                <ul class="post-mock__slides">
-                  <li class="look look--studio">{% include "core/model_figure.html" %}<span class="look__tag">Studio</span></li>
-                  <li class="look look--street">{% include "core/model_figure.html" %}<span class="look__tag">Street</span></li>
-                  <li class="look look--cafe">{% include "core/model_figure.html" %}<span class="look__tag">Cafe</span></li>
-                  <li class="look look--beach">{% include "core/model_figure.html" %}<span class="look__tag">Beach</span></li>
-                </ul>
-                <div class="post-mock__dots" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-              </div>
-
-              <div class="suggest">
-                <div class="suggest__block">
-                  <p class="suggest__label">Edits applied</p>
-                  <ul class="suggest__chips">
-                    <li>Background cleaned</li>
-                    <li>Color matched</li>
-                    <li>Cropped 4:5</li>
-                    <li>Brand watermark</li>
-                  </ul>
-                </div>
-                <div class="suggest__block">
-                  <p class="suggest__label">Suggested caption</p>
-                  <p class="suggest__caption">Meet the shirt you will live in all summer. Pure linen, relaxed fit, in a soft sage that goes with everything. Sizes S to XXL, Rs 1,299. Comment SIZE and we will DM you the link.</p>
-                </div>
-                <div class="suggest__block">
-                  <p class="suggest__label">Hashtags</p>
-                  <ul class="suggest__tags">
-                    <li>#linenshirt</li>
-                    <li>#summerstyle</li>
-                    <li>#smallbusinessindia</li>
-                    <li>#menswear</li>
-                    <li>#shoplocal</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="feature" id="agent">
-        <div class="landing-container feature__grid">
-          <div class="feature__copy">
-            <p class="eyebrow">Memory and agents</p>
-            <h2 class="section-intro__title">Every post becomes memory. Every question gets an answer.</h2>
-            <p class="section-intro__lede">
-              When a post goes live, Hookd reads it: the product, the price, the sizes, the caption, your store policies.
-              Your agents use that memory to answer buyers exactly the way you would.
-            </p>
-            <ul class="checklist">
-              <li>Answers price, size, stock and delivery questions instantly</li>
-              <li>Sends the buy link in DMs and follows up</li>
-              <li>Replies in your tone and in 10+ Indian languages</li>
-              <li>Passes bulk orders and complaints straight to you</li>
-            </ul>
-            <div class="anywhere">
-              <span class="anywhere__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
-              </span>
-              <div>
-                <p class="anywhere__title">Posted somewhere else? Your agent still replies.</p>
-                <p class="anywhere__body">You do not have to upload through Hookd. Post from the Instagram app, Meta Business Suite or any scheduler, and your agent picks up every new comment on your connected account, on old posts too, and takes over.</p>
-              </div>
-            </div>
-          </div>
-          <div class="brain-card">
-            <div class="brain-card__header">
-              <span class="brain-card__dot" aria-hidden="true"></span>
-              Product memory: Linen shirt, sage
-              <span class="badge badge--info brain-card__source">Read from your post</span>
-            </div>
-            <dl class="brain-card__facts">
-              <div><dt>Price</dt><dd>Rs 1,299, free shipping over Rs 999</dd></div>
-              <div><dt>Sizes</dt><dd>S, M, L, XL, XXL</dd></div>
-              <div><dt>Fabric</dt><dd>100% linen, relaxed fit</dd></div>
-              <div><dt>Delivery</dt><dd>3 to 5 days, pan India</dd></div>
-            </dl>
-            <div class="brain-card__chat">
-              <div class="thread__msg thread__msg--fan">
-                <span class="thread__who">rahul.dsgn</span>
-                <p>Bhai XL hai? Kitne din mein aayega Pune?</p>
-              </div>
-              <div class="thread__msg thread__msg--agent">
-                <span class="thread__who">thread.and.co, via Hookd</span>
-                <p>Haan Rahul, XL available hai! Pune mein 3 din. Link DM kar diya hai</p>
-              </div>
-            </div>
-            <div class="brain-card__rule">
-              <span class="badge badge--warning">Ask me</span>
-              <span>Bulk or wholesale order: send to my inbox</span>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -295,25 +393,25 @@
         <div class="landing-container">
           <div class="section-intro section-intro--center">
             <p class="eyebrow">Sit back</p>
-            <h2 class="section-intro__title">You run the business. Hookd runs the replies.</h2>
+            <h2 class="section-intro__title"><span data-highlight>You run the business.</span> <em>Hookd runs the sales.</em></h2>
           </div>
           <div class="compare__grid">
             <div class="compare__col">
               <p class="compare__title">Without Hookd</p>
               <ul class="compare__list compare__list--before">
-                <li>Book a photoshoot for every new drop</li>
-                <li>Spend an evening writing captions and hunting hashtags</li>
                 <li>Answer "price?" for the hundredth time</li>
-                <li>Lose buyers who messaged while you were asleep</li>
+                <li>Buyers who message at 2am go cold</li>
+                <li>Leads lost in a messy DM inbox</li>
+                <li>Explain shipping again on every post</li>
               </ul>
             </div>
             <div class="compare__col compare__col--after">
               <p class="compare__title">With Hookd</p>
               <ul class="compare__list compare__list--after">
-                <li>On model photos from one product shot</li>
-                <li>Carousel, caption and hashtags ready to post</li>
-                <li>Every comment and DM answered from memory</li>
-                <li>Buyers get the link in seconds, at any hour</li>
+                <li>Every comment answered from your brain</li>
+                <li>Interested buyers get the link in seconds</li>
+                <li>Every lead moved from comment to order</li>
+                <li>New questions come to you once, then never again</li>
               </ul>
             </div>
           </div>
@@ -324,28 +422,32 @@
         <div class="landing-container faq__inner">
           <div class="section-intro">
             <p class="eyebrow">Questions</p>
-            <h2 class="section-intro__title">Good to know</h2>
+            <h2 class="section-intro__title"><span data-highlight>Good</span> <em>to know</em></h2>
           </div>
           <div class="faq__list">
             <details class="faq__item">
-              <summary>What kind of product photo do I need?</summary>
-              <p>Any clear photo of the product works: on a hanger, laid flat, or on a table. Better light gives better results, but you do not need a studio.</p>
+              <summary>How does the agent know what to say?</summary>
+              <p>It answers from your brain: your prices, sizes, delivery and store policies, plus what it reads from each post. When your brain has the answer it replies on its own, when it does not it asks you first.</p>
             </details>
             <details class="faq__item">
-              <summary>Will the AI images look like my actual product?</summary>
-              <p>Yes. Hookd keeps your fabric, color, print and fit. You review every image before anything is posted.</p>
+              <summary>What happens when it does not know the answer?</summary>
+              <p>It asks you instead of guessing. Your reply goes to the buyer and is saved to the brain, so the next buyer with the same question gets an instant answer.</p>
+            </details>
+            <details class="faq__item">
+              <summary>Will Instagram flag my account?</summary>
+              <p>Hookd replies only on your own posts, spaces replies out, caps them per hour and per day, and never sends the same text over and over.</p>
+            </details>
+            <details class="faq__item">
+              <summary>Can I check replies before they go out?</summary>
+              <p>Yes. The agent starts by drafting replies for you to approve. Let it reply on its own when you trust it.</p>
             </details>
             <details class="faq__item">
               <summary>Do I have to post through Hookd for the agent to reply?</summary>
               <p>No. Once your Instagram account is connected, the agent answers comments on every post, whether you published it with Hookd, the Instagram app or another tool.</p>
             </details>
             <details class="faq__item">
-              <summary>How does the agent know what to say?</summary>
-              <p>It reads each post into memory along with your prices, sizes and store policies. You set the rules for what it answers and what it sends to you.</p>
-            </details>
-            <details class="faq__item">
-              <summary>Can I check replies before they go out?</summary>
-              <p>Yes. Start in review mode and approve each reply. Switch to autopilot when you trust it.</p>
+              <summary>Can Hookd make my product photos too?</summary>
+              <p>Yes, as a bonus. Upload one product photo and the studio creates on model shots, a caption and hashtags. You review everything before it is posted.</p>
             </details>
             <details class="faq__item">
               <summary>Which platforms do you support?</summary>
@@ -356,32 +458,39 @@
       </section>
 
       <section class="closing">
-        <div class="landing-container closing__inner">
-          <h2 class="closing__title">Drop a product. Sit back.</h2>
-          {% if signups_open %}
-            <p class="closing__lede">Connect Instagram in a minute. Your first carousel and your agent are waiting.</p>
-            <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">Get started</a>
-          {% else %}
-            <p class="closing__lede">Hookd is invite only for now. Tell us about your business and we will set you up.</p>
-            <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">Request early access</a>
-          {% endif %}
+        <div class="landing-container">
+          <div class="closing__card">
+            <div class="closing__mascot">{% include "core/mascot.html" with uid="closing" size="md" %}</div>
+            <div class="closing__copy">
+              <h2 class="closing__title"><span data-highlight>Sit back.</span> <em>Your agent sells.</em></h2>
+              {% if signups_open %}
+                <p class="closing__lede">Connect Instagram in a minute. Hooky starts with your next comment.</p>
+                <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">Get started</a>
+              {% else %}
+                <p class="closing__lede">Hookd is invite only for now. Tell us about your business and we will set you up.</p>
+                <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">Request early access</a>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </section>
+
+      <footer class="landing-footer">
+        <div class="landing-container landing-footer__inner">
+          <div class="landing-footer__brand">
+            {% include "components/brand_logo.html" %}
+            <p>AI social media manager for sellers and creators.</p>
+          </div>
+          <nav class="landing-footer__links" aria-label="Footer">
+            <a href="#pipeline">How it works</a>
+            <a href="#learns">It learns</a>
+            <a href="#studio">Studio</a>
+            <a href="#faq">FAQ</a>
+            <a href="{% url 'login' %}">Log in</a>
+          </nav>
+        </div>
+      </footer>
     </main>
 
-    <footer class="landing-footer">
-      <div class="landing-container landing-footer__inner">
-        <div class="landing-footer__brand">
-          {% include "components/brand_logo.html" %}
-          <p>AI product shoots and sales agents for small businesses.</p>
-        </div>
-        <nav class="landing-footer__links" aria-label="Footer">
-          <a href="#flow">How it works</a>
-          <a href="#studio">Studio</a>
-          <a href="#faq">FAQ</a>
-          <a href="{% url 'login' %}">Log in</a>
-        </nav>
-      </div>
-    </footer>
   </div>
 {% endblock %}

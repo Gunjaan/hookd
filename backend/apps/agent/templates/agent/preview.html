@@ -12,6 +12,8 @@
       </div>
     </header>
 
+    {% include "components/messages.html" %}
+
     <form method="post" class="card card--padded compose" data-busy-scope>
       {% csrf_token %}
       {% include "components/textarea_field.html" with field=form.text %}
@@ -32,8 +34,6 @@
             {% else %}<span class="badge badge--neutral">Ignored</span>{% endif %}
             {{ result.reason }}
           </dd>
-          <dt>Rule</dt>
-          <dd>{{ result.rule.name|default:"None matched" }}</dd>
           <dt>Confidence</dt>
           <dd>{{ result.decision.confidence|floatformat:2 }} ({{ result.decision.reason }})</dd>
         </dl>

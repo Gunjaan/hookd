@@ -77,6 +77,12 @@ The platform downloads media from a public URL, so uploads are served by the `pu
 
 Carousels are images only for now (video children need their own processing wait).
 
+The post studio (`DEV-creatives.md`) also publishes through `create_publish_job`: its drafts post as `image` or
+`carousel` jobs. `views.announce_publish_job(request, job)` is the shared success, failure or processing message.
+`signals.post_published` (kwargs `job`, `post`) is sent by `advance_publish_job` once a job is live, so other apps
+react without content importing them (the post studio saves its reply agent answers).
+The publishing page lists the user's drafts (`creatives.services.list_creatives`) above the jobs.
+
 ## Services (`services.py`)
 
 | Function | Does |
@@ -105,8 +111,8 @@ Errors (`exceptions.py`): `PostNotFound`, `PublishJobNotFound`, `PublishingUnava
 ## Templates and filters
 
 The post detail page also shows the **Video brain** card from the reply agent: a `PostBrainForm` (facts and the per post
-agent switch) posting to `agent-post-brain`, the post's rules (`agent/rule_item.html`) and "Add rule for this post"
-(`DEV-agent.md`).
+agent switch) posting to `agent-post-brain` (`DEV-agent.md`). Facts there let the agent answer this post's comments
+on its own.
 
 `templates/content/`: `dashboard.html`, `post_card.html`, `metric_tiles.html`, `post_detail.html`,
 `post_comments.html`, `comment_item.html`, `compose.html`, `publishing.html`.

@@ -7,10 +7,11 @@ commenter's language. Product plan: `hookd-plan.md` at the repo root.
 
 Working today: **public landing page at `/`, login (self serve signup is closed: `/signup/` emails an access request
 to support, see `DEV-auth.md`), connect an Instagram professional account, receive its new comments by webhook,
-the creator studio (recent posts, post and account insights, paged comments), publishing images, reels and carousels, and
-the comment reply agent (rules, account and video brains, review inbox, rate limited sending) running on a simulated
-engine.**
-Not built yet: YouTube, DMs and private replies, the Claude engine, rule suggestions from uploaded videos, workflows,
+the creator studio (recent posts, post and account insights, paged comments), publishing images, reels and carousels, the post studio (product photos in, AI made post photos with an editable
+caption and hashtags out, plus questions that teach the reply agent about the product, Gemini for now), and
+the comment reply agent (account and video brains, sends on its own when they hold the answer, review inbox for the rest, rate limited sending) writing replies with a low cost Gemini
+model.**
+Not built yet: YouTube, DMs and private replies, the Claude engines (reply agent and post studio copy), workflows,
 scheduled posts, stories.
 
 ## Feature index
@@ -23,8 +24,9 @@ scheduled posts, stories.
 | `DEV-integrations.md` | `apps.integrations`: provider interface, SocialAccount, connect flow, token refresh |
 | `DEV-instagram.md` | Instagram provider: Unified Login (Facebook Login for Business), token lifecycle, Meta app setup |
 | `DEV-comments.md` | `apps.comments`: Comment model, webhook endpoint, how comments arrive |
-| `DEV-agent.md` | `apps.agent`: reply rules, account and video brains, engine interface (simulated), review inbox, Meta safe sending |
+| `DEV-agent.md` | `apps.agent`: account and video brains, confidence based auto send, engine interface (Gemini, simulated fallback), review inbox, Meta safe sending |
 | `DEV-content.md` | `apps.content`: studio dashboard, lazy loading, Post, insights, comments paging, publishing |
+| `DEV-creatives.md` | `apps.creatives`: post studio, product photos to ready to post drafts (Gemini engines, prompts, token rules) |
 | `DEV-web.md` | Server rendered UI: Django templates, design system CSS, page routes, session auth |
 
 ## Repository layout

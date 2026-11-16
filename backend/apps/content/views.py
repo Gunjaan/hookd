@@ -11,6 +11,7 @@ from apps.agent.forms import PostBrainForm
 from apps.content import services
 from apps.content.forms import ComposeForm
 from apps.core.exceptions import HookdError
+from apps.creatives import services as creative_services
 from apps.integrations import services as integration_services
 
 
@@ -94,7 +95,6 @@ def post_detail(request, post_id: int):
             "account": post.account,
             "insights_error": insights_error,
             "brain_form": brain_form,
-            "post_rules": agent_services.list_post_rules(post),
         },
     )
 
@@ -139,7 +139,7 @@ def compose(request, account_id: int):
         except HookdError as exc:
             messages.error(request, exc.message)
         else:
-            _announce_job(request, job)
+            announce_publish_job(request, job)
             return redirect("publishing")
 
     quota = None
@@ -160,7 +160,11 @@ def publishing(request):
     return render(
         request,
         "content/publishing.html",
-        {"nav_section": "publishing", "jobs": services.list_publish_jobs(request.user)},
+        {
+            "nav_section": "publishing",
+            "jobs": services.list_publish_jobs(request.user),
+            "creatives": creative_services.list_creatives(request.user),
+        },
     )
 
 
@@ -171,11 +175,11 @@ def publish_check(request, job_id: int):
         job = services.get_user_publish_job(user=request.user, job_id=job_id)
     except HookdError as exc:
         raise Http404(exc.message) from exc
-    _announce_job(request, services.advance_publish_job(job))
+    announce_publish_job(request, services.advance_publish_job(job))
     return redirect("publishing")
 
 
-def _announce_job(request, job) -> None:
+def announce_publish_job(request, job) -> None:
     if job.status == job.Status.PUBLISHED:
         messages.success(request, "Published.")
     elif job.status == job.Status.FAILED:

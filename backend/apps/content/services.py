@@ -22,6 +22,7 @@ from apps.comments import model_querysets as comment_queries
 from apps.content import model_querysets as queries
 from apps.content.exceptions import PostNotFound, PublishingUnavailable, PublishJobNotFound, PublishQuotaReached
 from apps.content.models import Post, PublishAsset, PublishJob
+from apps.content.signals import post_published
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.constants import Capability, PublishState
 from apps.integrations.exceptions import FeatureNotSupported, ProviderAPIError, TokenExpiredError
@@ -276,7 +277,9 @@ def advance_publish_job(job: PublishJob) -> PublishJob:
     queries.delete_publish_assets(job)
     cache.delete(_recent_posts_key(job.account))
     logger.info("Published %s job %s as %s", job.account.platform, job.pk, item.external_id)
-    return queries.mark_publish_job_published(job, post)
+    job = queries.mark_publish_job_published(job, post)
+    post_published.send(sender=PublishJob, job=job, post=post)
+    return job
 
 
 def _fail_job(job: PublishJob, error: str) -> PublishJob:
