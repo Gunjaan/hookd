@@ -43,6 +43,7 @@ backend/
     context_processors.py       agent_pending_count for the sidebar
   apps/core/templatetags/hookd_ui.py initials filter (avatar fallback)
   apps/core/templates/core/landing.html  Public landing page (see below)
+  apps/core/templates/core/model_figure.html  Inline SVG AI model figure used by the landing page
 ```
 
 Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [BASE_DIR / 'static']`,
@@ -97,14 +98,26 @@ its buttons while one of its forms submits. Buttons that must stay disabled carr
 
 `/` renders `core/landing.html` for everyone, so it is the first page people see (logout also returns here), the marketing page with the tagline "Your very own agent to get the world
 hookd". Sections: sticky nav (anchor links; log in and get started, or "Open studio" when signed in), hero with a CSS only mock (edited reel, agent replies
-in Hinglish and Tamil, a sale toast; messages rise in with a staggered animation, off under `prefers-reduced-motion`),
-the four step flow (`#flow`: upload, Hookd edits, agent replies, sale), the agent and video brain card (`#agent`),
-languages (`#languages`), a dark closing CTA and a footer. All CTAs go to `signup` or `login`. Classes in
+in Hinglish and Tamil, a sale toast; messages rise in with a staggered animation, off under `prefers-reduced-motion`).
+Below the hero the page sells the small business flow (drop a product, AI models wear it, carousel with edits, caption and hashtags, the post is read into memory, agents
+answer buyers): an audience strip (`.audience`, business types as pills), the four step flow (`#flow`: drop product, AI models, post ready, agent
+takes over, then a `.flow__note` saying existing posts can skip to step 04), the studio showcase (`#studio`: flat lay upload, generated 4 photo carousel, edits, caption and hashtag
+suggestions), product memory and agents (`#agent`: memory card read from the post plus a sample reply, and an `.anywhere` callout: the agent replies on posts
+published outside Hookd too), a without / with
+Hookd comparison (`#compare`), an FAQ built on `<details>` (`#faq`, works without JS), a dark closing CTA and a footer
+with section links. All CTAs go to `signup` or `login`. The AI model shots are CSS only: `core/model_figure.html` is an
+inline SVG figure (`.model`, parts `__skin`, `__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in
+`.look--studio/street/cafe/beach` (carousel) and `.mini-look--*` (flow step) scenes that vary skin tone and pose through
+`--model-skin` and `--model-hair`. Classes in
 `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.reel`, `.thread`,
-`.sale-toast`, `.section-intro`, `.flow`, `.flow-step`, `.feature`, `.brain-card`, `.checklist`, `.lang-cloud`,
-`.closing`, `.landing-footer`. Landing tokens: `--text-3xl`, `--text-display`, `--leading-display`,
+`.sale-toast`, `.section-intro`, `.audience`, `.flow`, `.flow-step`, `.mini-look`, `.mini-caption`, `.mini-tags`, `.flow__note`, `.anywhere`,
+`.studio-showcase`, `.showcase`, `.flatlay`, `.post-mock`, `.look`, `.suggest`, `.feature`, `.brain-card`
+(`__source`, `__chat`), `.checklist`, `.compare`, `.faq`, `.closing`, `.landing-footer` (`__brand`, `__links`).
+Landing tokens: `--text-3xl`, `--text-display`, `--leading-display`,
 `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`, `--radius-xl`, `--shadow-lg`, `--color-ink-soft`,
-`--color-glow`, `--color-glow-cool`, `--color-inverse-muted/subtle`, `--transition-reveal`, `--landing-max-width`.
+`--color-glow`, `--color-glow-cool`, `--color-inverse-muted/subtle`, `--transition-reveal`, `--landing-max-width`,
+and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,
+`--color-model-bottom`, `--color-scene-studio/street/cafe/beach`.
 
 ## Routes (no namespace)
 

@@ -27,6 +27,20 @@
   --color-inverse-muted: rgb(255 255 255 / 68%);
   --color-inverse-subtle: rgb(255 255 255 / 12%);
 
+  /* Landing illustrations (AI model shots) */
+  --color-garment: #8fa98c;
+  --color-garment-shade: #6d876a;
+  --color-model-skin: #c48c69;
+  --color-model-skin-alt: #8d5a3e;
+  --color-model-skin-light: #e2b593;
+  --color-model-hair: #2b211c;
+  --color-model-hair-alt: #5a3a26;
+  --color-model-bottom: #3a3f4f;
+  --color-scene-studio: #eceae5;
+  --color-scene-street: #dde3ec;
+  --color-scene-cafe: #efe2d3;
+  --color-scene-beach: #dcece6;
+
   /* Status */
   --color-success: #11795a;
   --color-success-soft: #e5f5ee;
