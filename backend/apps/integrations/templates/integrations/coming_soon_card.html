@@ -1,0 +1,14 @@
+{# Arguments: platform, name, description. A platform that is planned but not connectable yet. #}
+<section class="card card--padded">
+  <div class="provider">
+    {% include "integrations/platform_icon.html" with platform=platform size=48 %}
+    <div class="provider__info">
+      <div class="provider__title">
+        <h2>{{ name }}</h2>
+        <span class="badge badge--neutral">Coming soon</span>
+      </div>
+      <p class="provider__description">{{ description }}</p>
+    </div>
+    <button type="button" class="btn btn--md btn--secondary" disabled data-disabled>Coming soon</button>
+  </div>
+</section>

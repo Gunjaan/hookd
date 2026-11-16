@@ -30,7 +30,7 @@ backend/
   apps/integrations/
     views.py, urls.py           connections, connect, OAuth callback, refresh, disconnect
     templates/integrations/     connections.html, provider_card.html, account_row.html,
-                                platform_icon.html, oauth_callback.html
+                                coming_soon_card.html, platform_icon.html, oauth_callback.html
     templatetags/integrations_ui.py  capability_label, status_tone filters
   apps/content/
     forms.py                    ComposeForm (MultipleFileField for carousel uploads)
@@ -86,8 +86,11 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `.load-more` | | Centered wrapper for a load more link |
 
 Page blocks for the studio (`pages.css`): `.studio` (`--narrow`, `__account`, `__section`), `.post-grid`, `.post-card`,
-`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Reply agent: `.agent-layout`, `.agent-side`,
-`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.rule-list`, `.rule`, `.reply-card`. Layout tokens: `--content-max-width`,
+`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Story pages (agent settings, rule form): `.story` (form column), `.story__actions`,
+`.story-step` (numbered card; `__number`, `__body`, `__subtitle`, `__optional`, `__details`), stacked under 560px. Reply agent:
+`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.rule-chain` (IF / ELSE IF / OTHERWISE list),
+`.rule-list`, `.rule` (`--off`, `--empty`, `__header`, `__if`, `__name`, `__edit`, `__body`, `__condition`, `__then`, `__reply`),
+`.rule-chain__otherwise`, `.rule-chain__actions`, `.keyword-chip`, `.reply-card`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
 `--content-narrow-width`, `--media-max-height`.
 
 `app.js` hooks: `<form data-confirm="...">` asks before submitting. `data-busy-scope` on a container disables all
@@ -129,7 +132,7 @@ and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/
 | POST | `/logout/` | `logout` | | Ends the session, back to the landing page |
 | GET | `/health/` | `health` | | JSON health check (`DEV-core.md`) |
 | GET | `/` | `home` | none | `core.views.landing`: the landing page, for everyone (signed in users get an "Open studio" button) |
-| GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)` |
+| GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)`, then static `coming_soon_card.html` cards for planned platforms (YouTube: "Coming soon" badge, disabled button, no provider or connect route) |
 | POST | `/connections/<platform>/connect/` | `connect-start` | login | Redirects the browser to the platform authorization URL. Used by "Connect", "Connect another" and each account's "Reconnect" button (the callback updates the existing account in place) |
 | GET | `/auth/<platform>/callback` | `oauth-callback` | login | Completes the connection, then redirects to connections with a success message. On `error`, missing params or a `HookdError` renders the failure page (400) |
 | POST | `/connections/accounts/<id>/refresh/` | `account-refresh` | login | Refreshes the token, message, back to connections. The "Refresh" button only shows when `provider.supports_token_refresh` (hidden for Instagram) |

@@ -25,6 +25,7 @@ from apps.agent.models import AgentProfile, CommentReply, PostBrain, ReplyRule
 from apps.comments import model_querysets as comment_queries
 from apps.comments.models import Comment
 from apps.content import model_querysets as post_queries
+from apps.content import services as content_services
 from apps.content.models import Post
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.constants import Capability
@@ -260,13 +261,16 @@ def handle_new_comment(comment_id: int) -> str:
     if comment is None:
         return "missing"
     account = comment.account
+    if comment.is_from_account:
+        return "ignored"
+    # Stores posts made outside Hookd even when the agent is off, so the studio knows about them.
+    post = content_services.ensure_post(account, comment.media_external_id)
     profile = queries.get_profile(account)
-    if comment.is_from_account or profile is None or not profile.enabled or not supports_replies(account):
+    if profile is None or not profile.enabled or not supports_replies(account):
         return "ignored"
     if queries.reply_exists(comment):
         return "exists"
 
-    post = post_queries.find_post(account, comment.media_external_id)
     brain = queries.get_post_brain(post) if post else None
     skip = _skip_reason(comment, profile, brain)
     if skip:

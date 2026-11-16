@@ -12,6 +12,7 @@ Every page asks the platform for as little as possible.
 | Dashboard `/studio/accounts/<id>/` | 10 newest posts with like and comment counts, plus 7 day account insights | Recent posts come from the cache for 5 minutes (`RECENT_POSTS_TTL`), insights for 1 hour (`INSIGHTS_TTL`). "Refresh" skips the posts cache | 1 media call, 1 account insights call |
 | Older posts `?after=<cursor>` | The next 10 posts | Every request (live) | 1 media call |
 | Post detail `/studio/posts/<id>/` | That post's metrics | When `insights_fetched_at` is missing or older than 1 hour; "Refresh" forces it | 1 insights call |
+| A comment on a post we have not stored (posted in the Instagram app) | That one post, via `services.ensure_post` | Once per post, from the agent's `handle_comment` task. Clears the recent posts cache so the dashboard shows it. A failed fetch is logged and the agent carries on without the post | 1 media call |
 | Comments `/studio/posts/<id>/comments/` | 25 top level comments (`COMMENTS_PAGE_SIZE`) | Only when the creator presses "Show comments" or "Load more comments" | 1 comments call per page |
 
 The post detail page never fetches comments. Fetched comments are saved to `apps.comments.Comment`
@@ -120,7 +121,7 @@ was wiped). Not scheduled.
 
 ## Tests (`tests.py`)
 
-Graph HTTP is faked with `FakeGraph`. Dashboard: redirect to first account, no accounts goes to connections, 10 posts
+Graph HTTP is faked with `FakeGraph`. `ensure_post`: unknown post fetched, stored and cache cleared, known post makes no call, empty id, Graph error returns None, expired token marks the account. Dashboard: redirect to first account, no accounts goes to connections, 10 posts
 with counts and insights then served from cache, last page has no load more, cursor paging, deleted posts pruned,
 refresh bypasses cache, expired token marks the account, other user's account 404. Post: insights cached then
 refreshed, reel watch time, insights error still renders, post page makes no calls, comments page of 25 stored once,

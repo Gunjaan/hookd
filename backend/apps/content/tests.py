@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from apps.accounts.model_querysets import create_user
 from apps.comments.models import Comment
+from apps.content import services
 from apps.content.models import Post, PublishJob
 from apps.content.tasks import poll_publish_job
 from apps.content.templatetags.content_ui import metric_display
@@ -174,6 +175,36 @@ class DashboardTests(StudioTestCase):
         other = create_user(email="other@example.com", password="a-strong-pass-123")
         self.client.force_login(other)
         self.assertEqual(self.client.get(reverse("studio-account", args=[self.account.pk])).status_code, 404)
+
+
+class EnsurePostTests(StudioTestCase):
+    def test_unknown_post_is_fetched_stored_and_clears_the_recent_posts_cache(self):
+        self.graph.on("GET", "m7", media(7, caption="Made in the app"))
+        cache.set(f"content:recent-posts:{self.account.pk}", {"ids": [], "next": ""})
+        post = services.ensure_post(self.account, "m7")
+        self.assertEqual(post.caption, "Made in the app")
+        self.assertTrue(Post.objects.filter(account=self.account, external_id="m7").exists())
+        self.assertIsNone(cache.get(f"content:recent-posts:{self.account.pk}"))
+
+    def test_known_post_makes_no_call(self):
+        post = self.make_post()
+        self.assertEqual(services.ensure_post(self.account, "m1"), post)
+        self.assertEqual(self.graph.calls, [])
+
+    def test_empty_id_returns_none(self):
+        self.assertIsNone(services.ensure_post(self.account, ""))
+        self.assertEqual(self.graph.calls, [])
+
+    def test_graph_error_returns_none(self):
+        self.graph.on("GET", "m7", {"error": {"message": "Unsupported get request", "code": 100}}, status=400)
+        self.assertIsNone(services.ensure_post(self.account, "m7"))
+        self.assertFalse(Post.objects.filter(external_id="m7").exists())
+
+    def test_expired_token_marks_the_account_and_returns_none(self):
+        self.graph.on("GET", "m7", {"error": {"message": "Session expired", "code": 190}}, status=400)
+        self.assertIsNone(services.ensure_post(self.account, "m7"))
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, self.account.Status.EXPIRED)
 
 
 class PostDetailTests(StudioTestCase):

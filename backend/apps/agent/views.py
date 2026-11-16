@@ -70,19 +70,15 @@ def agent_home(request):
 def account_settings(request, account_id: int):
     account = _user_account(request, account_id)
     profile = services.get_profile(account)
-    initial = {
-        "enabled": profile.enabled,
-        "fallback_action": profile.fallback_action,
-        "reply_to_threads": profile.reply_to_threads,
-        "voice": profile.voice,
-        "knowledge": profile.knowledge,
-    }
-    form = AgentSettingsForm(request.POST or None, initial=initial)
+    rules = services.list_rules(account)
+    has_rules = bool(rules)
+    form = AgentSettingsForm(
+        request.POST or None, has_rules=has_rules, initial=AgentSettingsForm.initial_for(profile, has_rules=has_rules),
+    )
     if request.method == "POST" and form.is_valid():
-        services.update_profile(account, **form.cleaned_data)
+        services.update_profile(account, **form.profile_fields())
         messages.success(request, "Agent settings saved.")
         return redirect("agent-account", account_id=account.pk)
-    rules = services.list_rules(account)
     return _page(
         request,
         "agent/account.html",
@@ -106,9 +102,9 @@ def starter_rules(request, account_id: int):
     account = _user_account(request, account_id)
     added = services.add_starter_rules(account)
     if added:
-        messages.success(request, f"Added {added} starter rule{'s' if added != 1 else ''}. They draft replies for your review until you switch them to automatic.")
+        messages.success(request, f"Added {added} ready made rule{'s' if added != 1 else ''}. They draft replies for you to approve until you switch them to 'Reply on its own'.")
     else:
-        messages.info(request, "You already have all the starter rules.")
+        messages.info(request, "You already have all the ready made rules.")
     return redirect("agent-account", account_id=account.pk)
 
 

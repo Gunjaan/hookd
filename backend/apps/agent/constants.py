@@ -2,14 +2,14 @@ from django.db import models
 
 
 class RuleAction(models.TextChoices):
-    AUTO_REPLY = "auto_reply", "Reply automatically"
-    REVIEW = "review", "Draft a reply for my review"
-    IGNORE = "ignore", "Ignore"
+    AUTO_REPLY = "auto_reply", "Reply on its own"
+    REVIEW = "review", "Draft a reply for me to approve"
+    IGNORE = "ignore", "Don't reply"
 
 
 class FallbackAction(models.TextChoices):
-    REVIEW = "review", "Draft a reply for my review"
-    IGNORE = "ignore", "Ignore"
+    REVIEW = "review", "Draft a reply for me to approve"
+    IGNORE = "ignore", "Don't reply"
 
 
 class ReplyStatus(models.TextChoices):
