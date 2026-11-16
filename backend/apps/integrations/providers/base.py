@@ -97,6 +97,10 @@ class BaseProvider(ABC):
         """Newest first page of the account's posts. `after` is the cursor from the previous page."""
         raise FeatureNotSupported()
 
+    def get_media(self, account: "SocialAccount", media_external_id: str) -> MediaItem:
+        """One post by its platform id."""
+        raise FeatureNotSupported()
+
     def list_comments(self, account: "SocialAccount", media_external_id: str, *, limit: int, after: str = "") -> CommentPage:
         """One page of top level comments on a post."""
         raise FeatureNotSupported()

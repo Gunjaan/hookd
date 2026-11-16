@@ -114,6 +114,12 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
         self.assertContains(response, "Connect Instagram")
         self.assertContains(response, "Comment replies")
 
+    def test_connections_page_shows_youtube_as_coming_soon(self):
+        response = self.client.get(reverse("connections"))
+        self.assertContains(response, "YouTube")
+        self.assertContains(response, "Coming soon")
+        self.assertNotContains(response, reverse("connect-start", args=["youtube"]))
+
     def test_pages_require_login(self):
         self.client.logout()
         response = self.client.get(reverse("connections"))

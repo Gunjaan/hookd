@@ -9,8 +9,10 @@ Claude is connected. Sending is slow and capped on purpose so Hookd stays inside
 1. A webhook comment is stored by `comments.services.record_incoming_comments`, which queues
    `tasks.handle_comment(comment_id)` on commit for every new comment not written by the account itself.
    Comments loaded in the studio are history and never queue the agent.
-2. `services.handle_new_comment` ignores the comment (no row) when the agent is off for the account, the comment is
-   the account's own, a reply already exists, or the platform has no `public_reply` capability. It stores a
+2. `services.handle_new_comment` ignores the account's own comments. Otherwise it first calls
+   `content.services.ensure_post`, which fetches and stores the post when it is unknown (posted outside Hookd, since
+   Instagram has no new post webhook), even when the agent is off. It then ignores the comment (no row) when the agent
+   is off for the account, a reply already exists, or the platform has no `public_reply` capability. It stores a
    `skipped` reply when the post's video brain turns the agent off, the comment is a thread reply and
    `reply_to_threads` is off, or the comment is older than `MAX_COMMENT_AGE_HOURS`.
 3. It builds an `AgentContext` (comment, voice, account brain, post caption, video brain, enabled rules: post rules
@@ -52,7 +54,7 @@ Claude is connected. Sending is slow and capped on purpose so Hookd stays inside
   of retrying.
 - Instagram text rules are checked before sending (`DEV-instagram.md`).
 - The agent starts **off** per account and starter rules only draft for review, so nothing is posted until the creator
-  switches a rule to "Reply automatically".
+  switches a rule to "Reply on its own".
 
 ## Settings (`config/settings.py`, no env vars)
 
@@ -90,7 +92,7 @@ voice, both brains) and returns an `AgentDecision`, set `HOOKD_REPLY_ENGINE`, ad
 | `ReplyRule` (`account`, optional `post`) | `name`, `when` (plain English, for the real agent), `keywords` (comma list, `keyword_list` property), `action` (`auto_reply`/`review`/`ignore`), `how_to_reply`, `position`, `enabled`. Ordered by `position, pk` |
 | `CommentReply` (one per `comments.Comment`, `related_name="agent_reply"`) | `status` (`pending_review`, `queued`, `sending`, `sent`, `skipped`, `rejected`, `failed`), `rule` (SET_NULL), `draft_text` (engine output), `final_text` (what is sent), `decision` JSON (`intent`, `language`, `confidence`, `engine`, `engine_reason`, `reason`), `scheduled_for`, `sent_at`, `reply_external_id`, `error`, `attempts` |
 
-Choices in `constants.py`: `RuleAction`, `FallbackAction`, `ReplyStatus`. All in the Django admin.
+Choices in `constants.py`: `RuleAction` (Reply on its own, Draft a reply for me to approve, Don't reply), `FallbackAction` (the last two), `ReplyStatus`. All in the Django admin.
 A video brain only exists for posts Hookd has synced (`Post` rows); comments on other posts use the account brain.
 
 ## Services (`services.py`)
@@ -125,24 +127,24 @@ A video brain only exists for posts Hookd has synced (`Post` rows); comments on 
 | Route | Name | Page |
 |---|---|---|
 | `GET /agent/` | `agent` | First account's agent page, or connections |
-| `GET/POST /agent/accounts/<id>/` | `agent-account` | `AgentSettingsForm` (on/off, fallback, thread replies, voice, account brain), rules list, starter rules button, "Safe sending" limits, pause warning |
+| `GET/POST /agent/accounts/<id>/` | `agent-account` | One `AgentSettingsForm` in four numbered steps: 1 "What should Hookd do with a new comment?" as one `mode` radio: "Draft a reply for me to approve" (`review`), "Only handle my special cases" (`ignore`, offered only when the account has rules, since without rules it equals off) and "Turn off auto replies" (`off`: `enabled` False, old fallback kept). Mapping in `AgentSettingsForm.initial_for` / `profile_fields`; enabled with fallback ignore and no rules shows as off, 2 "Replies sound like you" (voice, account brain as "What should the agent know?", thread replies), 3 "Special cases" (optional, a `<details>` that starts open when rules exist): rules as an IF / ELSE IF chain, post rules first, ending in a read only OTHERWISE row showing the fallback, 4 safe sending limits in a `<details>`. The empty state's "Add ready made ones" button posts the same form to `agent-starter-rules` via `formaction`. Pause warning on top |
 | `POST /agent/accounts/<id>/starter-rules/` | `agent-starter-rules` | Adds starter rules |
 | `GET/POST /agent/accounts/<id>/preview/` | `agent-preview` | `PreviewForm`: comment and optional post, shows outcome, rule, confidence and reply |
-| `GET/POST /agent/accounts/<id>/rules/new/?post=<id>` | `agent-rule-new` | `RuleForm` (needs keywords or `when`). With `post`, the rule is for that post and saving returns to the post |
+| `GET/POST /agent/accounts/<id>/rules/new/?post=<id>` | `agent-rule-new` | `RuleForm` (needs keywords or `when`) in three steps: If (keywords, description), Then (action, reply), Name. With `post`, the rule is for that post and saving returns to the post |
 | `GET/POST /agent/rules/<id>/edit/`, `POST .../delete/` | `agent-rule-edit`, `agent-rule-delete` | |
 | `POST /agent/posts/<id>/brain/` | `agent-post-brain` | `PostBrainForm` from the post page's "Video brain" card |
 | `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each). Review items have an editable reply, "Approve and send" and "Discard" |
 | `POST /agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `agent-reply-approve`, `-reject`, `-retry` | Back to the inbox with a message |
 
-Templates: `account.html`, `rule_item.html` (also used on the post page), `rule_form.html`, `preview.html`,
+Templates: `account.html`, `rule_item.html` (one rule as "IF name / a comment mentions [chips] / THEN action / reply", optional `prefix` such as "Else if"; also used on the post page), `rule_form.html`, `preview.html`,
 `inbox.html`. Other users' accounts, posts, rules and replies give 404.
 
 ## Tests (`tests.py`)
 
-Webhook comment queued once, own comment not queued; agent off stores nothing; thread, old and post-off comments
+Webhook comment queued once, own comment not queued; unknown post fetched for the agent, stored even with the agent off, fetch failure decides without it; agent off stores nothing; thread, old and post-off comments
 skipped; ignore rule; review rule drafts from the video brain; auto rule sends (Graph call checked); post rule beats
 account rule; fallback review and ignore; low confidence; per author cap; repeated text; refused text; spacing
 45 to 75 s; hourly cap reschedules without a call; rate limit pauses and requeues; expired token; never sent twice;
 early task waits; `send_due_replies`; Instagram text rules; inbox list, approve edited text, approve refused text,
-reject, retry, sidebar count; settings save, home redirect, starter rules once, rule create/edit/delete, rule
+reject, retry, sidebar count; settings save, special cases option needs rules, turning off keeps the fallback, home redirect, starter rules once, rule create/edit/delete, rule
 validation, video brain save, preview stores nothing, 404 for other users.

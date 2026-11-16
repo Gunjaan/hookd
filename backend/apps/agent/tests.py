@@ -126,6 +126,37 @@ class WebhookQueueTests(AgentTestCase):
         delay.assert_not_called()
 
 
+class UnknownPostTests(AgentTestCase):
+    def _media(self, media_id="m9", caption="Posted from the app"):
+        self.graph.on("GET", media_id, {
+            "id": media_id, "caption": caption, "media_type": "IMAGE", "media_product_type": "FEED",
+            "timestamp": "2026-11-16T10:00:00+0000",
+        })
+
+    def test_comment_on_unknown_post_fetches_it_for_the_agent(self):
+        self._media()
+        with mock.patch.object(services, "_context", wraps=services._context) as context:
+            self.handle(self.comment("size?", media="m9"))
+        post = Post.objects.get(account=self.account, external_id="m9")
+        self.assertEqual(post.caption, "Posted from the app")
+        self.assertEqual(context.call_args.kwargs["post"], post)
+        self.assertTrue(CommentReply.objects.exists())
+
+    def test_disabled_agent_still_stores_the_post(self):
+        self.profile.enabled = False
+        self.profile.save()
+        self._media()
+        self.assertEqual(self.handle(self.comment(media="m9")), "ignored")
+        self.assertTrue(Post.objects.filter(external_id="m9").exists())
+
+    def test_fetch_failure_still_decides_without_the_post(self):
+        self.graph.on("GET", "m9", {"error": {"message": "Unsupported get request", "code": 100}}, status=400)
+        with mock.patch.object(services, "_context", wraps=services._context) as context:
+            self.handle(self.comment("size?", media="m9"))
+        self.assertIsNone(context.call_args.kwargs["post"])
+        self.assertTrue(CommentReply.objects.exists())
+
+
 class DecisionTests(AgentTestCase):
     def test_disabled_agent_stores_nothing(self):
         self.profile.enabled = False
@@ -350,13 +381,31 @@ class InboxTests(AgentTestCase):
 class SetupPageTests(AgentTestCase):
     def test_settings_page_saves(self):
         url = reverse("agent-account", args=[self.account.pk])
-        self.assertContains(self.client.get(url), "Account brain")
-        response = self.client.post(url, {"fallback_action": "ignore", "voice": "Friendly", "knowledge": "Open 10 to 7"})
+        self.assertContains(self.client.get(url), "What should the agent know?")
+        response = self.client.post(url, {"mode": "review", "voice": "Friendly", "knowledge": "Open 10 to 7"})
         self.assertRedirects(response, url)
         self.profile.refresh_from_db()
-        self.assertFalse(self.profile.enabled)
-        self.assertEqual(self.profile.fallback_action, "ignore")
+        self.assertTrue(self.profile.enabled)
+        self.assertEqual(self.profile.fallback_action, "review")
         self.assertEqual(self.profile.knowledge, "Open 10 to 7")
+
+    def test_special_cases_only_needs_rules(self):
+        url = reverse("agent-account", args=[self.account.pk])
+        self.assertNotContains(self.client.get(url), "Only handle my special cases")
+        self.assertEqual(self.client.post(url, {"mode": "ignore"}).status_code, 200)
+        self.client.post(reverse("agent-starter-rules", args=[self.account.pk]))
+        self.assertRedirects(self.client.post(url, {"mode": "ignore"}), url)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.enabled)
+        self.assertEqual(self.profile.fallback_action, "ignore")
+
+    def test_turning_off_keeps_the_fallback(self):
+        url = reverse("agent-account", args=[self.account.pk])
+        self.client.post(url, {"mode": "review"})
+        self.assertRedirects(self.client.post(url, {"mode": "off"}), url)
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.enabled)
+        self.assertEqual(self.profile.fallback_action, "review")
 
     def test_agent_home_redirects_to_first_account(self):
         self.assertRedirects(
@@ -389,7 +438,7 @@ class SetupPageTests(AgentTestCase):
 
     def test_rule_needs_keywords_or_a_condition(self):
         response = self.client.post(reverse("agent-rule-new", args=[self.account.pk]), {"name": "Empty", "action": "review"})
-        self.assertContains(response, "Add keywords or describe when the rule applies.")
+        self.assertContains(response, "Add words to look for or describe the comment.")
 
     def test_video_brain_is_saved_from_the_post_page(self):
         with mock.patch("apps.content.services.post_insights", side_effect=lambda post, **_: post):

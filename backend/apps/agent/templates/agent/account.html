@@ -3,13 +3,13 @@
 {% block title %}Reply agent{% endblock %}
 
 {% block content %}
-  <div class="studio">
+  <div class="studio studio--narrow">
     <header class="page-header">
       <div class="studio__account">
         {% include "components/avatar.html" with src=account.avatar_url name=account.username size=48 %}
         <div>
           <h1 class="page-header__title">Reply agent</h1>
-          <p class="page-header__description">Answers new comments on @{{ account.username }} in your voice, following your rules.</p>
+          <p class="page-header__description">Answers comments on @{{ account.username }} for you.</p>
         </div>
       </div>
       <div class="page-header__actions">
@@ -40,63 +40,100 @@
         <div class="alert__body">Sending is paused until {{ profile.paused_until|date:"j M, H:i" }} because {{ account.get_platform_display }} asked Hookd to slow down: {{ profile.pause_reason }}</div>
       </div>
     {% endif %}
+    {% include "components/form_errors.html" %}
 
-    <div class="agent-layout">
-      <section class="card card--padded" aria-labelledby="agent-settings-title">
-        <h2 id="agent-settings-title" class="section-title">Settings and account brain</h2>
-        {% include "components/form_errors.html" %}
-        <form method="post" class="agent-form" data-busy-scope>
-          {% csrf_token %}
-          {% include "components/checkbox_field.html" with field=form.enabled %}
-          {% include "components/choice_field.html" with field=form.fallback_action %}
-          {% include "components/checkbox_field.html" with field=form.reply_to_threads %}
-          {% include "components/textarea_field.html" with field=form.voice %}
-          {% include "components/textarea_field.html" with field=form.knowledge %}
-          <div class="compose__actions">
-            <button type="submit" class="btn btn--primary btn--md">Save</button>
+    <form method="post" class="story" data-busy-scope>
+      {% csrf_token %}
+
+      <section class="card card--padded story-step" aria-labelledby="step-on-title">
+        <span class="story-step__number" aria-hidden="true">1</span>
+        <div class="story-step__body">
+          <h2 id="step-on-title" class="section-title">{{ form.mode.label }}</h2>
+          <div class="choice-group" role="radiogroup" aria-labelledby="step-on-title">
+            {% for choice in form.mode %}
+              <label class="choice">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>
+            {% endfor %}
           </div>
-        </form>
+        </div>
       </section>
 
-      <div class="agent-side">
-        <section class="card card--padded" aria-labelledby="agent-rules-title">
-          <div class="card__header section-header">
-            <h2 id="agent-rules-title" class="section-title">Rules</h2>
-            <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Add rule</a>
-          </div>
-          <p class="hint">Checked top to bottom; the first match decides. Rules for a single post come first.</p>
-          {% if account_rules %}
-            <ul class="rule-list">
-              {% for rule in account_rules %}{% include "agent/rule_item.html" %}{% endfor %}
-            </ul>
-          {% else %}
-            <div class="empty-state">
-              <p>No rules yet. Start with ready made ones and edit them to fit.</p>
-            </div>
-          {% endif %}
-          <form method="post" action="{% url 'agent-starter-rules' account.pk %}" class="inline-form">
-            {% csrf_token %}
-            <button type="submit" class="btn btn--ghost btn--sm">Add starter rules</button>
-          </form>
-          {% if post_rules %}
-            <h3 class="section-title agent-subtitle">Rules for single posts</h3>
-            <ul class="rule-list">
-              {% for rule in post_rules %}{% include "agent/rule_item.html" with show_post=True %}{% endfor %}
-            </ul>
-          {% endif %}
-          <p class="hint">Add a video brain and post rules from any post in the studio.</p>
-        </section>
+      <section class="card card--padded story-step" aria-labelledby="step-voice-title">
+        <span class="story-step__number" aria-hidden="true">2</span>
+        <div class="story-step__body">
+          <h2 id="step-voice-title" class="section-title">Replies sound like you</h2>
+          {% include "components/textarea_field.html" with field=form.voice %}
+          {% include "components/textarea_field.html" with field=form.knowledge %}
+          {% include "components/checkbox_field.html" with field=form.reply_to_threads %}
+        </div>
+      </section>
 
-        <section class="card card--padded" aria-labelledby="agent-limits-title">
-          <h2 id="agent-limits-title" class="section-title">Safe sending</h2>
-          <ul class="agent-limits">
-            <li>At most {{ limits.MAX_PER_HOUR }} replies an hour and {{ limits.MAX_PER_DAY }} a day, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart.</li>
-            <li>One automatic reply per person per post a day; repeated identical replies go to review.</li>
-            <li>Only new comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, never your own.</li>
-            <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>
-          </ul>
-        </section>
+      <section class="card card--padded story-step" aria-labelledby="step-rules-title">
+        <span class="story-step__number" aria-hidden="true">3</span>
+        <div class="story-step__body">
+          <h2 id="step-rules-title" class="section-title">Special cases <span class="story-step__optional">Optional</span></h2>
+          <details class="story-step__details"{% if account_rules or post_rules %} open{% endif %}>
+            <summary>Handle some comments differently, like spam or price questions</summary>
+            <div class="story-step__body">
+              {% if post_rules %}
+                <h3 class="story-step__subtitle">On single posts, these come first</h3>
+                <ul class="rule-chain">
+                  {% for rule in post_rules %}{% include "agent/rule_item.html" with show_post=True %}{% endfor %}
+                </ul>
+                <h3 class="story-step__subtitle">On every post</h3>
+              {% endif %}
+
+              <ul class="rule-chain">
+                {% for rule in account_rules %}
+                  {% if forloop.first %}{% include "agent/rule_item.html" with prefix="If" %}{% else %}{% include "agent/rule_item.html" with prefix="Else if" %}{% endif %}
+                {% empty %}
+                  <li class="rule rule--empty">
+                    <p>No special cases yet.</p>
+                    <div class="rule-chain__actions">
+                      <button type="submit" formaction="{% url 'agent-starter-rules' account.pk %}" formnovalidate class="btn btn--primary btn--sm">Add ready made ones</button>
+                      <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Write your own</a>
+                    </div>
+                  </li>
+                {% endfor %}
+                {% if account_rules or post_rules %}
+                  <li class="rule rule-chain__otherwise">
+                    <div class="rule__header">
+                      <span class="rule__if">Otherwise</span>
+                      <span class="rule__name">{{ profile.get_fallback_action_display }}</span>
+                    </div>
+                  </li>
+                {% endif %}
+              </ul>
+
+              {% if account_rules %}
+                <div class="rule-chain__actions">
+                  <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Add a special case</a>
+                </div>
+              {% endif %}
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="card card--padded story-step" aria-labelledby="step-safe-title">
+        <span class="story-step__number" aria-hidden="true">4</span>
+        <div class="story-step__body">
+          <h2 id="step-safe-title" class="section-title">Sent slowly to keep your account safe</h2>
+          <details class="story-step__details">
+            <summary>How Hookd keeps you safe</summary>
+            <ul class="agent-limits">
+              <li>One reply at a time, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart. At most {{ limits.MAX_PER_HOUR }} an hour and {{ limits.MAX_PER_DAY }} a day.</li>
+              <li>Each person gets at most one automatic reply per post a day.</li>
+              <li>The same reply sent again and again waits for your approval instead.</li>
+              <li>Only comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, and never your own.</li>
+              <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <div class="story__actions">
+        <button type="submit" class="btn btn--primary btn--md">Save changes</button>
       </div>
-    </div>
+    </form>
   </div>
 {% endblock %}

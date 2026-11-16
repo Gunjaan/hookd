@@ -30,7 +30,7 @@ backend/
   apps/integrations/
     views.py, urls.py           connections, connect, OAuth callback, refresh, disconnect
     templates/integrations/     connections.html, provider_card.html, account_row.html,
-                                platform_icon.html, oauth_callback.html
+                                coming_soon_card.html, platform_icon.html, oauth_callback.html
     templatetags/integrations_ui.py  capability_label, status_tone filters
   apps/content/
     forms.py                    ComposeForm (MultipleFileField for carousel uploads)
@@ -43,6 +43,7 @@ backend/
     context_processors.py       agent_pending_count for the sidebar
   apps/core/templatetags/hookd_ui.py initials filter (avatar fallback)
   apps/core/templates/core/landing.html  Public landing page (see below)
+  apps/core/templates/core/model_figure.html  Inline SVG AI model figure used by the landing page
 ```
 
 Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [BASE_DIR / 'static']`,
@@ -85,8 +86,11 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `.load-more` | | Centered wrapper for a load more link |
 
 Page blocks for the studio (`pages.css`): `.studio` (`--narrow`, `__account`, `__section`), `.post-grid`, `.post-card`,
-`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Reply agent: `.agent-layout`, `.agent-side`,
-`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.rule-list`, `.rule`, `.reply-card`. Layout tokens: `--content-max-width`,
+`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Story pages (agent settings, rule form): `.story` (form column), `.story__actions`,
+`.story-step` (numbered card; `__number`, `__body`, `__subtitle`, `__optional`, `__details`), stacked under 560px. Reply agent:
+`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.rule-chain` (IF / ELSE IF / OTHERWISE list),
+`.rule-list`, `.rule` (`--off`, `--empty`, `__header`, `__if`, `__name`, `__edit`, `__body`, `__condition`, `__then`, `__reply`),
+`.rule-chain__otherwise`, `.rule-chain__actions`, `.keyword-chip`, `.reply-card`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
 `--content-narrow-width`, `--media-max-height`.
 
 `app.js` hooks: `<form data-confirm="...">` asks before submitting. `data-busy-scope` on a container disables all
@@ -97,14 +101,26 @@ its buttons while one of its forms submits. Buttons that must stay disabled carr
 
 `/` renders `core/landing.html` for everyone, so it is the first page people see (logout also returns here), the marketing page with the tagline "Your very own agent to get the world
 hookd". Sections: sticky nav (anchor links; log in and get started, or "Open studio" when signed in), hero with a CSS only mock (edited reel, agent replies
-in Hinglish and Tamil, a sale toast; messages rise in with a staggered animation, off under `prefers-reduced-motion`),
-the four step flow (`#flow`: upload, Hookd edits, agent replies, sale), the agent and video brain card (`#agent`),
-languages (`#languages`), a dark closing CTA and a footer. All CTAs go to `signup` or `login`. Classes in
+in Hinglish and Tamil, a sale toast; messages rise in with a staggered animation, off under `prefers-reduced-motion`).
+Below the hero the page sells the small business flow (drop a product, AI models wear it, carousel with edits, caption and hashtags, the post is read into memory, agents
+answer buyers): an audience strip (`.audience`, business types as pills), the four step flow (`#flow`: drop product, AI models, post ready, agent
+takes over, then a `.flow__note` saying existing posts can skip to step 04), the studio showcase (`#studio`: flat lay upload, generated 4 photo carousel, edits, caption and hashtag
+suggestions), product memory and agents (`#agent`: memory card read from the post plus a sample reply, and an `.anywhere` callout: the agent replies on posts
+published outside Hookd too), a without / with
+Hookd comparison (`#compare`), an FAQ built on `<details>` (`#faq`, works without JS), a dark closing CTA and a footer
+with section links. All CTAs go to `signup` or `login`. The AI model shots are CSS only: `core/model_figure.html` is an
+inline SVG figure (`.model`, parts `__skin`, `__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in
+`.look--studio/street/cafe/beach` (carousel) and `.mini-look--*` (flow step) scenes that vary skin tone and pose through
+`--model-skin` and `--model-hair`. Classes in
 `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.reel`, `.thread`,
-`.sale-toast`, `.section-intro`, `.flow`, `.flow-step`, `.feature`, `.brain-card`, `.checklist`, `.lang-cloud`,
-`.closing`, `.landing-footer`. Landing tokens: `--text-3xl`, `--text-display`, `--leading-display`,
+`.sale-toast`, `.section-intro`, `.audience`, `.flow`, `.flow-step`, `.mini-look`, `.mini-caption`, `.mini-tags`, `.flow__note`, `.anywhere`,
+`.studio-showcase`, `.showcase`, `.flatlay`, `.post-mock`, `.look`, `.suggest`, `.feature`, `.brain-card`
+(`__source`, `__chat`), `.checklist`, `.compare`, `.faq`, `.closing`, `.landing-footer` (`__brand`, `__links`).
+Landing tokens: `--text-3xl`, `--text-display`, `--leading-display`,
 `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`, `--radius-xl`, `--shadow-lg`, `--color-ink-soft`,
-`--color-glow`, `--color-glow-cool`, `--color-inverse-muted/subtle`, `--transition-reveal`, `--landing-max-width`.
+`--color-glow`, `--color-glow-cool`, `--color-inverse-muted/subtle`, `--transition-reveal`, `--landing-max-width`,
+and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,
+`--color-model-bottom`, `--color-scene-studio/street/cafe/beach`.
 
 ## Routes (no namespace)
 
@@ -116,7 +132,7 @@ languages (`#languages`), a dark closing CTA and a footer. All CTAs go to `signu
 | POST | `/logout/` | `logout` | | Ends the session, back to the landing page |
 | GET | `/health/` | `health` | | JSON health check (`DEV-core.md`) |
 | GET | `/` | `home` | none | `core.views.landing`: the landing page, for everyone (signed in users get an "Open studio" button) |
-| GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)` |
+| GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)`, then static `coming_soon_card.html` cards for planned platforms (YouTube: "Coming soon" badge, disabled button, no provider or connect route) |
 | POST | `/connections/<platform>/connect/` | `connect-start` | login | Redirects the browser to the platform authorization URL. Used by "Connect", "Connect another" and each account's "Reconnect" button (the callback updates the existing account in place) |
 | GET | `/auth/<platform>/callback` | `oauth-callback` | login | Completes the connection, then redirects to connections with a success message. On `error`, missing params or a `HookdError` renders the failure page (400) |
 | POST | `/connections/accounts/<id>/refresh/` | `account-refresh` | login | Refreshes the token, message, back to connections. The "Refresh" button only shows when `provider.supports_token_refresh` (hidden for Instagram) |

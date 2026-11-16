@@ -19,6 +19,7 @@
       {% for item in providers %}
         {% include "integrations/provider_card.html" %}
       {% endfor %}
+      {% include "integrations/coming_soon_card.html" with platform="youtube" name="YouTube" description="Cross-post your reels as Shorts and let the agent reply to YouTube comments." %}
     </div>
   </div>
 {% endblock %}

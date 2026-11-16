@@ -17,6 +17,8 @@ class LandingViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Your very own agent to get the world")
+        self.assertContains(response, "Every post becomes memory")
+        self.assertContains(response, 'id="faq"')
 
     def test_signed_in_user_sees_landing_with_studio_link(self):
         user = create_user(email="creator@example.com", password="a-strong-pass-123")

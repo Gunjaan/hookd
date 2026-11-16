@@ -357,6 +357,13 @@ class InstagramProvider(BaseProvider):
         body = self.client.get(self.client.graph_url(f"{account.external_id}/media"), params)
         return MediaPage(items=[_media_item(item) for item in body.get("data") or []], next_cursor=_next_cursor(body))
 
+    def get_media(self, account, media_external_id: str) -> MediaItem:
+        data = self.client.get(
+            self.client.graph_url(media_external_id),
+            {"fields": ",".join(MEDIA_FIELDS), "access_token": account.access_token},
+        )
+        return _media_item(data)
+
     def list_comments(self, account, media_external_id: str, *, limit: int, after: str = "") -> CommentPage:
         params = {"fields": ",".join(COMMENT_FIELDS), "limit": limit, "access_token": account.access_token}
         if after:
@@ -446,11 +453,7 @@ class InstagramProvider(BaseProvider):
         media_id = body.get("id")
         if not media_id:
             raise ProviderAPIError("Instagram did not return the published post.")
-        data = self.client.get(
-            self.client.graph_url(str(media_id)),
-            {"fields": ",".join(MEDIA_FIELDS), "access_token": account.access_token},
-        )
-        return _media_item(data)
+        return self.get_media(account, str(media_id))
 
     # Replies
 

@@ -108,6 +108,29 @@ def older_posts(account: SocialAccount, *, after: str) -> PostPage:
     return _fetch_posts(account, after=after)
 
 
+def ensure_post(account: SocialAccount, external_id: str) -> Post | None:
+    """The stored post, fetched from the platform first when we have not seen it (posted outside Hookd).
+
+    Instagram sends no webhook for new posts, so a comment on an unknown post is how we learn about it.
+    A failed fetch is logged and returns None so callers carry on without the post.
+    """
+    if not external_id:
+        return None
+    post = queries.find_post(account, external_id)
+    if post is not None:
+        return post
+    provider = get_provider(account.platform)
+    try:
+        with _platform_call(account):
+            item = provider.get_media(account, external_id)
+    except (ProviderAPIError, FeatureNotSupported) as exc:
+        logger.warning("Could not fetch %s post %s for account %s: %s", account.platform, external_id, account.pk, exc.message)
+        return None
+    post = queries.upsert_post(account, item)
+    cache.delete(_recent_posts_key(account))
+    return post
+
+
 def _fetch_posts(account: SocialAccount, *, after: str) -> PostPage:
     provider = get_provider(account.platform)
     with _platform_call(account):

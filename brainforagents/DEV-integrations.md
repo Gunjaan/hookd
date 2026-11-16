@@ -52,6 +52,7 @@ class BaseProvider(ABC):
     reply_to_comment(account, comment_external_id, message) -> str   # public reply, returns its id
     # Content. Defaults raise FeatureNotSupported.
     list_media(account, limit, after="") -> MediaPage
+    get_media(account, media_external_id) -> MediaItem
     list_comments(account, media_external_id, limit, after="") -> CommentPage
     fetch_media_insights(account, media_external_id, product_type) -> list[Metric]
     fetch_account_insights(account, days) -> list[Metric]
@@ -136,7 +137,7 @@ Connections page, connect, OAuth callback, refresh, resubscribe (`account_subscr
 
 ## Tests (`tests.py`)
 
-OAuth state round trip and tampering, tokens encrypted at rest. `ConnectionPageTests`: provider list, login required,
+OAuth state round trip and tampering, tokens encrypted at rest. `ConnectionPageTests`: provider list, YouTube shown as coming soon with no connect form, login required,
 connect redirect URL contents and signed state, unknown platform, missing credentials, full callback flow with mocked
 Graph HTTP (token, metadata, page content, webhook subscription), failed subscription keeps the account with `status_detail`, account row shows Reconnect and hides Refresh,
 reconnect updates the existing account in place, resubscribe success clears the warning, resubscribe failure is
