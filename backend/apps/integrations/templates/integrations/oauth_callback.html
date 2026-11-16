@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Connection failed{% endblock %}
+
+{% block body %}
+  <div class="callback">
+    {% include "components/brand_logo.html" %}
+    <section class="card card--padded callback__card">
+      <div class="callback__status">
+        <div class="alert alert--danger" role="alert">
+          <p class="alert__title">Connection failed</p>
+          <div class="alert__body">{{ error_message }}</div>
+        </div>
+        <a href="{% url 'connections' %}" class="btn btn--primary btn--md">Back to connections</a>
+      </div>
+    </section>
+  </div>
+{% endblock %}

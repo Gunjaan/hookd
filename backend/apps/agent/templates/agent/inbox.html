@@ -1,0 +1,75 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Replies{% endblock %}
+
+{% block content %}
+  <div class="studio">
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">Replies</h1>
+        <p class="page-header__description">What the agent did with new comments. Approved replies go out one at a time, spaced to stay within platform limits.</p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{% url 'agent' %}" class="btn btn--secondary btn--md">Agent settings</a>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Reply status">
+      {% for value, label, count in tabs %}
+        <a
+          href="?status={{ value }}"
+          class="tabs__link{% if value == status %} tabs__link--active{% endif %}"
+          {% if value == status %}aria-current="page"{% endif %}
+        >{{ label }} ({{ count }})</a>
+      {% endfor %}
+    </nav>
+
+    {% include "components/messages.html" %}
+
+    {% if not replies %}
+      <div class="empty-state card card--padded"><p>Nothing here.</p></div>
+    {% else %}
+      <ul class="job-list">
+        {% for reply in replies %}
+          <li class="card card--padded reply-card" data-busy-scope>
+            <div class="comment__header">
+              <span class="comment__author">@{{ reply.comment.author_username|default:"unknown" }}</span>
+              <span class="hint">on @{{ reply.comment.account.username }}</span>
+              {% if reply.comment.commented_at %}<time class="comment__time" datetime="{{ reply.comment.commented_at|date:'c' }}">{{ reply.comment.commented_at|timesince }} ago</time>{% endif %}
+            </div>
+            <p class="comment__text">{{ reply.comment.text }}</p>
+            <p class="hint">
+              {% if reply.rule %}Rule: {{ reply.rule.name }} · {% endif %}{{ reply.decision.reason }}
+              {% if reply.decision.confidence is not None %} · Confidence {{ reply.decision.confidence|floatformat:2 }}{% endif %}
+            </p>
+            {% if reply.error %}<p class="job__error">{{ reply.error }}</p>{% endif %}
+
+            {% if reply.status == 'pending_review' %}
+              <form method="post" action="{% url 'agent-reply-approve' reply.pk %}" class="reply-card__form">
+                {% csrf_token %}
+                <label for="reply-text-{{ reply.pk }}" class="visually-hidden">Reply</label>
+                <textarea id="reply-text-{{ reply.pk }}" name="text" rows="2" maxlength="2200" class="field__input field__input--textarea" required>{{ reply.final_text }}</textarea>
+                <div class="reply-card__actions">
+                  <button type="submit" class="btn btn--primary btn--sm">Approve and send</button>
+                  <button type="submit" formaction="{% url 'agent-reply-reject' reply.pk %}" formnovalidate class="btn btn--ghost btn--sm">Discard</button>
+                </div>
+              </form>
+            {% elif reply.final_text %}
+              <p class="agent-reply-text">{{ reply.final_text }}</p>
+              <p class="hint">
+                {% if reply.status == 'sent' %}Sent {{ reply.sent_at|date:"j M, H:i" }}
+                {% elif reply.status == 'queued' or reply.status == 'sending' %}Goes out around {{ reply.scheduled_for|date:"j M, H:i" }}{% endif %}
+              </p>
+              {% if reply.status == 'failed' %}
+                <form method="post" action="{% url 'agent-reply-retry' reply.pk %}" class="inline-form">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn--secondary btn--sm">Try again</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endblock %}

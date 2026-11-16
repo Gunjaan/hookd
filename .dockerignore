@@ -1,0 +1,3 @@
+# The image only needs the Python requirements. Code is mounted at run time.
+*
+!backend/requirements.txt

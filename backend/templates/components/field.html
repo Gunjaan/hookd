@@ -1,0 +1,23 @@
+{# Arguments: field (a bound form field). Text-like inputs only. #}
+{% with widget=field.field.widget message_id=field.auto_id|add:"-message" %}
+  <div class="field">
+    <label for="{{ field.auto_id }}" class="field__label">{{ field.label }}</label>
+    <input
+      id="{{ field.auto_id }}"
+      name="{{ field.html_name }}"
+      type="{{ widget.input_type }}"
+      {% if field.value and widget.input_type != 'password' %}value="{{ field.value }}"{% endif %}
+      autocomplete="{{ widget.attrs.autocomplete|default:'off' }}"
+      {% if widget.attrs.placeholder %}placeholder="{{ widget.attrs.placeholder }}"{% endif %}
+      {% if field.field.required %}required{% endif %}
+      {% if field.errors %}aria-invalid="true"{% endif %}
+      {% if field.errors or field.help_text %}aria-describedby="{{ message_id }}"{% endif %}
+      class="field__input{% if field.errors %} field__input--error{% endif %}"
+    />
+    {% if field.errors %}
+      <p id="{{ message_id }}" class="field__message field__message--error">{{ field.errors.0 }}</p>
+    {% elif field.help_text %}
+      <p id="{{ message_id }}" class="field__message">{{ field.help_text }}</p>
+    {% endif %}
+  </div>
+{% endwith %}

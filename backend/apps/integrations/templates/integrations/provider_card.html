@@ -1,0 +1,43 @@
+{% load integrations_ui %}{# Arguments: item (services.ProviderOverview). #}
+{% with provider=item.provider accounts=item.accounts %}
+  <section class="card card--padded">
+    <div class="provider">
+      {% include "integrations/platform_icon.html" with platform=provider.platform size=48 %}
+      <div class="provider__info">
+        <div class="provider__title">
+          <h2>{{ provider.display_name }}</h2>
+          {% if accounts %}
+            <span class="badge badge--success">Connected</span>
+          {% elif not item.configured %}
+            <span class="badge badge--warning">Not configured</span>
+          {% endif %}
+        </div>
+        <p class="provider__description">{{ provider.description }}</p>
+      </div>
+      <form method="post" action="{% url 'connect-start' provider.platform %}" class="inline-form">
+        {% csrf_token %}
+        <button
+          type="submit"
+          class="btn btn--md {% if accounts %}btn--secondary{% else %}btn--primary{% endif %}"
+          {% if not item.configured %}disabled data-disabled{% endif %}
+        >
+          {% if accounts %}Connect another{% else %}Connect {{ provider.display_name }}{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <ul class="provider__capabilities" aria-label="Capabilities">
+      {% for capability in item.capabilities %}
+        <li>{{ capability|capability_label }}</li>
+      {% endfor %}
+    </ul>
+
+    {% if accounts %}
+      <div class="provider__accounts">
+        {% for account in accounts %}
+          {% include "integrations/account_row.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+{% endwith %}

@@ -1,0 +1,79 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}New post{% endblock %}
+
+{% block content %}
+  <div class="studio studio--narrow">
+    <a href="{% url 'studio-account' account.pk %}" class="back-link">Back to @{{ account.username }}</a>
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">New post</h1>
+        <p class="page-header__description">Publish to @{{ account.username }} on {{ account.get_platform_display }}.</p>
+      </div>
+    </header>
+
+    {% include "components/messages.html" %}
+    {% include "components/form_errors.html" %}
+
+    {% if quota_error %}
+      <div class="alert alert--warning"><div class="alert__body">Could not check the publishing limit: {{ quota_error }}</div></div>
+    {% elif quota is not None %}
+      <p class="hint">{{ quota }} post{{ quota|pluralize }} left in the last 24 hours.</p>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="card card--padded compose" data-busy-scope>
+      {% csrf_token %}
+      <fieldset class="field">
+        <legend class="field__label">Type</legend>
+        <div class="choice-group">
+          {% for choice in form.kind %}
+            <label class="choice">
+              {{ choice.tag }}
+              <span>{{ choice.choice_label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label for="{{ form.media.auto_id }}" class="field__label">{{ form.media.label }}</label>
+        <input
+          id="{{ form.media.auto_id }}"
+          name="{{ form.media.html_name }}"
+          type="file"
+          multiple
+          required
+          accept=".jpg,.jpeg,.mp4,.mov"
+          aria-describedby="{{ form.media.auto_id }}-message"
+          class="field__input field__input--file{% if form.media.errors %} field__input--error{% endif %}"
+        />
+        {% if form.media.errors %}
+          <p id="{{ form.media.auto_id }}-message" class="field__message field__message--error">{{ form.media.errors.0 }}</p>
+        {% else %}
+          <p id="{{ form.media.auto_id }}-message" class="field__message">{{ form.media.help_text }}</p>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label for="{{ form.caption.auto_id }}" class="field__label">Caption</label>
+        <textarea
+          id="{{ form.caption.auto_id }}"
+          name="{{ form.caption.html_name }}"
+          rows="6"
+          maxlength="{{ form.caption.field.max_length }}"
+          placeholder="Write a caption..."
+          class="field__input field__input--textarea{% if form.caption.errors %} field__input--error{% endif %}"
+        >{{ form.caption.value|default:"" }}</textarea>
+        {% if form.caption.errors %}
+          <p class="field__message field__message--error">{{ form.caption.errors.0 }}</p>
+        {% else %}
+          <p class="field__message">Up to {{ form.caption.field.max_length }} characters.</p>
+        {% endif %}
+      </div>
+
+      <div class="compose__actions">
+        <button type="submit" class="btn btn--primary btn--md">Publish</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

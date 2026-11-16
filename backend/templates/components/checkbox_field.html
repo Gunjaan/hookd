@@ -1,0 +1,16 @@
+{# Arguments: field (a bound BooleanField). #}
+{% with message_id=field.auto_id|add:"-message" %}
+  <div class="field">
+    <label class="checkbox">
+      <input
+        id="{{ field.auto_id }}"
+        name="{{ field.html_name }}"
+        type="checkbox"
+        {% if field.value %}checked{% endif %}
+        {% if field.help_text %}aria-describedby="{{ message_id }}"{% endif %}
+      />
+      <span>{{ field.label }}</span>
+    </label>
+    {% if field.help_text %}<p id="{{ message_id }}" class="field__message">{{ field.help_text }}</p>{% endif %}
+  </div>
+{% endwith %}

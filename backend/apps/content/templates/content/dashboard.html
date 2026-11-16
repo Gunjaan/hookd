@@ -1,0 +1,82 @@
+{% extends "layouts/app.html" %}
+{% load humanize %}
+
+{% block title %}Studio{% endblock %}
+
+{% block content %}
+  <div class="studio">
+    <header class="page-header">
+      <div class="studio__account">
+        {% include "components/avatar.html" with src=account.avatar_url name=account.username size=48 %}
+        <div>
+          <h1 class="page-header__title">@{{ account.username }}</h1>
+          <p class="page-header__description">
+            {% if account.metadata.followers_count is not None %}{{ account.metadata.followers_count|intcomma }} followers · {% endif %}{{ account.get_platform_display }}
+          </p>
+        </div>
+      </div>
+      <div class="page-header__actions" data-busy-scope>
+        <form method="post" action="{% url 'studio-refresh' account.pk %}" class="inline-form">
+          {% csrf_token %}
+          <button type="submit" class="btn btn--secondary btn--md">Refresh</button>
+        </form>
+        {% if can_publish %}
+          <a href="{% url 'compose' account.pk %}" class="btn btn--primary btn--md">New post</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if accounts|length > 1 %}
+      <nav class="tabs" aria-label="Accounts">
+        {% for item in accounts %}
+          <a
+            href="{% url 'studio-account' item.pk %}"
+            class="tabs__link{% if item.pk == account.pk %} tabs__link--active{% endif %}"
+            {% if item.pk == account.pk %}aria-current="page"{% endif %}
+          >@{{ item.username }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {% include "components/messages.html" %}
+
+    {% if account.status != 'active' %}
+      <div class="alert alert--warning">
+        <div class="alert__body">This account needs attention: {{ account.status_detail|default:account.get_status_display }}. <a href="{% url 'connections' %}">Open connections</a></div>
+      </div>
+    {% endif %}
+
+    {% if not after %}
+      <section class="studio__section" aria-labelledby="insights-title">
+        <h2 id="insights-title" class="section-title">Last 7 days</h2>
+        {% if insights_error %}
+          <div class="alert alert--warning"><div class="alert__body">Insights unavailable: {{ insights_error }}</div></div>
+        {% elif insights %}
+          {% include "content/metric_tiles.html" with metrics=insights %}
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <section class="studio__section" aria-labelledby="posts-title">
+      <h2 id="posts-title" class="section-title">{% if after %}Older posts{% else %}Recent posts{% endif %}</h2>
+      {% if posts_error %}
+        <div class="alert alert--danger"><div class="alert__body">{{ posts_error }}</div></div>
+      {% elif not page.posts %}
+        <div class="empty-state">
+          <p>No posts yet.</p>
+          {% if can_publish %}<a href="{% url 'compose' account.pk %}" class="btn btn--primary btn--md">Create your first post</a>{% endif %}
+        </div>
+      {% endif %}
+      <ul id="post-grid" class="post-grid">
+        {% for post in page.posts %}
+          {% include "content/post_card.html" %}
+        {% endfor %}
+      </ul>
+      {% if page.next_cursor %}
+        <div class="load-more">
+          <a href="{% url 'studio-account' account.pk %}?after={{ page.next_cursor|urlencode }}" class="btn btn--secondary btn--md" data-load-more="post-grid">Load older posts</a>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

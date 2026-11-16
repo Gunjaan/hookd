@@ -1,0 +1,9 @@
+{# Arguments: comment (IncomingComment), account (SocialAccount). #}
+<li class="comment">
+  <div class="comment__header">
+    <span class="comment__author">@{{ comment.author_username|default:"unknown" }}</span>
+    {% if comment.author_external_id == account.external_id %}<span class="badge badge--info">You</span>{% endif %}
+    {% if comment.commented_at %}<time class="comment__time" datetime="{{ comment.commented_at|date:'c' }}">{{ comment.commented_at|timesince }} ago</time>{% endif %}
+  </div>
+  <p class="comment__text">{{ comment.text }}</p>
+</li>

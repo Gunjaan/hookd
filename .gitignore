@@ -1,0 +1,19 @@
+.env
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/staticfiles/
+
+# Editors
+.idea/
+
+# Local data
+data/
+backend/db.sqlite3
+logs/
+backend/media/
+hookd-plan.md

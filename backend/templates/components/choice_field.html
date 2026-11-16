@@ -1,0 +1,13 @@
+{# Arguments: field (a bound ChoiceField with a RadioSelect widget). #}
+<fieldset class="field">
+  <legend class="field__label">{{ field.label }}</legend>
+  <div class="choice-group">
+    {% for choice in field %}
+      <label class="choice">
+        {{ choice.tag }}
+        <span>{{ choice.choice_label }}</span>
+      </label>
+    {% endfor %}
+  </div>
+  {% if field.errors %}<p class="field__message field__message--error">{{ field.errors.0 }}</p>{% endif %}
+</fieldset>

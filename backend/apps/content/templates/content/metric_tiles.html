@@ -1,0 +1,9 @@
+{% load content_ui %}{# Arguments: metrics (list of Metric or metric dicts). #}
+<dl class="metrics">
+  {% for metric in metrics %}
+    <div class="metrics__tile">
+      <dt class="metrics__label">{{ metric.label }}</dt>
+      <dd class="metrics__value">{{ metric|metric_display }}</dd>
+    </div>
+  {% endfor %}
+</dl>

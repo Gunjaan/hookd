@@ -1,0 +1,85 @@
+{% extends "layouts/app.html" %}
+{% load humanize %}
+
+{% block title %}Post{% endblock %}
+
+{% block content %}
+  <div class="studio">
+    <a href="{% url 'studio-account' account.pk %}" class="back-link">Back to @{{ account.username }}</a>
+
+    {% include "components/messages.html" %}
+
+    <div class="post-detail">
+      <div class="post-detail__media card">
+        {% if post.media_type == 'video' and post.media_url %}
+          <video src="{{ post.media_url }}" poster="{{ post.thumbnail_url }}" controls preload="none"></video>
+        {% elif post.preview_url %}
+          <img src="{{ post.preview_url }}" alt="" />
+        {% endif %}
+      </div>
+
+      <div class="post-detail__info">
+        <section class="card card--padded">
+          <div class="post-detail__meta">
+            <span class="badge badge--neutral">{{ post.get_product_type_display }}{% if post.media_type == 'carousel' %} · Carousel{% endif %}</span>
+            {% if post.posted_at %}<span>{{ post.posted_at|date:"j M Y, H:i" }}</span>{% endif %}
+            {% if post.permalink %}<a href="{{ post.permalink }}" target="_blank" rel="noopener">View on {{ account.get_platform_display }}</a>{% endif %}
+          </div>
+          <p class="post-detail__caption">{{ post.caption|default:"No caption"|linebreaksbr }}</p>
+        </section>
+
+        <section class="card card--padded" aria-labelledby="post-insights-title">
+          <div class="card__header section-header">
+            <h2 id="post-insights-title" class="section-title">Insights</h2>
+            <form method="post" action="{% url 'post-insights-refresh' post.pk %}" class="inline-form">
+              {% csrf_token %}
+              <button type="submit" class="btn btn--ghost btn--sm">Refresh</button>
+            </form>
+          </div>
+          {% if insights_error %}
+            <div class="alert alert--warning"><div class="alert__body">Insights unavailable: {{ insights_error }}</div></div>
+          {% elif post.insights %}
+            {% include "content/metric_tiles.html" with metrics=post.insights %}
+            <p class="hint">Updated {{ post.insights_fetched_at|timesince }} ago.</p>
+          {% else %}
+            <p class="hint">No insights for this post.</p>
+          {% endif %}
+        </section>
+
+        <section class="card card--padded" aria-labelledby="post-brain-title">
+          <div class="card__header section-header">
+            <h2 id="post-brain-title" class="section-title">Video brain</h2>
+            <a href="{% url 'agent-rule-new' account.pk %}?post={{ post.pk }}" class="btn btn--ghost btn--sm">Add rule for this post</a>
+          </div>
+          <form method="post" action="{% url 'agent-post-brain' post.pk %}" class="agent-form" data-busy-scope>
+            {% csrf_token %}
+            {% include "components/textarea_field.html" with field=brain_form.knowledge %}
+            {% include "components/checkbox_field.html" with field=brain_form.agent_enabled %}
+            <div class="compose__actions">
+              <button type="submit" class="btn btn--secondary btn--sm">Save brain</button>
+            </div>
+          </form>
+          {% if post_rules %}
+            <ul class="rule-list">
+              {% for rule in post_rules %}{% include "agent/rule_item.html" %}{% endfor %}
+            </ul>
+          {% endif %}
+        </section>
+
+        <section id="comments" class="card card--padded" aria-labelledby="post-comments-title">
+          <div class="card__header">
+            <h2 id="post-comments-title" class="section-title">
+              Comments{% if post.comments_count is not None %} ({{ post.comments_count|intcomma }}){% endif %}
+            </h2>
+          </div>
+          <ul id="comment-list" class="comment-list"></ul>
+          {% if post.comments_count != 0 %}
+            <a href="{% url 'post-comments' post.pk %}" class="btn btn--secondary btn--sm" data-load-more="comment-list">Show comments</a>
+          {% else %}
+            <p class="hint">No comments yet.</p>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+  </div>
+{% endblock %}

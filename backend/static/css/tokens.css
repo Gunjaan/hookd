@@ -1,0 +1,94 @@
+/*
+ * Hookd design tokens. Components must use these variables instead of raw values
+ * so the whole app stays visually consistent.
+ */
+:root {
+  /* Surfaces */
+  --color-bg: #f6f6f8;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f1f4;
+  --color-border: #e3e4e9;
+  --color-border-strong: #cdd0d8;
+
+  /* Text */
+  --color-text: #14151a;
+  --color-text-muted: #5b5f6d;
+  --color-text-subtle: #8a8e9b;
+  --color-text-inverse: #ffffff;
+
+  /* Brand */
+  --color-primary: #ff4f2b;
+  --color-primary-hover: #e9401d;
+  --color-primary-soft: #fff0eb;
+  --color-ink: #12131a;
+  --color-ink-soft: #1d1f29;
+  --color-glow: rgb(255 79 43 / 22%);
+  --color-glow-cool: rgb(124 92 255 / 16%);
+  --color-inverse-muted: rgb(255 255 255 / 68%);
+  --color-inverse-subtle: rgb(255 255 255 / 12%);
+
+  /* Status */
+  --color-success: #11795a;
+  --color-success-soft: #e5f5ee;
+  --color-warning: #9a5800;
+  --color-warning-soft: #fff3df;
+  --color-danger: #c4302b;
+  --color-danger-soft: #fdeceb;
+  --color-info: #2a5bd6;
+  --color-info-soft: #eaf0fd;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.75rem;
+  --text-display: clamp(2.75rem, 6.2vw, 5.25rem);
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-display: 1.02;
+  --leading-tight: 1.25;
+  --tracking-display: -0.045em;
+  --tracking-eyebrow: 0.14em;
+  --leading-normal: 1.5;
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.5rem;
+  --space-8: 3rem;
+  --space-9: 4.5rem;
+  --space-10: 7rem;
+
+  /* Shape and depth */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+  --shadow-sm: 0 1px 2px rgb(20 21 26 / 6%);
+  --shadow-md: 0 4px 16px rgb(20 21 26 / 8%);
+  --shadow-lg: 0 24px 60px rgb(20 21 26 / 14%);
+  --radius-xl: 28px;
+  --focus-ring: 0 0 0 3px rgb(255 79 43 / 25%);
+
+  /* Motion */
+  --transition-fast: 120ms ease;
+  --transition-reveal: 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Layout */
+  --sidebar-width: 232px;
+  --content-max-width: 960px;
+  --content-narrow-width: 640px;
+  --media-max-height: 70vh;
+  --landing-max-width: 1200px;
+}

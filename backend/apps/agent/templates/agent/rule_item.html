@@ -1,0 +1,12 @@
+{# Arguments: rule (ReplyRule), show_post (optional). #}
+<li class="rule">
+  <div class="rule__header">
+    <span class="rule__name">{{ rule.name }}</span>
+    <span class="badge badge--{% if rule.action == 'auto_reply' %}success{% elif rule.action == 'review' %}info{% else %}neutral{% endif %}">{{ rule.get_action_display }}</span>
+    {% if not rule.enabled %}<span class="badge badge--warning">Off</span>{% endif %}
+    <a href="{% url 'agent-rule-edit' rule.pk %}" class="rule__edit">Edit</a>
+  </div>
+  {% if show_post %}<p class="hint">Post: <a href="{% url 'post-detail' rule.post_id %}">{{ rule.post.caption|default:"No caption"|truncatechars:50 }}</a></p>{% endif %}
+  {% if rule.when %}<p class="rule__text">{{ rule.when }}</p>{% endif %}
+  {% if rule.keywords %}<p class="hint">Keywords: {{ rule.keywords }}</p>{% endif %}
+</li>

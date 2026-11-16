@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block body %}
+  <div class="auth">
+    <aside class="auth__brand">
+      <a href="{% url 'home' %}" aria-label="Hookd home">{% include "components/brand_logo.html" with inverse=True %}</a>
+      <div class="auth__pitch">
+        <h1>Every video gets its own AI manager, in your language.</h1>
+        <p>
+          Hookd replies to comments and DMs in your voice, in Hinglish, Hindi and regional
+          languages, so no buyer or fan gets missed.
+        </p>
+      </div>
+      <p class="auth__footnote">hookd.world</p>
+    </aside>
+    <main class="auth__main">
+      <div class="auth__panel">
+        {% block panel %}{% endblock %}
+      </div>
+    </main>
+  </div>
+{% endblock %}

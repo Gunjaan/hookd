@@ -1,0 +1,5 @@
+{% load hookd_ui %}{# Arguments: name, src (optional), size in px. Shows initials when there is no image or it fails to load. #}
+<span class="avatar" style="width: {{ size }}px; height: {{ size }}px">
+  {% if src %}<img src="{{ src }}" alt="{{ name }}" onerror="this.hidden = true; this.nextElementSibling.hidden = false" />{% endif %}
+  <span class="avatar__initials" aria-hidden="true"{% if src %} hidden{% endif %}>{{ name|initials|default:"?" }}</span>
+</span>

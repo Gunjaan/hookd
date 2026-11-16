@@ -1,0 +1,29 @@
+{% extends "layouts/auth.html" %}
+
+{% block title %}Request access{% endblock %}
+
+{% block panel %}
+  <div class="auth-form">
+    <header class="auth-form__header">
+      <h2>Request early access</h2>
+      <p>Hookd is invite only for now. Tell us about you and we will get back to you soon.</p>
+    </header>
+
+    {% include "components/form_errors.html" %}
+
+    <form method="post" class="auth-form__fields" novalidate>
+      {% csrf_token %}
+      {% include "components/field.html" with field=form.name %}
+      {% include "components/field.html" with field=form.email %}
+      {% include "components/field.html" with field=form.instagram %}
+      {% include "components/field.html" with field=form.phone %}
+      {% include "components/textarea_field.html" with field=form.about %}
+      <button type="submit" class="btn btn--primary btn--lg btn--block">Request access</button>
+    </form>
+
+    <p class="auth-form__switch">
+      Already have an account?
+      <a href="{% url 'login' %}">Log in</a>
+    </p>
+  </div>
+{% endblock %}

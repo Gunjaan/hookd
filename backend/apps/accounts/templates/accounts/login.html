@@ -1,0 +1,31 @@
+{% extends "layouts/auth.html" %}
+
+{% block title %}Log in{% endblock %}
+
+{% block panel %}
+  <div class="auth-form">
+    <header class="auth-form__header">
+      <h2>Welcome back</h2>
+      <p>Log in to manage your connected accounts.</p>
+    </header>
+
+    {% include "components/form_errors.html" %}
+
+    <form method="post" class="auth-form__fields" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}" />
+      {% include "components/field.html" with field=form.email %}
+      {% include "components/field.html" with field=form.password %}
+      <button type="submit" class="btn btn--primary btn--lg btn--block">Log in</button>
+    </form>
+
+    <p class="auth-form__switch">
+      New to Hookd?
+      {% if signups_open %}
+        <a href="{% url 'signup' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Create an account</a>
+      {% else %}
+        <a href="{% url 'signup' %}">Request access</a>
+      {% endif %}
+    </p>
+  </div>
+{% endblock %}

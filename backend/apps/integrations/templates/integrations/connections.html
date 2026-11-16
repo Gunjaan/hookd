@@ -1,0 +1,24 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Connections{% endblock %}
+
+{% block content %}
+  <div class="connections">
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">Connections</h1>
+        <p class="page-header__description">
+          Connect the accounts Hookd should manage. Each video gets its own agent once connected.
+        </p>
+      </div>
+    </header>
+
+    {% include "components/messages.html" %}
+
+    <div class="connections__list">
+      {% for item in providers %}
+        {% include "integrations/provider_card.html" %}
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}

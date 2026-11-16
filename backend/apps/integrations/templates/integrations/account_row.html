@@ -1,0 +1,45 @@
+{% load humanize integrations_ui %}{# Arguments: account (SocialAccount), provider (BaseProvider). #}
+<div class="account" data-busy-scope>
+  {% include "components/avatar.html" with src=account.avatar_url name=account.username size=44 %}
+  <div class="account__info">
+    <div class="account__title">
+      <span class="account__username">@{{ account.username }}</span>
+      <span class="badge badge--{{ account.status|status_tone }}">{{ account.get_status_display }}</span>
+    </div>
+    <p class="account__meta">
+      {% if account.display_name %}<span>{{ account.display_name }}</span>{% endif %}
+      {% if account.metadata.followers_count is not None %}<span>{{ account.metadata.followers_count|intcomma }} followers</span>{% endif %}
+      <span>
+        {% if account.token_expires_at %}Token valid until {{ account.token_expires_at|date:"j M Y" }}{% else %}Token does not expire{% endif %}
+      </span>
+    </p>
+    {% if account.status_detail %}<p class="account__detail">{{ account.status_detail }}</p>{% endif %}
+  </div>
+  <div class="account__actions">
+    {% if provider.supports_webhooks %}
+      <form method="post" action="{% url 'account-subscribe' account.pk %}" class="inline-form">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--ghost btn--sm">Resubscribe</button>
+      </form>
+    {% endif %}
+    <form method="post" action="{% url 'connect-start' account.platform %}" class="inline-form">
+      {% csrf_token %}
+      <button type="submit" class="btn btn--secondary btn--sm">Reconnect</button>
+    </form>
+    {% if provider.supports_token_refresh %}
+      <form method="post" action="{% url 'account-refresh' account.pk %}" class="inline-form">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--ghost btn--sm">Refresh</button>
+      </form>
+    {% endif %}
+    <form
+      method="post"
+      action="{% url 'account-disconnect' account.pk %}"
+      class="inline-form"
+      data-confirm="Disconnect @{{ account.username }}? Hookd will stop managing this account."
+    >
+      {% csrf_token %}
+      <button type="submit" class="btn btn--danger btn--sm">Disconnect</button>
+    </form>
+  </div>
+</div>

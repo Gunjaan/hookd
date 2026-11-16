@@ -1,0 +1,10 @@
+{# Arguments: field (a bound ChoiceField with a Select widget). #}
+<div class="field">
+  <label for="{{ field.auto_id }}" class="field__label">{{ field.label }}</label>
+  <select id="{{ field.auto_id }}" name="{{ field.html_name }}" class="field__input{% if field.errors %} field__input--error{% endif %}">
+    {% for value, label in field.field.choices %}
+      <option value="{{ value }}"{% if value|stringformat:"s" == field.value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if field.errors %}<p class="field__message field__message--error">{{ field.errors.0 }}</p>{% endif %}
+</div>

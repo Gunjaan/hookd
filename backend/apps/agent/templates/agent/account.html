@@ -1,0 +1,102 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Reply agent{% endblock %}
+
+{% block content %}
+  <div class="studio">
+    <header class="page-header">
+      <div class="studio__account">
+        {% include "components/avatar.html" with src=account.avatar_url name=account.username size=48 %}
+        <div>
+          <h1 class="page-header__title">Reply agent</h1>
+          <p class="page-header__description">Answers new comments on @{{ account.username }} in your voice, following your rules.</p>
+        </div>
+      </div>
+      <div class="page-header__actions">
+        <a href="{% url 'agent-preview' account.pk %}" class="btn btn--secondary btn--md">Try a comment</a>
+        <a href="{% url 'agent-inbox' %}" class="btn btn--primary btn--md">Open replies</a>
+      </div>
+    </header>
+
+    {% if accounts|length > 1 %}
+      <nav class="tabs" aria-label="Accounts">
+        {% for item in accounts %}
+          <a
+            href="{% url 'agent-account' item.pk %}"
+            class="tabs__link{% if item.pk == account.pk %} tabs__link--active{% endif %}"
+            {% if item.pk == account.pk %}aria-current="page"{% endif %}
+          >@{{ item.username }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+
+    {% include "components/messages.html" %}
+
+    {% if not supports_replies %}
+      <div class="alert alert--warning"><div class="alert__body">{{ account.get_platform_display }} replies are not supported yet.</div></div>
+    {% endif %}
+    {% if is_paused %}
+      <div class="alert alert--warning">
+        <div class="alert__body">Sending is paused until {{ profile.paused_until|date:"j M, H:i" }} because {{ account.get_platform_display }} asked Hookd to slow down: {{ profile.pause_reason }}</div>
+      </div>
+    {% endif %}
+
+    <div class="agent-layout">
+      <section class="card card--padded" aria-labelledby="agent-settings-title">
+        <h2 id="agent-settings-title" class="section-title">Settings and account brain</h2>
+        {% include "components/form_errors.html" %}
+        <form method="post" class="agent-form" data-busy-scope>
+          {% csrf_token %}
+          {% include "components/checkbox_field.html" with field=form.enabled %}
+          {% include "components/choice_field.html" with field=form.fallback_action %}
+          {% include "components/checkbox_field.html" with field=form.reply_to_threads %}
+          {% include "components/textarea_field.html" with field=form.voice %}
+          {% include "components/textarea_field.html" with field=form.knowledge %}
+          <div class="compose__actions">
+            <button type="submit" class="btn btn--primary btn--md">Save</button>
+          </div>
+        </form>
+      </section>
+
+      <div class="agent-side">
+        <section class="card card--padded" aria-labelledby="agent-rules-title">
+          <div class="card__header section-header">
+            <h2 id="agent-rules-title" class="section-title">Rules</h2>
+            <a href="{% url 'agent-rule-new' account.pk %}" class="btn btn--secondary btn--sm">Add rule</a>
+          </div>
+          <p class="hint">Checked top to bottom; the first match decides. Rules for a single post come first.</p>
+          {% if account_rules %}
+            <ul class="rule-list">
+              {% for rule in account_rules %}{% include "agent/rule_item.html" %}{% endfor %}
+            </ul>
+          {% else %}
+            <div class="empty-state">
+              <p>No rules yet. Start with ready made ones and edit them to fit.</p>
+            </div>
+          {% endif %}
+          <form method="post" action="{% url 'agent-starter-rules' account.pk %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--ghost btn--sm">Add starter rules</button>
+          </form>
+          {% if post_rules %}
+            <h3 class="section-title agent-subtitle">Rules for single posts</h3>
+            <ul class="rule-list">
+              {% for rule in post_rules %}{% include "agent/rule_item.html" with show_post=True %}{% endfor %}
+            </ul>
+          {% endif %}
+          <p class="hint">Add a video brain and post rules from any post in the studio.</p>
+        </section>
+
+        <section class="card card--padded" aria-labelledby="agent-limits-title">
+          <h2 id="agent-limits-title" class="section-title">Safe sending</h2>
+          <ul class="agent-limits">
+            <li>At most {{ limits.MAX_PER_HOUR }} replies an hour and {{ limits.MAX_PER_DAY }} a day, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart.</li>
+            <li>One automatic reply per person per post a day; repeated identical replies go to review.</li>
+            <li>Only new comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, never your own.</li>
+            <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+{% endblock %}
