@@ -312,8 +312,12 @@ class EditTests(CreativeTestCase):
     def test_draft_page_shows_original_photos(self):
         source = self.creative.sources.get()
         page = self.client.get(reverse("creative-detail", args=[self.creative.pk]))
-        self.assertContains(page, "Your photos")
+        self.assertContains(page, "Your photo")
         self.assertContains(page, reverse("creative-file", args=["source", source.pk]))
+        self.assertContains(page, 'class="draft-story__step draft-story__step--active" aria-current="step"')
+        self.assertContains(page, 'data-modal-images="' + reverse("creative-file", args=["source", source.pk]))
+        self.assertContains(page, 'data-carousel-step="1"')
+        self.assertContains(page, 'data-carousel-dot="2"')
 
     def test_draft_page_uses_the_json_endpoints(self):
         page = self.client.get(reverse("creative-detail", args=[self.creative.pk])).content.decode()
@@ -327,6 +331,7 @@ class EditTests(CreativeTestCase):
         self.assertEqual((data["status"], data["title"], data["working"]), ("ready", "Your post is ready", False))
         self.assertEqual(len(data["slides"]), 3)
         self.assertIn("Redo this photo", data["slides"][0]["html"])
+        self.assertIn("Post when you are happy", data["story"])
 
     def test_progress_fails_a_stale_slide(self):
         slide = self.creative.slides.first()
@@ -485,7 +490,12 @@ class BrainQuestionTests(PublishCase):
         creative.refresh_from_db()
         self.assertIsNotNone(creative.brain_saved_at)
         page = self.client.get(reverse("creative-detail", args=[creative.pk]))
-        self.assertContains(page, "Your reply agent knows")
+        self.assertContains(page, "What Hooky <em>knows</em>")
+        self.assertContains(page, "3 answers saved for replies")
+        self.assertContains(page, "Published")
+        post = PostBrain.objects.get().post
+        self.assertContains(page, reverse("api-post-preview", args=[post.pk]))
+        self.assertNotContains(page, "See status")
 
     def test_post_that_goes_live_later_is_taught_by_the_signal(self):
         from apps.content import services as content_services

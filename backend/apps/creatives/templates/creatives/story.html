@@ -1,0 +1,27 @@
+{# Arguments: creative, story (views.draft_story). Part of the draft page, redrawn by the progress polling (app.js). #}
+{% with sources=creative.sources.all %}
+  <ol class="draft-story" aria-label="Where this post is">
+    {% for step in story %}
+      <li class="draft-story__step draft-story__step--{{ step.state }}"{% if step.state == 'active' %} aria-current="step"{% endif %}>
+        {% if forloop.first and sources %}
+          <a
+            href="{% url 'creative-file' 'source' sources.0.pk %}"
+            class="draft-story__marker draft-story__marker--photo"
+            data-modal-images="{% for source in sources %}{% url 'creative-file' 'source' source.pk %} {% endfor %}"
+            data-modal-label="Your photo"
+            aria-label="View your photo{{ sources|length|pluralize }}"
+          ><img src="{% url 'creative-file' 'source' sources.0.pk %}" alt="" /></a>
+        {% else %}
+          <span class="draft-story__marker" aria-hidden="true">{% if step.state == 'done' %}&#10003;{% else %}{{ forloop.counter }}{% endif %}</span>
+        {% endif %}
+        <span class="draft-story__title">{{ step.title }}</span>
+        <span class="draft-story__detail">
+          {{ step.detail }}
+          {% if forloop.first and sources %}
+            · <a href="{% url 'creative-file' 'source' sources.0.pk %}" class="draft-story__view" data-modal-images="{% for source in sources %}{% url 'creative-file' 'source' source.pk %} {% endfor %}" data-modal-label="Your photo">View</a>
+          {% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+{% endwith %}

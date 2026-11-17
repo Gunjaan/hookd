@@ -45,6 +45,8 @@ def account_dashboard(request, account_id: int):
         "account": account,
         "accounts": services.studio_accounts(request.user),
         "can_publish": services.can_publish(account),
+        "agent_on": agent_services.get_profile(account).enabled,
+        "replies_sent": agent_services.sent_reply_count(account),
         "insights": [],
     }
     try:
@@ -59,6 +61,14 @@ def account_dashboard(request, account_id: int):
     return render(request, "content/dashboard.html", context)
 
 
+def post_brain_form(post) -> PostBrainForm:
+    """The Video brain form for a post, filled from its saved brain (post page and post modal)."""
+    brain = agent_services.get_post_brain(post)
+    return PostBrainForm(
+        initial={"knowledge": brain.knowledge, "agent_enabled": brain.agent_enabled} if brain else None
+    )
+
+
 @login_required
 def post_detail(request, post_id: int):
     post = _user_post(request, post_id)
@@ -67,10 +77,6 @@ def post_detail(request, post_id: int):
         post = services.post_insights(post)
     except HookdError as exc:
         insights_error = exc.message
-    brain = agent_services.get_post_brain(post)
-    brain_form = PostBrainForm(
-        initial={"knowledge": brain.knowledge, "agent_enabled": brain.agent_enabled} if brain else None
-    )
     return render(
         request,
         "content/post_detail.html",
@@ -79,7 +85,7 @@ def post_detail(request, post_id: int):
             "post": post,
             "account": post.account,
             "insights_error": insights_error,
-            "brain_form": brain_form,
+            "brain_form": post_brain_form(post),
         },
     )
 

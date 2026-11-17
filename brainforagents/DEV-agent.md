@@ -114,17 +114,18 @@ A video brain only exists for posts Hookd has synced (`Post` rows); comments on 
 | Function | Does |
 |---|---|
 | `agent_accounts`, `get_profile`, `update_profile`, `is_paused`, `sending_limits`, `supports_replies` | Settings page |
+| `sent_reply_count(account, days=None)` | Replies sent on the account: all time (studio profile) or the last `days` (agent page status bar, 7) |
 | `get_post_brain`, `save_post_brain`, `preview_posts` | Video brain, preview post choices (20 newest) |
 | `handle_new_comment(comment_id)` | Steps 2 to 4. Returns the outcome |
-| `preview_reply(account, text, post)` | Same context and routing (no repeated text check), stores and sends nothing. Returns `Preview(decision, outcome, reason)` |
+| `preview_reply(account, text, post, voice=None, knowledge=None)` | Same context and routing (no repeated text check), stores and sends nothing. `voice` and `knowledge` replace the saved ones (the agent page tests unsaved edits). Returns `Preview(decision, outcome, reason)` |
 | `schedule_reply`, `send_reply`, `send_overdue_replies` | Steps 5 and 6; recovery sends queued replies more than 5 minutes past their slot |
 | `inbox`, `inbox_counts`, `get_user_reply` (`ReplyNotFound`), `approve_reply`, `reject_reply`, `retry_reply` | Inbox. Wrong status raises `ReplyNotEditable`, refused text `ReplyTextRejected` |
-| `pending_review_count(user)` | Sidebar badge (context processor `context_processors.agent_nav`) |
+| `pending_review_count(user)` | Side panel badge (context processor `context_processors.agent_nav`) |
 
 `model_querysets.py`: profile (`get_profile`, `get_or_create_profile`, `lock_profile`, `update_profile`), brain (`get_post_brain`, `save_post_brain`), replies (`reply_exists`, `create_reply_if_new`, `get_reply`,
 `get_reply_for_user`, `update_reply`, `claim_reply_for_sending`, `sent_times_since`,
 `outgoing_texts_since`, `list_replies_for_user`, `reply_counts_for_user`,
-`pending_review_count`, `overdue_queued_reply_ids`). Uses `content.model_querysets.find_post`/`latest_posts` and
+`pending_review_count`, `sent_reply_count`, `overdue_queued_reply_ids`). Uses `content.model_querysets.find_post`/`latest_posts` and
 `comments.model_querysets.get_comment`.
 
 ## Tasks and command
@@ -140,16 +141,16 @@ forms and `HookdError` answer 400 `{"error"}` (shown as a message), other users'
 | Route | Name | Page |
 |---|---|---|
 | `GET /agent/` | `agent` | First account's agent page, or connections |
-| `GET /agent/accounts/<id>/` | `agent-account` | One `AgentSettingsForm` (initial from the profile, saved by `api-agent-settings`) in three numbered steps: 1 "Turn on auto replies" (`enabled` checkbox, help text explains that replies the brains answer go out on their own and the rest wait for approval), 2 "Replies sound like you" (voice, account brain as "What should the agent know?", thread replies), 3 safe sending limits in a `<details>`. Pause warning on top |
-| `GET /agent/accounts/<id>/preview/` | `agent-preview` | `PreviewForm`: comment and optional post. `api-agent-preview` fills `#preview-result` with outcome, confidence and reply |
-| `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each, `views.inbox_tabs`). Review items have an editable reply, "Approve and send" and "Discard"; failed ones "Try again" |
+| `GET /agent/accounts/<id>/` | `agent-account` | Built around what the creator checks and does most. Top: the status bar (`status_bar.html`, context from `views.status_context`): Hooky on or off for the account, what that means, replies sent in the last 7 days, the pause warning, a "N replies waiting for you" link to the inbox when any wait, and the on or off switch (`AgentEnabledForm`, `data-autosubmit`, saved at once by `api-agent-enabled`). Left: `AgentSettingsForm` (initial from the profile, saved by `api-agent-settings`) as three white cards: "What Hooky knows" (account brain, first because it decides what goes out on its own), "How Hooky sounds" (voice, with `VOICE_PICKS` chips that append a style), "Which comments" (thread replies switch). A save bar (`data-unsaved`) appears after any edit and stays at the bottom of the screen with Discard and Save changes. Right (`#try`, sticky): "Try it", a `PreviewForm` posting to `api-agent-preview` with `data-include="agent-settings"`, so the test uses the unsaved voice and brain; the answer fills `#preview-result`. Bottom: the sending limits as one line with a "How it works" `<details>`. Under 860px the test drops below the settings |
+| `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each, `views.inbox_tabs`). Review items have an editable reply, "Send reply" (approve) and "Discard"; failed ones "Try again" |
 | `POST /api/agent/accounts/<id>/settings/` | `api-agent-settings` | `update_profile(**cleaned_data)`, `{message}` |
-| `POST /api/agent/accounts/<id>/preview/` | `api-agent-preview` | `preview_reply`, `{html}` from `preview_result.html`. Engine errors are a 400 with the reason |
+| `POST /api/agent/accounts/<id>/enabled/` | `api-agent-enabled` | `AgentEnabledForm`: turns the agent on or off at once, `{message, fragments}` redrawing `#agent-status` |
+| `POST /api/agent/accounts/<id>/preview/` | `api-agent-preview` | `PreviewForm` (comment, optional post, optional unsaved `voice` and `knowledge`, used only when sent), `preview_reply`, `{html}` from `preview_result.html`. Engine errors are a 400 with the reason |
 | `POST /api/agent/posts/<id>/brain/` | `api-agent-post-brain` | `PostBrainForm` from the post page's "Video brain" card, `{message}` |
-| `POST /api/agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `api-reply-approve`, `-reject`, `-retry` | `{html: "", fragments, message}`: the card is removed, `fragments` redraws `#inbox-tabs` (counts), `#nav-replies-count` (sidebar badge) and, when the tab is now empty, `#inbox-list` |
+| `POST /api/agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `api-reply-approve`, `-reject`, `-retry` | `{html: "", fragments, message}`: the card is removed, `fragments` redraws `#inbox-tabs` (counts), `#nav-replies-count` (side panel badge) and, when the tab is now empty, `#inbox-list` |
 
-Templates: `account.html`, `preview.html`, `preview_result.html`, `inbox.html`, `inbox_tabs.html`, `inbox_list.html`;
-the sidebar badge is `components/replies_badge.html`.
+Templates: `account.html`, `status_bar.html`, `preview_result.html`, `inbox.html`, `inbox_tabs.html`, `inbox_list.html`;
+the side panel badge is `components/replies_badge.html`. Look: each inbox item reads like an Instagram thread: the post it is on (thumbnail and caption, from `services.inbox` setting `reply.post`, open the post and its Video brain in the shared modal; Ctrl or Cmd click opens the post page), the comment, then your reply indented under it. A review item adds a butter "Hooky was not sure, so it is asking you" note with the reason and a "Teach Hooky" link to the agent page brain, then the draft in a clearly editable white box (`.reply-composer`: pencil label, border, Discard and "Send reply", Ctrl or Cmd + Enter sends via `data-send-shortcut`). Other tabs show the reply with when it was or will be sent, and Hooky's certainty in words (sure, fairly sure, not sure) instead of the raw confidence. Empty status tabs are dimmed; an emptied review tab shows Hooky with "All caught up" (`inbox_list.html` takes `status`).
 
 ## Tests (`tests.py`)
 
@@ -158,7 +159,7 @@ skipped; spam skipped; video brain answer sent on its own (Graph call checked); 
 information goes to review; the same person can get several replies; repeated text; refused text; spacing
 45 to 75 s; hourly cap reschedules without a call; rate limit pauses and requeues; expired token; never sent twice;
 early task waits; `send_due_replies`; Instagram text rules; inbox list, approve edited text (JSON with redrawn tabs,
-empty list and badge), approve refused text, reject, retry, sidebar count; settings save and on/off checkbox, home redirect, video brain save, preview stores
+empty list and badge), approve refused text, reject, retry, side panel count; settings save and on/off checkbox, home redirect, video brain save, preview stores
 nothing, 404 for other users. Gemini engine (model call mocked): decision mapped and clamped, compact request without
 empty fields or rules, unreadable confidence is 0, constant system prompt without `rule_id` in the schema, engine
 failure goes to review with the reason, preview shows the error.

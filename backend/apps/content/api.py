@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.content import services
 from apps.core.exceptions import HookdError
 from apps.core.http import api_login_required, json_error, json_ok
-from apps.content.views import publish_job_message
+from apps.content.views import post_brain_form, publish_job_message
 from apps.integrations import services as integration_services
 
 
@@ -65,6 +65,18 @@ def post_comments(request, post_id: int):
         next=_next_url("api-post-comments", post.pk, comment_list.next_cursor),
         count=len(comment_list.comments),
     )
+
+
+@api_login_required
+@require_GET
+def post_preview(request, post_id: int):
+    """The post in a modal (opened from the reply inbox): `{html}` with media, caption, counts and its Video brain.
+    Uses the stored post, no platform call."""
+    post = _post(request, post_id)
+    html = render_to_string(
+        "content/post_modal.html", {"post": post, "account": post.account, "brain_form": post_brain_form(post)}, request=request
+    )
+    return json_ok(html=html)
 
 
 @api_login_required

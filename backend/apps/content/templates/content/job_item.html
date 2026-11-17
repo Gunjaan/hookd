@@ -17,7 +17,7 @@
         <button type="submit" class="btn btn--secondary btn--sm">Check status</button>
       </form>
     {% elif job.post %}
-      <a href="{% url 'post-detail' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
+      <a href="{% url 'post-detail' job.post.pk %}" data-modal="{% url 'api-post-preview' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
     {% endif %}
   </div>
 </li>

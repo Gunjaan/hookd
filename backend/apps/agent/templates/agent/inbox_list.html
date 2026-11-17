@@ -1,47 +1,94 @@
-{# Arguments: replies. Approve, discard and retry post with fetch (data-api) and remove their card. #}
+{# Arguments: replies (services.inbox, each with `post`), status. Send, discard and retry post with fetch (data-api) and remove their card. #}
 <div id="inbox-list">
   {% if not replies %}
-    <div class="empty-state card card--padded"><p>Nothing here.</p></div>
+    <div class="empty-state">
+      <span class="empty-state__mascot">{% include "core/mascot.html" with uid="inbox-empty" %}</span>
+      {% if status == 'pending_review' %}
+        <p class="empty-state__title">All caught up</p>
+        <p>Nothing waits for you. When Hooky is not sure about a reply, it lands here for you to check.</p>
+      {% else %}
+        <p class="empty-state__title">Nothing here</p>
+      {% endif %}
+    </div>
   {% else %}
-    <ul class="job-list">
+    <ul class="reply-list">
       {% for reply in replies %}
-        <li class="card card--padded reply-card" data-busy-scope>
-          <div class="comment__header">
-            <span class="comment__author">@{{ reply.comment.author_username|default:"unknown" }}</span>
-            <span class="hint">on @{{ reply.comment.account.username }}</span>
-            {% if reply.comment.commented_at %}<time class="comment__time" datetime="{{ reply.comment.commented_at|date:'c' }}">{{ reply.comment.commented_at|timesince }} ago</time>{% endif %}
-          </div>
-          <p class="comment__text">{{ reply.comment.text }}</p>
-          <p class="hint">
-            {{ reply.decision.reason }}
-            {% if reply.decision.confidence is not None %} · Confidence {{ reply.decision.confidence|floatformat:2 }}{% endif %}
-          </p>
-          {% if reply.error %}<p class="job__error">{{ reply.error }}</p>{% endif %}
+        {% with comment=reply.comment account=reply.comment.account confidence=reply.decision.confidence %}
+          <li class="reply-card" data-busy-scope>
+            <div class="reply-card__post">
+              {% if reply.post %}
+                <a href="{% url 'post-detail' reply.post.pk %}" data-modal="{% url 'api-post-preview' reply.post.pk %}" class="reply-card__thumb" aria-label="Open the post">
+                  {% if reply.post.preview_url %}<img src="{{ reply.post.preview_url }}" alt="" loading="lazy" onerror="this.hidden = true" />{% endif %}
+                </a>
+                <p>On your post <a href="{% url 'post-detail' reply.post.pk %}" data-modal="{% url 'api-post-preview' reply.post.pk %}">{{ reply.post.caption|default:"No caption"|truncatechars:60 }}</a></p>
+              {% else %}
+                <p>On @{{ account.username }}</p>
+              {% endif %}
+              {% if comment.commented_at %}<time datetime="{{ comment.commented_at|date:'c' }}">{{ comment.commented_at|timesince }} ago</time>{% endif %}
+            </div>
 
-          {% if reply.status == 'pending_review' %}
-            <form method="post" action="{% url 'api-reply-approve' reply.pk %}" class="reply-card__form" data-api data-replace=".reply-card">
-              {% csrf_token %}
-              <label for="reply-text-{{ reply.pk }}" class="visually-hidden">Reply</label>
-              <textarea id="reply-text-{{ reply.pk }}" name="text" rows="2" maxlength="2200" class="field__input field__input--textarea" required>{{ reply.final_text }}</textarea>
-              <div class="reply-card__actions">
-                <button type="submit" class="btn btn--primary btn--sm">Approve and send</button>
-                <button type="submit" formaction="{% url 'api-reply-reject' reply.pk %}" formnovalidate class="btn btn--ghost btn--sm">Discard</button>
+            <div class="reply-row">
+              {% include "components/avatar.html" with name=comment.author_username|default:"?" size=36 %}
+              <p class="reply-row__text"><strong>{{ comment.author_username|default:"unknown" }}</strong> {{ comment.text }}</p>
+            </div>
+
+            {% if reply.status == 'pending_review' %}
+              <div class="reply-card__why">
+                <span class="reply-card__why-icon">{% include "core/mascot.html" with uid=reply.pk size="xs" %}</span>
+                <p>
+                  <strong>Hooky was not sure, so it is asking you.</strong>
+                  {{ reply.decision.reason }}
+                  <a href="{% url 'agent-account' account.pk %}#knows-title">Teach Hooky</a> so it can answer this on its own next time.
+                </p>
               </div>
-            </form>
-          {% elif reply.final_text %}
-            <p class="agent-reply-text">{{ reply.final_text }}</p>
-            <p class="hint">
-              {% if reply.status == 'sent' %}Sent {{ reply.sent_at|date:"j M, H:i" }}
-              {% elif reply.status == 'queued' or reply.status == 'sending' %}Goes out around {{ reply.scheduled_for|date:"j M, H:i" }}{% endif %}
-            </p>
+
+              <form method="post" action="{% url 'api-reply-approve' reply.pk %}" class="reply-row reply-row--you" data-api data-replace=".reply-card">
+                {% csrf_token %}
+                {% include "components/avatar.html" with src=account.avatar_url name=account.username size=36 %}
+                <div class="reply-composer">
+                  <label for="reply-text-{{ reply.pk }}" class="reply-composer__label">{% include "components/icon.html" with name="drafts" size=14 %}Your reply, edit anything before sending</label>
+                  <textarea id="reply-text-{{ reply.pk }}" name="text" rows="2" maxlength="2200" class="reply-composer__input" required data-send-shortcut>{{ reply.final_text }}</textarea>
+                  <div class="reply-composer__actions">
+                    <span class="hint">Ctrl or Cmd + Enter to send</span>
+                    <button type="submit" formaction="{% url 'api-reply-reject' reply.pk %}" formnovalidate class="btn btn--ghost btn--sm">Discard</button>
+                    <button type="submit" class="btn btn--primary btn--sm">Send reply</button>
+                  </div>
+                </div>
+              </form>
+            {% elif reply.final_text %}
+              <div class="reply-row reply-row--you">
+                {% include "components/avatar.html" with src=account.avatar_url name=account.username size=36 %}
+                <div>
+                  <p class="reply-row__text"><strong>{{ account.username }}</strong> {{ reply.final_text }}</p>
+                  <p class="reply-row__meta">
+                    {% if reply.status == 'sent' %}Sent by Hooky {{ reply.sent_at|date:"j M, H:i" }}
+                    {% elif reply.status == 'queued' or reply.status == 'sending' %}Goes out around {{ reply.scheduled_for|date:"j M, H:i" }}
+                    {% elif reply.status == 'rejected' %}Discarded, not sent
+                    {% elif reply.status == 'failed' %}Not sent{% endif %}
+                  </p>
+                </div>
+              </div>
+            {% else %}
+              <p class="reply-card__note">Not answered. {{ reply.decision.reason }}</p>
+            {% endif %}
+
+            {% if reply.error %}<p class="job__error">{{ reply.error }}</p>{% endif %}
             {% if reply.status == 'failed' %}
-              <form method="post" action="{% url 'api-reply-retry' reply.pk %}" class="inline-form" data-api data-replace=".reply-card">
+              <form method="post" action="{% url 'api-reply-retry' reply.pk %}" class="reply-card__retry" data-api data-replace=".reply-card">
                 {% csrf_token %}
                 <button type="submit" class="btn btn--secondary btn--sm">Try again</button>
               </form>
             {% endif %}
-          {% endif %}
-        </li>
+
+            {% if reply.status != 'pending_review' and reply.final_text and confidence is not None %}
+              <p class="reply-card__note">
+                Hooky was
+                {% if confidence >= 0.8 %}sure{% elif confidence >= 0.5 %}fairly sure{% else %}not sure{% endif %}:
+                {{ reply.decision.reason }}
+              </p>
+            {% endif %}
+          </li>
+        {% endwith %}
       {% endfor %}
     </ul>
   {% endif %}

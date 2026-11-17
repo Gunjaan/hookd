@@ -114,6 +114,13 @@ def reply_counts_for_user(user) -> dict[str, int]:
     return {row["status"]: row["total"] for row in rows}
 
 
+def sent_reply_count(account: SocialAccount, since: datetime | None = None) -> int:
+    replies = CommentReply.objects.filter(comment__account=account, status=ReplyStatus.SENT)
+    if since is not None:
+        replies = replies.filter(sent_at__gte=since)
+    return replies.count()
+
+
 def pending_review_count(user) -> int:
     return CommentReply.objects.filter(comment__account__user=user, status=ReplyStatus.PENDING_REVIEW).count()
 

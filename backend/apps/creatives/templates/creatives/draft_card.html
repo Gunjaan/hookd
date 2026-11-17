@@ -1,22 +1,18 @@
-{# Arguments: creative (with prefetched slides). #}
+{# Arguments: creative (with prefetched slides). One tile of the drafts grid, same shape as the profile posts. #}
 {% with slides=creative.slides.all %}
-  <li class="post-card draft-card">
-    <a href="{% url 'creative-detail' creative.pk %}" class="post-card__link">
-      <div class="post-card__media draft-card__media">
-        {% with cover=slides.0 %}
-          {% if cover and cover.image %}
-            <img src="{% url 'creative-file' 'slide' cover.pk %}" alt="" loading="lazy" />
-          {% elif creative.is_working %}
-            <span class="draft-card__working"><span class="spinner spinner--md" aria-hidden="true"></span>Making your photos</span>
-          {% endif %}
-        {% endwith %}
-        {% if slides|length > 1 %}<span class="badge badge--neutral post-card__type">Carousel, {{ slides|length }} photos</span>{% endif %}
-      </div>
-      <div class="post-card__body">
-        <span class="badge badge--{% if creative.status == 'ready' %}success{% elif creative.status == 'failed' %}danger{% elif creative.status == 'published' %}info{% else %}warning{% endif %}">{{ creative.get_status_display }}</span>
-        <p class="post-card__caption">{{ creative.caption|default:creative.get_look_display|truncatechars:90 }}</p>
-        <p class="hint">{{ creative.created_at|date:"j M, H:i" }}</p>
-      </div>
+  <li class="post-tile">
+    <a href="{% url 'creative-detail' creative.pk %}" class="post-tile__link" aria-label="{{ creative.get_status_display }}: {{ creative.caption|default:creative.get_look_display|truncatechars:90 }}">
+      <span class="post-tile__fallback" aria-hidden="true">{{ creative.caption|default:creative.get_look_display|truncatechars:90 }}</span>
+      {% with cover=slides.0 %}
+        {% if cover and cover.image %}
+          <img src="{% url 'creative-file' 'slide' cover.pk %}" alt="" loading="lazy" />
+        {% elif creative.is_working %}
+          <span class="post-tile__working"><span class="spinner spinner--md" aria-hidden="true"></span>Making your photos</span>
+        {% endif %}
+      {% endwith %}
+      <span class="badge badge--{% if creative.status == 'ready' %}success{% elif creative.status == 'failed' %}danger{% elif creative.status == 'published' %}info{% else %}warning{% endif %} post-tile__status">{{ creative.get_status_display }}</span>
+      {% if slides|length > 1 %}<span class="post-tile__type" title="Carousel, {{ slides|length }} photos">{% include "components/icon.html" with name="carousel" size=20 %}</span>{% endif %}
+      <span class="post-tile__overlay" aria-hidden="true"><span>{{ creative.created_at|date:"j M, H:i" }}</span></span>
     </a>
   </li>
 {% endwith %}

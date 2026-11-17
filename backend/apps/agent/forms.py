@@ -4,23 +4,39 @@ TEXT_MAX_LENGTH = 5000
 PREVIEW_MAX_LENGTH = 2200
 
 
+class AgentEnabledForm(forms.Form):
+    """The on or off switch at the top of the agent page, saved as soon as it is flipped."""
+
+    enabled = forms.BooleanField(required=False, label="Auto replies")
+
+
 class AgentSettingsForm(forms.Form):
-    enabled = forms.BooleanField(
-        required=False, label="Reply to new comments automatically",
-        help_text="Replies go out on their own when your brains have the answer. When they do not, the draft waits "
-        "in your inbox for approval.",
+    knowledge = forms.CharField(
+        required=False, max_length=TEXT_MAX_LENGTH, label="Facts, one per line",
+        help_text="Prices, sizes, delivery, returns, how to order. Hooky replies on its own only when the answer is "
+        "here, otherwise it drafts the reply for you to approve.",
+        widget=forms.Textarea(attrs={
+            "rows": 7,
+            "placeholder": "Free shipping above Rs 999\nReturns within 7 days\nCash on delivery available\nOrder on hookd.world/shop",
+        }),
     )
     voice = forms.CharField(
-        required=False, max_length=TEXT_MAX_LENGTH, label="How should replies sound?",
+        required=False, max_length=TEXT_MAX_LENGTH, label="Describe the voice",
         widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Friendly and short, Hinglish is fine, max 1 emoji"}),
-    )
-    knowledge = forms.CharField(
-        required=False, max_length=TEXT_MAX_LENGTH, label="What should the agent know?",
-        widget=forms.Textarea(attrs={"rows": 5, "placeholder": "Free shipping above Rs 999\nReturns within 7 days\nOrder on hookd.world/shop"}),
     )
     reply_to_threads = forms.BooleanField(
         required=False, label="Also answer replies inside comment threads",
     )
+
+
+# One tap styles for the voice box on the agent page: (chip label, text added to the voice).
+VOICE_PICKS = (
+    ("Friendly", "Warm and friendly."),
+    ("Playful", "Playful and fun."),
+    ("Short", "Keep replies short, one or two lines."),
+    ("Their language", "Reply in the language the buyer writes in."),
+    ("Few emoji", "At most one emoji."),
+)
 
 
 class PostBrainForm(forms.Form):
@@ -39,6 +55,9 @@ class PreviewForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 2, "placeholder": "bhai M size available hai?"}),
     )
     post = forms.TypedChoiceField(coerce=int, required=False, empty_value=None, label="On post")
+    # The agent page sends its unsaved voice and brain along, so the test uses what the creator just typed.
+    voice = forms.CharField(required=False, max_length=TEXT_MAX_LENGTH)
+    knowledge = forms.CharField(required=False, max_length=TEXT_MAX_LENGTH)
 
     def __init__(self, *args, posts=(), **kwargs):
         super().__init__(*args, **kwargs)

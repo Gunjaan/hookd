@@ -4,16 +4,16 @@
  */
 :root {
   /* Surfaces */
-  --color-bg: #f6f6f8;
+  --color-bg: var(--color-cream); /* the landing page cream */
   --color-surface: #ffffff;
-  --color-surface-muted: #f0f1f4;
-  --color-border: #e3e4e9;
-  --color-border-strong: #cdd0d8;
+  --color-surface-muted: #f6f0e4;
+  --color-border: #ece4d4;
+  --color-border-strong: #d9cfbd;
 
   /* Text */
   --color-text: #14151a;
-  --color-text-muted: #5b5f6d;
-  --color-text-subtle: #8a8e9b;
+  --color-text-muted: #635e56;
+  --color-text-subtle: #958e83;
   --color-text-inverse: #ffffff;
 
   /* Brand */
@@ -114,13 +114,14 @@
   --radius-full: 999px;
   --shadow-sm: 0 1px 2px rgb(20 21 26 / 6%);
   --shadow-md: 0 4px 16px rgb(20 21 26 / 8%);
+  --overlay-media: rgb(20 21 26 / 45%);
   --radius-xl: 28px;
   --radius-2xl: 40px;
   --radius-phone: 15.8% / 7.8%; /* corners of the phone frame in img/hero-reels.jpg */
 
   /* Brand logo (components/brand_logo.html) */
   --logo-height: 1.375rem;
-  --focus-ring: 0 0 0 3px rgb(255 79 43 / 25%);
+  --focus-ring: 0 0 0 3px rgb(219 39 119 / 25%);
 
   /* Motion */
   --transition-fast: 120ms ease;
@@ -133,9 +134,18 @@
   --highlight-radius: 16px;
 
   /* Layout */
-  --sidebar-width: 232px;
-  --content-max-width: 960px;
+  --sidebar-width: 248px;
+  --nav-height: 60px; /* top bar on phones */
+  --tabbar-height: 64px; /* app nav as a bottom bar on phones */
+  --profile-avatar: 150px;
+  --profile-avatar-sm: 86px;
+  --highlight-size: 68px;
+  --highlight-size-sm: 56px;
+  --content-max-width: 935px;
   --content-narrow-width: 640px;
+  --content-medium-width: 760px; /* reply inbox */
+  --modal-width: 880px;
+  --photo-viewer-width: 520px;
   --media-max-height: 70vh;
   --preview-width: 440px; /* post studio Instagram preview */
   --thumb-size: 72px;

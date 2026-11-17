@@ -16,29 +16,6 @@
   padding: 0 var(--space-5);
 }
 
-.landing .btn {
-  border-radius: var(--radius-full);
-  font-weight: var(--weight-semibold);
-}
-
-.landing .btn--primary {
-  background: var(--color-ink);
-}
-
-.landing .btn--primary:not(:disabled):hover {
-  background: var(--color-ink-soft);
-}
-
-.landing .btn--secondary {
-  border-color: var(--color-ink);
-  background: transparent;
-  color: var(--color-ink);
-}
-
-.landing .btn--secondary:not(:disabled):hover {
-  background: var(--color-surface);
-}
-
 .eyebrow {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
@@ -329,56 +306,7 @@
   gap: var(--space-3);
 }
 
-.thread .bubble {
-  max-width: 92%;
-  box-shadow: var(--shadow-md);
-  animation: landing-rise var(--transition-reveal) both;
-}
-
-.thread .bubble:nth-child(2) {
-  animation-delay: 0.5s;
-}
-
-.thread .bubble:nth-child(3) {
-  animation-delay: 1s;
-}
-
-.thread .bubble:nth-child(4) {
-  animation-delay: 1.5s;
-}
-
-.bubble {
-  max-width: 16rem;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  color: var(--color-ink);
-}
-
-.bubble p {
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-}
-
-.bubble--agent {
-  align-self: flex-end;
-  background: var(--color-ink);
-  color: var(--color-text-inverse);
-}
-
-.bubble__who {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--color-text-subtle);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-}
-
-.bubble--agent .bubble__who {
-  color: var(--color-blush);
-}
-
-.stage-tag {
+.thread .stage-tag {
   display: inline-block;
   margin-left: var(--space-1);
   padding: 0 var(--space-2);
@@ -391,96 +319,6 @@
 
 .stage-tag--inverse {
   background: var(--color-blush);
-}
-
-/* Mascot (core/mascot.html) */
-.mascot {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-.mascot--xs {
-  width: 28px;
-}
-
-.mascot--md {
-  max-width: 220px;
-}
-
-.mascot__ring,
-.mascot__body {
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.mascot__ring--5 {
-  fill: var(--color-mascot-ring-5);
-  stroke: var(--color-mascot-ring-5);
-  stroke-width: 66;
-  opacity: 0.55;
-}
-
-.mascot__ring--4 {
-  fill: var(--color-mascot-ring-4);
-  stroke: var(--color-mascot-ring-4);
-  stroke-width: 54;
-}
-
-.mascot__ring--3 {
-  fill: var(--color-mascot-ring-3);
-  stroke: var(--color-mascot-ring-3);
-  stroke-width: 42;
-}
-
-.mascot__ring--2 {
-  fill: var(--color-mascot-ring-2);
-  stroke: var(--color-mascot-ring-2);
-  stroke-width: 30;
-}
-
-.mascot__ring--1 {
-  fill: var(--color-mascot-ring-1);
-  stroke: var(--color-mascot-ring-1);
-  stroke-width: 18;
-}
-
-.mascot__body {
-  fill: var(--color-mascot);
-  stroke: var(--color-mascot);
-  stroke-width: 7;
-}
-
-.mascot--xs .mascot__ring {
-  display: none;
-}
-
-.mascot__eye {
-  fill: var(--color-ink);
-}
-
-.mascot__shine {
-  fill: var(--color-surface);
-}
-
-.mascot__cheek {
-  fill: var(--color-mascot-cheek);
-}
-
-.mascot__smile {
-  fill: none;
-  stroke: var(--color-ink);
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.mascot__float {
-  animation: mascot-float 4s ease-in-out infinite;
-}
-
-.mascot--xs .mascot__float {
-  animation: none;
 }
 
 /* Section intros */
@@ -1492,16 +1330,9 @@
   stroke-linejoin: round;
 }
 
-@keyframes mascot-float {
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .hero-flow__step,
-  .thread .bubble,
-  .mascot__float {
+  .thread .bubble {
     animation: none;
   }
 }

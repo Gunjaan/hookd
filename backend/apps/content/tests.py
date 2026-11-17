@@ -150,7 +150,7 @@ class DashboardTests(StudioTestCase):
         )
         data = self.client.get(reverse("api-account-posts", args=[self.account.pk]), {"after": "CUR1"}).json()
         self.assertIn("Post 11", data["html"])
-        self.assertIn('class="post-card"', data["html"])
+        self.assertIn('class="post-tile"', data["html"])
         self.assertEqual(data["next"], reverse("api-account-posts", args=[self.account.pk]) + "?after=CUR2")
         self.assertEqual(self.graph.count("GET", f"{IG_ID}/insights"), 0)
 
@@ -267,6 +267,17 @@ class PostDetailTests(StudioTestCase):
         self.assertContains(response, "Show comments")
         self.assertEqual(self.graph.calls, [])
 
+    def test_post_preview_json_for_the_modal(self):
+        post = self.make_post(caption="Silk saree drop")
+        url = reverse("api-post-preview", args=[post.pk])
+        html = self.client.get(url).json()["html"]
+        self.assertIn("Silk saree drop", html)
+        self.assertIn("Video brain", html)
+        self.assertIn(reverse("post-detail", args=[post.pk]), html)
+        self.assertEqual(self.graph.calls, [])
+        self.client.force_login(create_user(email="other@example.com", password="a-strong-pass-123"))
+        self.assertEqual(self.client.get(url).status_code, 404)
+
     def test_comments_load_one_page_and_are_stored(self):
         post = self.make_post()
         self.graph.on(
@@ -281,7 +292,7 @@ class PostDetailTests(StudioTestCase):
             },
         )
         data = self.client.get(reverse("api-post-comments", args=[post.pk])).json()
-        self.assertIn("@fan", data["html"])
+        self.assertIn('<span class="comment__author">fan</span>', data["html"])
         self.assertIn("Love it", data["html"])
         self.assertEqual(data["next"], reverse("api-post-comments", args=[post.pk]) + "?after=C2")
         self.assertEqual(data["count"], 2)

@@ -3,8 +3,8 @@
   {% for value, label, count in tabs %}
     <a
       href="?status={{ value }}"
-      class="tabs__link{% if value == status %} tabs__link--active{% endif %}"
+      class="tabs__link{% if value == status %} tabs__link--active{% elif not count %} tabs__link--empty{% endif %}"
       {% if value == status %}aria-current="page"{% endif %}
-    >{{ label }} ({{ count }})</a>
+    >{{ label }} <span class="tabs__count">{{ count }}</span></a>
   {% endfor %}
 </nav>

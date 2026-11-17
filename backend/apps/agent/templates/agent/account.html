@@ -3,21 +3,7 @@
 {% block title %}Reply agent{% endblock %}
 
 {% block content %}
-  <div class="studio studio--narrow">
-    <header class="page-header">
-      <div class="studio__account">
-        {% include "components/avatar.html" with src=account.avatar_url name=account.username size=48 %}
-        <div>
-          <h1 class="page-header__title">Reply agent</h1>
-          <p class="page-header__description">Answers comments on @{{ account.username }} for you.</p>
-        </div>
-      </div>
-      <div class="page-header__actions">
-        <a href="{% url 'agent-preview' account.pk %}" class="btn btn--secondary btn--md">Try a comment</a>
-        <a href="{% url 'agent-inbox' %}" class="btn btn--primary btn--md">Open replies</a>
-      </div>
-    </header>
-
+  <div class="studio agent-page">
     {% if accounts|length > 1 %}
       <nav class="tabs" aria-label="Accounts">
         {% for item in accounts %}
@@ -25,7 +11,7 @@
             href="{% url 'agent-account' item.pk %}"
             class="tabs__link{% if item.pk == account.pk %} tabs__link--active{% endif %}"
             {% if item.pk == account.pk %}aria-current="page"{% endif %}
-          >@{{ item.username }}</a>
+          >{% include "components/avatar.html" with src=item.avatar_url name=item.username size=22 %}@{{ item.username }}</a>
         {% endfor %}
       </nav>
     {% endif %}
@@ -35,52 +21,72 @@
     {% if not supports_replies %}
       <div class="alert alert--warning"><div class="alert__body">{{ account.get_platform_display }} replies are not supported yet.</div></div>
     {% endif %}
-    {% if is_paused %}
-      <div class="alert alert--warning">
-        <div class="alert__body">Sending is paused until {{ profile.paused_until|date:"j M, H:i" }} because {{ account.get_platform_display }} asked Hookd to slow down: {{ profile.pause_reason }}</div>
-      </div>
-    {% endif %}
 
-    <form method="post" action="{% url 'api-agent-settings' account.pk %}" class="story" data-api data-busy-scope>
-      {% csrf_token %}
+    {% include "agent/status_bar.html" %}
 
-      <section class="card card--padded story-step" aria-labelledby="step-on-title">
-        <span class="story-step__number" aria-hidden="true">1</span>
-        <div class="story-step__body">
-          <h2 id="step-on-title" class="section-title">Turn on auto replies</h2>
-          {% include "components/checkbox_field.html" with field=form.enabled %}
-        </div>
-      </section>
+    <div class="agent-layout">
+      <form id="agent-settings" method="post" action="{% url 'api-agent-settings' account.pk %}" class="agent-settings" data-api data-unsaved="agent-unsaved" data-busy-scope>
+        {% csrf_token %}
 
-      <section class="card card--padded story-step" aria-labelledby="step-voice-title">
-        <span class="story-step__number" aria-hidden="true">2</span>
-        <div class="story-step__body">
-          <h2 id="step-voice-title" class="section-title">Replies sound like you</h2>
-          {% include "components/textarea_field.html" with field=form.voice %}
+        <section class="agent-card" aria-labelledby="knows-title">
+          <div>
+            <h2 id="knows-title" class="section-title">What Hooky <em>knows</em></h2>
+            <p class="agent-card__lede">The answers buyers ask for most. This is what lets Hooky reply without you.</p>
+          </div>
           {% include "components/textarea_field.html" with field=form.knowledge %}
-          {% include "components/checkbox_field.html" with field=form.reply_to_threads %}
-        </div>
-      </section>
+        </section>
 
-      <section class="card card--padded story-step" aria-labelledby="step-safe-title">
-        <span class="story-step__number" aria-hidden="true">3</span>
-        <div class="story-step__body">
-          <h2 id="step-safe-title" class="section-title">Sent slowly to keep your account safe</h2>
-          <details class="story-step__details">
-            <summary>How Hookd keeps you safe</summary>
-            <ul class="agent-limits">
-              <li>One reply at a time, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart. At most {{ limits.MAX_PER_HOUR }} an hour and {{ limits.MAX_PER_DAY }} a day.</li>
-              <li>The same reply sent again and again waits for your approval instead.</li>
-              <li>Only comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, and never your own.</li>
-              <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>
-            </ul>
-          </details>
-        </div>
-      </section>
+        <section class="agent-card" aria-labelledby="sounds-title">
+          <div>
+            <h2 id="sounds-title" class="section-title">How Hooky <em>sounds</em></h2>
+            <p class="agent-card__lede">Tap a style to add it, or write your own.</p>
+          </div>
+          <div class="chips" role="group" aria-label="Voice styles">
+            {% for label, text in voice_picks %}
+              <button type="button" class="chip" data-append-to="{{ form.voice.auto_id }}" data-text="{{ text }}">+ {{ label }}</button>
+            {% endfor %}
+          </div>
+          {% include "components/textarea_field.html" with field=form.voice %}
+        </section>
 
-      <div class="story__actions">
-        <button type="submit" class="btn btn--primary btn--md">Save changes</button>
-      </div>
-    </form>
+        <section class="agent-card" aria-labelledby="which-title">
+          <div>
+            <h2 id="which-title" class="section-title">Which <em>comments</em></h2>
+            <p class="agent-card__lede">New comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, never your own.</p>
+          </div>
+          {% include "components/checkbox_field.html" with field=form.reply_to_threads switch=True %}
+        </section>
+
+        <div id="agent-unsaved" class="save-bar" hidden>
+          <p class="save-bar__text">You have unsaved changes</p>
+          <button type="reset" class="btn btn--ghost btn--md">Discard</button>
+          <button type="submit" class="btn btn--primary btn--md">Save changes</button>
+        </div>
+      </form>
+
+      <aside id="try" class="agent-try" aria-labelledby="try-title">
+        <div>
+          <h2 id="try-title" class="section-title">Try <em>it</em></h2>
+          <p class="agent-card__lede">Comment like a buyer would. Uses what you typed on the left, even before saving. Nothing is sent.</p>
+        </div>
+        <section id="preview-result" class="agent-try__result" aria-labelledby="preview-result-title" aria-live="polite" hidden></section>
+        <form method="post" action="{% url 'api-agent-preview' account.pk %}" class="agent-try__form" data-api data-target="preview-result" data-include="agent-settings" data-busy-scope>
+          {% csrf_token %}
+          {% include "components/textarea_field.html" with field=preview_form.text %}
+          {% include "components/select_field.html" with field=preview_form.post %}
+          <button type="submit" class="btn btn--primary btn--md">Try it</button>
+        </form>
+      </aside>
+    </div>
+
+    <details class="agent-safety">
+      <summary>Sent slowly to keep your account safe: at most {{ limits.MAX_PER_HOUR }} replies an hour. <span class="agent-safety__more">How it works</span></summary>
+      <ul class="agent-limits">
+        <li>One reply at a time, at least {{ limits.MIN_SPACING_SECONDS }} seconds apart. At most {{ limits.MAX_PER_HOUR }} an hour and {{ limits.MAX_PER_DAY }} a day.</li>
+        <li>The same reply sent again and again waits for your approval instead.</li>
+        <li>Only comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, and never your own.</li>
+        <li>If {{ account.get_platform_display }} asks Hookd to slow down, sending pauses for {{ limits.RATE_LIMIT_PAUSE_MINUTES }} minutes.</li>
+      </ul>
+    </details>
   </div>
 {% endblock %}

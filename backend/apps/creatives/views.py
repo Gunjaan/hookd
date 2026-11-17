@@ -5,6 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.utils.formats import date_format
+from django.utils.timezone import localtime
 from django.views.decorators.http import require_POST
 
 from apps.content.views import announce_publish_job
@@ -56,6 +58,58 @@ def can_change_photos(creative) -> bool:
     return creative.status in (creative.Status.READY, creative.Status.FAILED) and bool(creative.brief)
 
 
+def draft_story(creative, slides: list) -> list[dict]:
+    """The five steps from product photo to a trained agent, each `done`, `active` (where the draft is now) or `todo`."""
+    status = creative.Status
+    photos_ready = bool(slides) and all(slide.status == slide.Status.READY for slide in slides)
+    making = creative.is_working or any(slide.status == slide.Status.PENDING for slide in slides)
+    posted = creative.status == status.PUBLISHED
+    job = creative.publish_job
+    answered = len(creative.answered_questions)
+    sources = len(creative.sources.all())
+
+    if making:
+        photos = ("active", "Making them now")
+    elif photos_ready:
+        photos = ("done", f"{len(slides)} photo{'s' if len(slides) != 1 else ''}, {creative.get_look_display().lower()}")
+    else:
+        photos = ("active", "Some did not work, redo them")
+
+    if creative.caption:
+        caption = ("done", "Posted with it" if posted else "Written, edit it any time")
+    else:
+        caption = ("todo", "Written with the photos")
+
+    if posted and job:
+        when = date_format(localtime(job.published_at or job.created_at), "j M")
+        posted_step = {
+            job.Status.PUBLISHED: ("done", f"@{job.account.username}, {when}"),
+            job.Status.PROCESSING: ("active", f"Processing on @{job.account.username}"),
+        }.get(job.status, ("active", "Did not go out, see below"))
+    elif creative.status == status.READY:
+        posted_step = ("active", "Post when you are happy")
+    else:
+        posted_step = ("todo", "Once the photos are done")
+
+    live = posted and job is not None and job.status == job.Status.PUBLISHED
+    if creative.brain_saved_at and answered:
+        brain = ("done", f"{answered} answer{'s' if answered != 1 else ''} saved for replies")
+    elif live:
+        brain = ("active", "No answers yet, Hooky asks you")
+    elif posted:
+        brain = ("todo", "Saved as soon as the post is live")
+    else:
+        brain = ("todo", "Answer the questions, saved when posted")
+
+    return [
+        {"title": "Your photo", "state": "done", "detail": f"{sources} added" if sources != 1 else "1 added"},
+        {"title": "Hookd made photos", "state": photos[0], "detail": photos[1]},
+        {"title": "Caption and hashtags", "state": caption[0], "detail": caption[1]},
+        {"title": "Posted", "state": posted_step[0], "detail": posted_step[1]},
+        {"title": "Hooky knows it", "state": brain[0], "detail": brain[1]},
+    ]
+
+
 def draft_state(request, creative, slides: list) -> dict:
     """What the draft page shows about progress. Rendered into the page and sent as JSON by the progress endpoint."""
     rendering = any(slide.status == slide.Status.PENDING for slide in slides)
@@ -76,9 +130,13 @@ def draft_state(request, creative, slides: list) -> dict:
             "can_change_photos": changeable, "tweak_max_length": TWEAK_MAX_LENGTH,
         }
         items.append({"id": slide.pk, "key": key, "html": render_to_string("creatives/slide.html", context, request=request)})
+    story_html = render_to_string(
+        "creatives/story.html", {"creative": creative, "story": draft_story(creative, slides)}, request=request
+    )
     return {
         "status": creative.status,
         "title": TITLES.get(creative.status, "Making your post"),
+        "story": story_html,
         "working": creative.is_working,
         "can_post": creative.status == creative.Status.READY,
         "alert": alert,

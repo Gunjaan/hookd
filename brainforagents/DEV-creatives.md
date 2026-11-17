@@ -28,7 +28,10 @@ image model renders. Claude replaces the copy engine later with one new file (se
    reloads the page once (the whole draft layout appears).
    `expire_stale_work` (run on every view) fails planning or slides pending longer than 5 minutes (lost worker
    task), so the page never spins forever.
-   The draft page shows the seller's own photos ("Your photos", the `CreativeSource` files) in every state.
+   The draft page opens with the draft story (`views.draft_story`, `creatives/story.html`): five steps, Your photo
+   (the first `CreativeSource` as its marker), Hookd made photos, Caption and hashtags, Posted, Hooky knows it, each
+   `done`, `active` (where the draft is now, `aria-current="step"`) or `todo` with a one line detail, so the seller
+   always sees where the post stands and what comes next.
 6. Editing happens **in place, no page reload** (`api.py`, `[data-draft]` in `app.js`), so edits are never wiped.
    Buttons carry `data-draft-action="<api url>"` and POST the `#draft-form` fields (caption, hashtags, answers
    `answer_0..5` joined with `form="draft-form"`, rewrite instruction); a redo adds its slide's change text as `tweak`.
@@ -41,7 +44,8 @@ image model renders. Claude replaces the copy engine later with one new file (se
    normalized values back. "Rewrite" (`rewrite_caption`) saves the posted copy and answers, then makes one text only
    call from the stored brief and the edited caption, no photos resent.
    Draft state (`views.draft_state`, used by the page and the endpoints): `status`, `title`, `working`, `can_post`,
-   `alert` (`kind`, `text`) and `slides` (`id`, `key`, `html` from `creatives/slide.html`). The page swaps a slide only
+   `alert` (`kind`, `text`), `story` (the story strip html, swapped into `[data-draft-story]`) and `slides` (`id`, `key`,
+   `html` from `creatives/slide.html`). The page swaps a slide only
    when its `key` (status, update time, versions, whether photos can change) differs, and toggles "Post now".
 7. "Post now" is the one real form post (`#draft-form` action `creative-publish`, submitted by app.js): saves the edited copy, then `publish_creative` sends the
    ready slides as JPEG uploads to `content.services.create_publish_job` (`image` for one slide, `carousel` for
@@ -151,7 +155,7 @@ Files (sources, slides, versions) are deleted with the draft (`model_querysets.d
 | Route | Name | Page |
 |---|---|---|
 | `GET/POST /studio/publishing/new/` | `creative-new` | Four numbered `story-step` cards: photos (dropzone with thumbnails via app.js, tips), look cards, format cards, notes |
-| `GET /studio/publishing/drafts/<id>/` | `creative-detail` | "Your photos" (the uploads) on top. Planning: progress steps. Planning and generating: polls `api-draft-progress`. Ready: Instagram style preview (account, scroll-snap carousel with 1/3 badges, per slide "Redo this photo" with optional change, Download and "Earlier versions", caption preview) beside one form with caption (character counter), hashtags, account select, "Save draft" (JSON) and "Post now" (form post), then a "Teach your reply agent" card (one input per question, prefilled when the notes said it, "Saved for this post" or "Saved for all your posts"), then a "Rewrite" field (JSON, sends the draft form). Posted: "Your reply agent knows" with the saved facts and a link to edit them on the post. "Delete draft" with confirm |
+| `GET /studio/publishing/drafts/<id>/` | `creative-detail` | The draft story strip on top (the first step's photo and its "View" link open the uploads in the photo viewer). Planning: progress steps. Planning and generating: polls `api-draft-progress`. Ready: Instagram style preview (account, carousel with 1/3 badges, previous and next buttons over the photo and dots (`.carousel`), per slide "Redo this photo" with optional change, Download and "Earlier versions", caption preview) beside one form with caption (character counter), hashtags, account select, "Save draft" (JSON) and "Post now" (form post), then a "Teach your reply agent" card (one input per question, prefilled when the notes said it, "Saved for this post" or "Saved for all your posts"), then a "Rewrite" field (JSON, sends the draft form). Posted: the header has "View post" (the post modal) and "Instagram" (permalink) when the job's post is linked; the side shows "Post status" inline (`content/job_item.html`: status badge, error, "Check status" while processing, "View post" in the modal) instead of sending the seller to the publishing list, then "What Hooky knows" with the saved answers and "Add or edit facts" (post modal), or "Teach Hooky" (agent page) when the post link is gone. "Delete draft" with confirm (the post stays on Instagram) |
 | `POST .../drafts/<id>/publish/`, `/delete/` | `creative-publish`, `creative-delete` | Publish saves the copy and goes to the publishing list, delete goes to publishing |
 | `GET /api/drafts/<id>/progress/` | `api-draft-progress` | Draft state JSON (runs `expire_stale_work`) |
 | `POST /api/drafts/<id>/copy/` | `api-draft-copy` | Save draft: `{caption, hashtags, full_caption, message}` |

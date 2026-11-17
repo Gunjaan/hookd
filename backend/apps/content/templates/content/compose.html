@@ -4,7 +4,7 @@
 
 {% block content %}
   <div class="studio studio--narrow">
-    <a href="{% url 'studio-account' account.pk %}" class="back-link">Back to @{{ account.username }}</a>
+    <a href="{% url 'studio-account' account.pk %}" class="back-link">{% include "components/icon.html" with name="back" size=18 %}@{{ account.username }}</a>
     <header class="page-header">
       <div>
         <h1 class="page-header__title">New post</h1>

@@ -25,6 +25,12 @@ Paging is JSON (`api.py`): `GET /api/accounts/<id>/posts/?after=` answers `{html
 posts" and the post page's "Show comments" (then "Load more comments", "No comments." when empty) are
 `<button data-load-more>` (`DEV-web.md`).
 
+`GET /api/posts/<id>/preview/` (`api-post-preview`) answers `{html}` from `post_modal.html`: the stored post (media,
+caption, counts, date, no platform call) with its Video brain form and links to the full post and the platform. The
+reply inbox, the publish job rows ("View post") and the post studio draft page open it in the shared modal
+(`data-modal`), so the creator never leaves the page they are on. `views.post_brain_form`
+builds the Video brain form for the post page and the modal.
+
 Refresh buttons are `<form data-api>` posts to `api.py`: `POST /api/accounts/<id>/posts/refresh/` re-syncs recent posts
 (`force=True`) and answers `{html}` from `post_list.html` into `#recent-posts`; `POST /api/posts/<id>/insights/refresh/`
 refetches insights and answers `{html}` from `post_insights.html` into `#post-insights` (an error renders inside it);
@@ -112,21 +118,32 @@ The publishing page lists the user's drafts (`creatives.services.list_creatives`
 `model_querysets.py`: `upsert_post`, `posts_in_order`, `delete_posts_missing_since`, `get_post_for_user`,
 `save_post_insights`, `create_publish_job`, `create_publish_asset`, `set_publish_id`, `mark_publish_job_published`,
 `mark_publish_job_failed`, `delete_publish_assets`, `list_publish_assets`, `processing_publish_jobs`,
-`get_publish_job`, `list_publish_jobs_for_user`, `get_publish_job_for_user`, `find_servable_asset`, `find_post`
-and `latest_posts` (used by the reply agent).
+`get_publish_job`, `list_publish_jobs_for_user`, `get_publish_job_for_user`, `find_servable_asset`, `find_post`,
+`latest_posts` and `posts_for_user_by_external_id` (used by the reply agent).
 
 Errors (`exceptions.py`): `PostNotFound`, `PublishJobNotFound`, `PublishingUnavailable`, `PublishQuotaReached`.
 
 ## Templates and filters
+
+The studio home (`dashboard.html`) is laid out like an Instagram profile, since Hookd is a manager, not an analytics tool:
+avatar (Hooky's glow ring and a Hooky badge while the agent is on), username with "Create post" (post studio), "Upload"
+(compose, when the account can publish) and a refresh icon button, stats (posts from `metadata.media_count`, followers,
+"replies by Hooky" from `agent.services.sent_reply_count`), a bio line with the agent status, story highlight style shortcuts
+(Replies with the pending count, Agent, Test a reply (the agent page's "Try it" panel, `#try`), Drafts, Accounts), a compact "Last 7 days" row of insights, Posts and
+Drafts tabs, then a 3 column grid of 4:5 tiles (`post_card.html`: likes and comments on hover, reel or carousel icon, a
+pastel caption square when the image is missing or its CDN URL has expired). The view passes `agent_on` and
+`replies_sent`. The post page (`post_detail.html`) is an Instagram style post view (media, header, caption, comments,
+likes and comments counts), then the Video brain (lilac panel) and Insights (butter panel). The publishing page is titled
+"Create" in the nav: a post studio intro card, drafts as the same grid tiles (`creatives/draft_card.html`), then publish jobs.
 
 The post detail page also shows the **Video brain** card from the reply agent: a `PostBrainForm` (facts and the per post
 agent switch) posting with fetch to `api-agent-post-brain` (`DEV-agent.md`). Facts there let the agent answer this post's comments
 on its own.
 
 `templates/content/`: `dashboard.html`, `post_list.html`, `post_card.html`, `metric_tiles.html`, `post_detail.html`,
-`post_insights.html`, `comment_item.html`, `compose.html`, `publishing.html`, `job_item.html`.
+`post_modal.html`, `post_insights.html`, `comment_item.html`, `compose.html`, `publishing.html`, `job_item.html`.
 `templatetags/content_ui.py`: `metric_display` (counts with separators, durations as `6.5s`, `2m 5s`, `1h 3m`),
-`job_tone` (badge tone per job status). Views pass `nav_section` (`studio` or `publishing`) for the sidebar.
+`job_tone` (badge tone per job status). Views pass `nav_section` (`studio` or `publishing`) for the side panel.
 
 ## Task and management command
 

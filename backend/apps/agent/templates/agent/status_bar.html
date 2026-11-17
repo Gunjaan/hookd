@@ -1,0 +1,24 @@
+{# Arguments: account, profile, enabled_form, is_paused, sent_this_week, agent_pending_count (views.status_context). Redrawn by api.account_enabled. #}
+<section id="agent-status" class="agent-status{% if profile.enabled %} agent-status--on{% endif %}" aria-label="Agent status">
+  <span class="agent-status__mascot">{% include "core/mascot.html" with uid="status" size="xs" %}</span>
+  <div class="agent-status__text">
+    <p class="agent-status__title">Hooky is {% if profile.enabled %}on{% else %}off{% endif %} <span class="agent-status__account">for @{{ account.username }}</span></p>
+    <p class="agent-status__meta">
+      {% if profile.enabled %}Replies on its own when it knows the answer, drafts the rest for you{% else %}New comments are not answered. Turn it on to start{% endif %}
+      · {{ sent_this_week }} sent this week
+    </p>
+    {% if is_paused %}
+      <p class="agent-status__paused">Sending is paused until {{ profile.paused_until|date:"j M, H:i" }} because {{ account.get_platform_display }} asked Hookd to slow down: {{ profile.pause_reason }}</p>
+    {% endif %}
+  </div>
+  {% if agent_pending_count %}
+    <a href="{% url 'agent-inbox' %}" class="agent-status__pending"><strong>{{ agent_pending_count }}</strong> repl{{ agent_pending_count|pluralize:"y,ies" }} waiting for you</a>
+  {% endif %}
+  <form method="post" action="{% url 'api-agent-enabled' account.pk %}" class="agent-status__switch" data-api>
+    {% csrf_token %}
+    <label class="checkbox checkbox--switch">
+      <input type="checkbox" name="{{ enabled_form.enabled.html_name }}" role="switch" data-autosubmit{% if profile.enabled %} checked{% endif %} />
+      <span class="visually-hidden">{{ enabled_form.enabled.label }}</span>
+    </label>
+  </form>
+</section>

@@ -1,19 +1,20 @@
-{% load humanize %}{# Arguments: post (Post). #}
-<li class="post-card">
-  <a href="{% url 'post-detail' post.pk %}" class="post-card__link">
-    <div class="post-card__media">
-      {% if post.preview_url %}
-        <img src="{{ post.preview_url }}" alt="" loading="lazy" onerror="this.hidden = true" />
-      {% endif %}
-      <span class="badge badge--neutral post-card__type">{{ post.get_product_type_display }}{% if post.media_type == 'carousel' %} · Carousel{% endif %}</span>
-    </div>
-    <div class="post-card__body">
-      <p class="post-card__caption">{{ post.caption|default:"No caption"|truncatechars:90 }}</p>
-      <p class="post-card__stats">
-        {% if post.like_count is not None %}<span>{{ post.like_count|intcomma }} likes</span>{% endif %}
-        {% if post.comments_count is not None %}<span>{{ post.comments_count|intcomma }} comments</span>{% endif %}
-        {% if post.posted_at %}<span>{{ post.posted_at|date:"j M Y" }}</span>{% endif %}
-      </p>
-    </div>
+{% load humanize %}{# Arguments: post (Post). One square of the profile grid; the numbers show on hover. #}
+<li class="post-tile">
+  <a
+    href="{% url 'post-detail' post.pk %}"
+    class="post-tile__link"
+    aria-label="{{ post.caption|default:'No caption'|truncatechars:90 }}{% if post.like_count is not None %}. {{ post.like_count|intcomma }} likes{% endif %}{% if post.comments_count is not None %}, {{ post.comments_count|intcomma }} comments{% endif %}"
+  >
+    <span class="post-tile__fallback" aria-hidden="true">{{ post.caption|default:"No caption"|truncatechars:90 }}</span>
+    {% if post.preview_url %}<img src="{{ post.preview_url }}" alt="" loading="lazy" onerror="this.hidden = true" />{% endif %}
+    {% if post.product_type == 'reel' or post.media_type == 'video' %}
+      <span class="post-tile__type" title="{{ post.get_product_type_display }}">{% include "components/icon.html" with name="reel" size=20 %}</span>
+    {% elif post.media_type == 'carousel' %}
+      <span class="post-tile__type" title="Carousel">{% include "components/icon.html" with name="carousel" size=20 %}</span>
+    {% endif %}
+    <span class="post-tile__overlay" aria-hidden="true">
+      {% if post.like_count is not None %}<span>{% include "components/icon.html" with name="heart" size=20 %}{{ post.like_count|intcomma }}</span>{% endif %}
+      {% if post.comments_count is not None %}<span>{% include "components/icon.html" with name="chat" size=20 %}{{ post.comments_count|intcomma }}</span>{% endif %}
+    </span>
   </a>
 </li>

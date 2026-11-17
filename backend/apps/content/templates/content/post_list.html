@@ -3,8 +3,10 @@
   <div class="alert alert--danger"><div class="alert__body">{{ posts_error }}</div></div>
 {% elif not page.posts %}
   <div class="empty-state">
-    <p>No posts yet.</p>
-    {% if can_publish %}<a href="{% url 'compose' account.pk %}" class="btn btn--primary btn--md">Create your first post</a>{% endif %}
+    <span class="empty-state__mascot">{% include "core/mascot.html" with uid="no-posts" %}</span>
+    <p class="empty-state__title">No posts yet</p>
+    <p>Make your first one from a product photo. Hooky learns about it while you post.</p>
+    <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Create your first post</a>
   </div>
 {% endif %}
 <ul id="post-grid" class="post-grid">

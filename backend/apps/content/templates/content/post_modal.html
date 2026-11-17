@@ -1,0 +1,47 @@
+{% load humanize %}{# Arguments: post, account, brain_form. Returned by api.post_preview into the shared modal (layouts/app.html). #}
+<article class="post-modal" aria-labelledby="post-modal-title">
+  <div class="post-modal__media">
+    {% if post.media_type == 'video' and post.media_url %}
+      <video src="{{ post.media_url }}" poster="{{ post.thumbnail_url }}" controls preload="none"></video>
+    {% elif post.preview_url %}
+      <img src="{{ post.preview_url }}" alt="" />
+    {% endif %}
+  </div>
+
+  <div class="post-modal__side">
+    <header class="post-view__head">
+      {% include "components/avatar.html" with src=account.avatar_url name=account.username size=32 %}
+      <h2 id="post-modal-title" class="post-view__name">{{ account.username }}</h2>
+      <span class="badge badge--neutral">{{ post.get_product_type_display }}{% if post.media_type == 'carousel' %} · Carousel{% endif %}</span>
+    </header>
+
+    <div class="post-modal__body">
+      <p class="post-modal__caption">{{ post.caption|default:"No caption"|linebreaksbr }}</p>
+      <p class="post-modal__meta">
+        {% if post.like_count is not None %}<span><strong>{{ post.like_count|intcomma }}</strong> likes</span>{% endif %}
+        {% if post.comments_count is not None %}<span><strong>{{ post.comments_count|intcomma }}</strong> comments</span>{% endif %}
+        {% if post.posted_at %}<span>{{ post.posted_at|date:"j M Y" }}</span>{% endif %}
+      </p>
+
+      <section class="panel panel--lilac post-modal__brain" aria-labelledby="post-modal-brain-title">
+        <div>
+          <h3 id="post-modal-brain-title" class="section-title">Video brain</h3>
+          <p class="panel__lede">Facts about this post Hooky can use in replies.</p>
+        </div>
+        <form method="post" action="{% url 'api-agent-post-brain' post.pk %}" class="agent-form" data-api data-busy-scope>
+          {% csrf_token %}
+          {% include "components/textarea_field.html" with field=brain_form.knowledge %}
+          {% include "components/checkbox_field.html" with field=brain_form.agent_enabled switch=True %}
+          <div class="compose__actions">
+            <button type="submit" class="btn btn--primary btn--sm">Save brain</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <footer class="post-modal__foot">
+      <a href="{% url 'post-detail' post.pk %}" class="btn btn--secondary btn--sm">Open full post</a>
+      {% if post.permalink %}<a href="{{ post.permalink }}" target="_blank" rel="noopener" class="btn btn--ghost btn--sm">{% include "components/icon.html" with name="external" size=16 %}View on {{ account.get_platform_display }}</a>{% endif %}
+    </footer>
+  </div>
+</article>

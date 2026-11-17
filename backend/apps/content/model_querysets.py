@@ -124,5 +124,11 @@ def find_post(account: SocialAccount, external_id: str) -> Post | None:
     return Post.objects.filter(account=account, external_id=external_id).first() if external_id else None
 
 
+def posts_for_user_by_external_id(user, external_ids: set[str]) -> dict[tuple[int, str], Post]:
+    """The user's stored posts with these platform ids, keyed by (account pk, external id)."""
+    posts = Post.objects.filter(account__user=user, external_id__in=external_ids) if external_ids else []
+    return {(post.account_id, post.external_id): post for post in posts}
+
+
 def latest_posts(account: SocialAccount, limit: int) -> list[Post]:
     return list(Post.objects.filter(account=account).order_by("-posted_at")[:limit])

@@ -5,35 +5,32 @@
 {% block content %}
   {# app.js polls the progress endpoint while the draft is working and updates the photos, title and status in place. #}
   <div class="studio" data-draft="{% url 'api-draft-progress' creative.pk %}" data-draft-status="{{ creative.status }}">
-    <a href="{% url 'publishing' %}" class="back-link">Back to publishing</a>
-    <header class="page-header">
-      <div>
-        <h1 class="page-header__title" data-draft-title>{{ state.title }}</h1>
-        <p class="page-header__description">{{ creative.get_look_display }} · {{ creative.get_format_choice_display }}{% if creative.brief.product %} · {{ creative.brief.product }}{% endif %}</p>
-      </div>
-      <div class="page-header__actions">
-        <form method="post" action="{% url 'creative-delete' creative.pk %}" class="inline-form" data-confirm="Delete this draft and its photos?">
-          {% csrf_token %}
-          <button type="submit" class="btn btn--ghost btn--md">Delete draft</button>
-        </form>
-      </div>
-    </header>
+    <a href="{% url 'publishing' %}" class="back-link">{% include "components/icon.html" with name="back" size=18 %}Create</a>
+    {% with job=creative.publish_job live_post=creative.publish_job.post %}
+      <header class="page-header">
+        <div>
+          <h1 class="page-header__title" data-draft-title>{{ state.title }}</h1>
+          <p class="page-header__description">{% if creative.brief.product %}{{ creative.brief.product|capfirst }} · {% endif %}{{ creative.get_look_display }} · {{ creative.get_format_choice_display }}</p>
+        </div>
+        <div class="page-header__actions">
+          {% if live_post %}
+            <a href="{% url 'post-detail' live_post.pk %}" data-modal="{% url 'api-post-preview' live_post.pk %}" class="btn btn--primary btn--md">View post</a>
+            {% if live_post.permalink %}<a href="{{ live_post.permalink }}" target="_blank" rel="noopener" class="btn btn--secondary btn--md">{% include "components/icon.html" with name="external" size=16 %}Instagram</a>{% endif %}
+          {% endif %}
+          <form method="post" action="{% url 'creative-delete' creative.pk %}" class="inline-form" data-confirm="Delete this draft and its photos?{% if live_post %} The post stays on Instagram.{% endif %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--ghost btn--md">Delete draft</button>
+          </form>
+        </div>
+      </header>
+    {% endwith %}
 
     {% include "components/messages.html" %}
 
-    {% if creative.sources.all %}
-      <section class="card card--padded creative__panel" aria-labelledby="sources-title">
-        <h2 id="sources-title" class="section-title">Your photos</h2>
-        <ul class="photo-preview">
-          {% for source in creative.sources.all %}
-            <li><a href="{% url 'creative-file' 'source' source.pk %}" target="_blank" rel="noopener"><img src="{% url 'creative-file' 'source' source.pk %}" alt="Your photo {{ forloop.counter }}" /></a></li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
+    <div data-draft-story>{{ state.story|safe }}</div>
 
     {% if creative.status == 'planning' %}
-      <section class="card card--padded progress" aria-live="polite">
+      <section class="panel panel--lilac progress" aria-live="polite">
         <span class="spinner spinner--lg" aria-hidden="true"></span>
         <ol class="progress-steps">
           <li class="progress-steps__item progress-steps__item--active">Reading your product and its branding</li>
@@ -55,38 +52,61 @@
       <div class="creative">
         <section class="ig-preview card" aria-label="Post preview">
           <div class="ig-preview__head">
-            {% with account=accounts.0 %}
+            {% with account=creative.publish_job.account|default:accounts.0 %}
               {% include "components/avatar.html" with src=account.avatar_url name=account.username|default:"you" size=32 %}
               <span class="ig-preview__name">{% if account %}{{ account.username }}{% else %}your account{% endif %}</span>
             {% endwith %}
           </div>
-          <ol class="slides" aria-label="Photos" data-draft-slides>
-            {% for item in state.slides %}{{ item.html|safe }}{% endfor %}
-          </ol>
-          {% if slides|length > 1 %}<p class="hint ig-preview__swipe">Swipe to see all {{ slides|length }} photos</p>{% endif %}
+          <div class="carousel" data-carousel>
+            <ol class="carousel__track" aria-label="Photos" data-draft-slides>
+              {% for item in state.slides %}{{ item.html|safe }}{% endfor %}
+            </ol>
+            {% if slides|length > 1 %}
+              <div class="carousel__nav">
+                <button type="button" class="carousel__btn carousel__btn--prev" data-carousel-step="-1" aria-label="Previous photo">{% include "components/icon.html" with name="back" size=18 %}</button>
+                <button type="button" class="carousel__btn carousel__btn--next" data-carousel-step="1" aria-label="Next photo">{% include "components/icon.html" with name="back" size=18 %}</button>
+              </div>
+              <div class="carousel__dots">
+                {% for slide in slides %}<button type="button" class="carousel__dot" data-carousel-dot="{{ forloop.counter0 }}" aria-label="Photo {{ forloop.counter }}"></button>{% endfor %}
+              </div>
+            {% endif %}
+          </div>
           <p class="ig-preview__caption" data-draft-caption>{{ full_caption|linebreaksbr }}</p>
         </section>
 
         <div class="creative__side">
           {% if creative.status == 'published' %}
-            <section class="card card--padded creative__panel">
-              <h2 class="section-title">Posted</h2>
-              <p class="hint">This draft was sent to {{ creative.publish_job.account.username|default:"your account" }}.</p>
-              <a href="{% url 'publishing' %}" class="btn btn--secondary btn--md">See status</a>
-            </section>
-            {% if creative.answered_questions %}
-              <section class="card card--padded creative__panel" aria-labelledby="brain-known-title">
-                <h2 id="brain-known-title" class="section-title">Your reply agent knows</h2>
-                <ul class="brain-facts">
-                  {% for item in creative.answered_questions %}<li><strong>{{ item.label }}:</strong> {{ item.answer }}</li>{% endfor %}
-                </ul>
-                {% if creative.publish_job.post %}
-                  <a href="{% url 'post-detail' creative.publish_job.post.pk %}" class="btn btn--secondary btn--md">Edit on the post</a>
+            {% with job=creative.publish_job %}
+              {% if job %}
+                <section class="creative__panel" aria-labelledby="status-title">
+                  <h2 id="status-title" class="section-title">Post <em>status</em></h2>
+                  <ul class="job-list">{% include "content/job_item.html" %}</ul>
+                </section>
+              {% endif %}
+              <section class="panel panel--lilac creative__panel" aria-labelledby="brain-known-title">
+                <div class="panel__head">
+                  <span class="panel__mascot">{% include "core/mascot.html" with uid="draft-brain" size="xs" %}</span>
+                  <div>
+                    <h2 id="brain-known-title" class="section-title">What Hooky <em>knows</em></h2>
+                    <p class="panel__lede">Buyers asking about this product get these answers on their own.</p>
+                  </div>
+                </div>
+                {% if creative.answered_questions %}
+                  <ul class="brain-facts">
+                    {% for item in creative.answered_questions %}<li><strong>{{ item.label }}:</strong> {{ item.answer }}</li>{% endfor %}
+                  </ul>
                 {% else %}
-                  <p class="hint">Saved to the agent as soon as the post is live.</p>
+                  <p class="hint">No answers yet, so Hooky will ask you when buyers comment.</p>
+                {% endif %}
+                {% if job.post %}
+                  <a href="{% url 'post-detail' job.post.pk %}" data-modal="{% url 'api-post-preview' job.post.pk %}" class="btn btn--secondary btn--md">Add or edit facts</a>
+                {% elif job.status == 'published' %}
+                  <a href="{% url 'agent-account' job.account.pk %}#knows-title" class="btn btn--secondary btn--md">Teach Hooky</a>
+                {% else %}
+                  <p class="hint">Saved to Hooky as soon as the post is live.</p>
                 {% endif %}
               </section>
-            {% endif %}
+            {% endwith %}
           {% else %}
             <section class="card card--padded creative__panel" aria-labelledby="copy-title">
               <h2 id="copy-title" class="section-title">Caption and hashtags</h2>
@@ -121,7 +141,7 @@
             </section>
 
             {% if creative.brain_questions %}
-              <section class="card card--padded creative__panel" aria-labelledby="brain-title">
+              <section class="panel panel--lilac creative__panel" aria-labelledby="brain-title">
                 <div>
                   <h2 id="brain-title" class="section-title">Teach your reply agent</h2>
                   <p class="hint">Buyers will ask these in the comments. Your reply agent answers with what you write here, and never guesses. Leave any blank to answer those yourself.</p>

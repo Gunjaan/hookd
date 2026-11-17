@@ -1,5 +1,5 @@
-{% load content_ui %}{# Arguments: metrics (list of Metric or metric dicts). #}
-<dl class="metrics">
+{% load content_ui %}{# Arguments: metrics (list of Metric or metric dicts), inline (optional: one row of numbers without tiles). #}
+<dl class="metrics{% if inline %} metrics--inline{% endif %}">
   {% for metric in metrics %}
     <div class="metrics__tile">
       <dt class="metrics__label">{{ metric.label }}</dt>

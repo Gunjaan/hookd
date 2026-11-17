@@ -315,7 +315,10 @@ class InboxTests(AgentTestCase):
         self.pending()
         response = self.client.get(reverse("agent-inbox"))
         self.assertContains(response, "@fan1 draft")
-        self.assertContains(response, "Needs review (1)")
+        self.assertContains(response, 'Needs review <span class="tabs__count">1</span>')
+        self.assertContains(response, "New kurta drop")
+        self.assertContains(response, reverse("post-detail", args=[self.post.pk]))
+        self.assertContains(response, "Send reply")
 
     def test_approve_sends_the_edited_text(self):
         reply = self.pending()
@@ -325,8 +328,8 @@ class InboxTests(AgentTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["html"], "")
-        self.assertIn("Needs review (0)", data["fragments"]["inbox-tabs"])
-        self.assertIn("Nothing here.", data["fragments"]["inbox-list"])
+        self.assertIn('Needs review <span class="tabs__count">0</span>', data["fragments"]["inbox-tabs"])
+        self.assertIn("All caught up", data["fragments"]["inbox-list"])
         self.assertNotIn("badge", data["fragments"]["nav-replies-count"])
         reply.refresh_from_db()
         self.assertEqual(reply.status, ReplyStatus.SENT)
@@ -365,17 +368,28 @@ class InboxTests(AgentTestCase):
 class SetupPageTests(AgentTestCase):
     def test_settings_page_saves(self):
         page = self.client.get(reverse("agent-account", args=[self.account.pk]))
-        self.assertContains(page, "What should the agent know?")
+        self.assertContains(page, "What Hooky")
+        self.assertContains(page, "Hooky is on")
         self.assertNotContains(page, "Special cases")
         url = reverse("api-agent-settings", args=[self.account.pk])
         response = self.client.post(url, {"voice": "Friendly", "knowledge": "Open 10 to 7"})
         self.assertEqual(response.json()["message"], "Agent settings saved.")
         self.profile.refresh_from_db()
-        self.assertFalse(self.profile.enabled)
+        self.assertTrue(self.profile.enabled)  # Only the switch turns the agent on or off.
         self.assertEqual(self.profile.knowledge, "Open 10 to 7")
-        self.assertEqual(self.client.post(url, {"enabled": "on"}).status_code, 200)
+
+    def test_switch_saves_at_once_and_redraws_the_status(self):
+        url = reverse("api-agent-enabled", args=[self.account.pk])
+        data = self.client.post(url, {"enabled": "on"}).json()
+        self.assertEqual(data["message"], "Hooky is on.")
+        self.assertIn("Hooky is on", data["fragments"]["agent-status"])
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.enabled)
+        data = self.client.post(url, {}).json()
+        self.assertIn("Hooky is off", data["fragments"]["agent-status"])
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.enabled)
+        self.assertEqual(self.profile.knowledge, "Free shipping above Rs 999\nReturns within 7 days")
 
     def test_agent_home_redirects_to_first_account(self):
         self.assertRedirects(
@@ -401,14 +415,22 @@ class SetupPageTests(AgentTestCase):
         self.assertFalse(CommentReply.objects.exists())
         self.assertEqual(self.graph.calls, [])
 
+    def test_preview_uses_unsaved_brain_text(self):
+        url = reverse("api-agent-preview", args=[self.account.pk])
+        self.assertNotContains(self.client.post(url, {"text": "M size available?", "post": ""}), "Replies automatically")
+        response = self.client.post(url, {"text": "M size available?", "post": "", "knowledge": "Sizes S, M and L in stock"})
+        self.assertContains(response, "Replies automatically")
+        self.profile.refresh_from_db()
+        self.assertNotIn("Sizes", self.profile.knowledge)
+
     def test_other_users_get_404(self):
         other = create_user(email="other@example.com", password="a-strong-pass-123")
         self.client.force_login(other)
         reply = CommentReply.objects.create(comment=self.comment(), status=ReplyStatus.PENDING_REVIEW, final_text="hi")
         for method, url in [
             ("get", reverse("agent-account", args=[self.account.pk])),
-            ("get", reverse("agent-preview", args=[self.account.pk])),
             ("post", reverse("api-agent-settings", args=[self.account.pk])),
+            ("post", reverse("api-agent-enabled", args=[self.account.pk])),
             ("post", reverse("api-agent-preview", args=[self.account.pk])),
             ("post", reverse("api-agent-post-brain", args=[self.post.pk])),
             ("post", reverse("api-reply-approve", args=[reply.pk])),

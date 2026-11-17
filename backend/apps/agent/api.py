@@ -7,8 +7,8 @@ from django.views.decorators.http import require_POST
 
 from apps.agent import services
 from apps.agent.constants import ReplyStatus
-from apps.agent.forms import AgentSettingsForm, ApproveForm, PostBrainForm, PreviewForm
-from apps.agent.views import inbox_tabs
+from apps.agent.forms import AgentEnabledForm, AgentSettingsForm, ApproveForm, PostBrainForm, PreviewForm
+from apps.agent.views import inbox_tabs, status_context
 from apps.content import services as content_services
 from apps.core.exceptions import HookdError
 from apps.core.http import api_login_required, json_error, json_ok
@@ -39,6 +39,19 @@ def account_settings(request, account_id: int):
 
 @api_login_required
 @require_POST
+def account_enabled(request, account_id: int):
+    """The agent page's on or off switch, saved at once. Redraws the status bar."""
+    account = _found(integration_services.get_user_account, user=request.user, account_id=account_id)
+    form = AgentEnabledForm(request.POST)
+    form.is_valid()
+    profile = services.update_profile(account, enabled=form.cleaned_data["enabled"])
+    status = render_to_string("agent/status_bar.html", status_context(request.user, account, profile), request=request)
+    message = "Hooky is on." if profile.enabled else "Hooky is off. New comments wait for you."
+    return json_ok(message=message, fragments={"agent-status": status})
+
+
+@api_login_required
+@require_POST
 def preview(request, account_id: int):
     """What the agent would do with a comment: `{html}` with the result card. Nothing is saved or sent."""
     account = _found(integration_services.get_user_account, user=request.user, account_id=account_id)
@@ -48,7 +61,13 @@ def preview(request, account_id: int):
         return json_error(_form_error(form))
     post = next((item for item in posts if item.pk == form.cleaned_data["post"]), None)
     try:
-        result = services.preview_reply(account=account, text=form.cleaned_data["text"], post=post)
+        result = services.preview_reply(
+            account=account,
+            text=form.cleaned_data["text"],
+            post=post,
+            voice=form.cleaned_data["voice"] if "voice" in request.POST else None,
+            knowledge=form.cleaned_data["knowledge"] if "knowledge" in request.POST else None,
+        )
     except HookdError as exc:
         return json_error(exc.message)
     return json_ok(html=render_to_string("agent/preview_result.html", {"result": result}, request=request))
@@ -77,7 +96,9 @@ def _reply_done(request, status: str, message: str):
         ),
     }
     if not next(count for value, _, count in tabs if value == status):
-        fragments["inbox-list"] = render_to_string("agent/inbox_list.html", {"replies": []}, request=request)
+        fragments["inbox-list"] = render_to_string(
+            "agent/inbox_list.html", {"replies": [], "status": status}, request=request
+        )
     return json_ok(html="", fragments=fragments, message=message)
 
 

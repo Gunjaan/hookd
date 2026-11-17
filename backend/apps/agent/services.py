@@ -9,7 +9,7 @@ everything else is scheduled. `schedule_reply` hands out send slots at least MIN
 import logging
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from django.conf import settings
@@ -90,6 +90,12 @@ def preview_posts(account: SocialAccount) -> list[Post]:
 
 def pending_review_count(user) -> int:
     return queries.pending_review_count(user)
+
+
+def sent_reply_count(account: SocialAccount, days: int | None = None) -> int:
+    """Replies the agent has posted on the account, all time (studio profile) or in the last `days` (agent page)."""
+    since = timezone.now() - timedelta(days=days) if days else None
+    return queries.sent_reply_count(account, since)
 
 
 # Deciding
@@ -221,11 +227,17 @@ class Preview:
     reason: str
 
 
-def preview_reply(*, account: SocialAccount, text: str, post: Post | None = None) -> Preview:
-    """What the agent would do with `text`. Stores and sends nothing."""
+def preview_reply(
+    *, account: SocialAccount, text: str, post: Post | None = None, voice: str | None = None, knowledge: str | None = None
+) -> Preview:
+    """What the agent would do with `text`. `voice` and `knowledge` replace the saved ones (unsaved edits). Stores and sends nothing."""
     profile = queries.get_or_create_profile(account)
     brain = queries.get_post_brain(post) if post else None
     context = _context(account=account, profile=profile, post=post, brain=brain, text=text, author="customer")
+    if voice is not None:
+        context = replace(context, voice=voice)
+    if knowledge is not None:
+        context = replace(context, account_knowledge=knowledge)
     decision = get_engine().decide(context)
     if brain is not None and not brain.agent_enabled:
         routing = Routing(ReplyStatus.SKIPPED, "The agent is off for this post.")
@@ -332,7 +344,14 @@ def send_overdue_replies() -> int:
 
 
 def inbox(user, status: str) -> list[CommentReply]:
-    return queries.list_replies_for_user(user, status, INBOX_PAGE_SIZE)
+    """Newest replies with this status. Each gets `post`: the stored post its comment is on, or None."""
+    replies = queries.list_replies_for_user(user, status, INBOX_PAGE_SIZE)
+    posts = post_queries.posts_for_user_by_external_id(
+        user, {reply.comment.media_external_id for reply in replies if reply.comment.media_external_id}
+    )
+    for reply in replies:
+        reply.post = posts.get((reply.comment.account_id, reply.comment.media_external_id))
+    return replies
 
 
 def inbox_counts(user) -> dict[str, int]:

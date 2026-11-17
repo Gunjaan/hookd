@@ -18,9 +18,9 @@ const api = async (url, { method = 'GET', body } = {}) => {
   return data
 }
 
-// One alert in #page-messages (layouts/app.html). kind: success, info, warning or danger.
+// One alert in #page-messages (layouts/app.html), or in the open modal. kind: success, info, warning or danger.
 const showMessage = (text, kind = 'success') => {
-  const box = document.getElementById('page-messages')
+  const box = document.querySelector('dialog[open] .modal__messages') || document.getElementById('page-messages')
   if (!box || !text) return
   const alert = document.createElement('div')
   alert.className = `alert alert--${kind}`
@@ -70,7 +70,23 @@ const applyAnswer = (form, data) => {
   if (data.message) showMessage(data.message, data.message_kind || 'success')
 }
 
+// Fields of the form named by data-include="<form id>" that this form's own data does not already have.
+const includeFields = (form, body) => {
+  const other = form.dataset.include && document.getElementById(form.dataset.include)
+  if (!other) return
+  for (const [name, value] of new FormData(other)) {
+    if (!body.has(name)) body.append(name, value)
+  }
+}
+
+// <form data-unsaved="<bar id>">: the bar shows after any edit and hides on save or reset.
+const setUnsaved = (form, unsaved) => {
+  const bar = form.dataset.unsaved && document.getElementById(form.dataset.unsaved)
+  if (bar) bar.hidden = !unsaved
+}
+
 // <form data-api action="<api url>">: posted with fetch instead of loading a new page, the answer is applied in place.
+//   data-include="<form id>" also sends that form's fields (the agent page's test sends the unsaved settings).
 const submitApiForm = async (form, submitter) => {
   const scope = form.closest('[data-busy-scope]') || form
   const buttons = Array.from(scope.querySelectorAll('button:not(:disabled)'))
@@ -80,7 +96,10 @@ const submitApiForm = async (form, submitter) => {
   if (submitter) setBusy(submitter, true)
   try {
     const url = submitter?.getAttribute('formaction') || form.action
-    applyAnswer(form, await api(url, { method: 'POST', body: new FormData(form, submitter) }))
+    const body = new FormData(form, submitter)
+    includeFields(form, body)
+    applyAnswer(form, await api(url, { method: 'POST', body }))
+    setUnsaved(form, false)
   } catch (error) {
     showMessage(error.message, 'danger')
   }
@@ -128,6 +147,151 @@ window.addEventListener('pageshow', (event) => {
     button.disabled = false
   })
 })
+
+// <input data-autosubmit>: changing it submits its form (the agent page's on or off switch).
+document.addEventListener('change', (event) => {
+  const input = event.target.closest('[data-autosubmit]')
+  if (input) input.form.requestSubmit()
+})
+
+document.addEventListener('input', (event) => {
+  const form = event.target.form
+  if (form?.dataset.unsaved) setUnsaved(form, true)
+})
+
+document.addEventListener('reset', (event) => setUnsaved(event.target, false))
+
+// <button data-append-to="<field id>" data-text="...">: adds the text to the end of the field (voice style chips).
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-append-to]')
+  const field = button && document.getElementById(button.dataset.appendTo)
+  if (!field) return
+  const current = field.value.trim()
+  if (current.includes(button.dataset.text)) return
+  field.value = current ? `${current} ${button.dataset.text}` : button.dataset.text
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+  field.focus()
+})
+
+// <textarea data-send-shortcut>: Ctrl or Cmd + Enter submits its form with the default button (reply inbox).
+document.addEventListener('keydown', (event) => {
+  const field = event.target.closest('textarea[data-send-shortcut]')
+  if (!field || event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return
+  event.preventDefault()
+  field.form.requestSubmit()
+})
+
+// Modal: <a href="<page>" data-modal="<api url>"> opens the shared #modal (layouts/app.html) with the endpoint's
+// `html` instead of leaving the page. Ctrl, Cmd or Shift click still opens the page itself.
+const modal = document.getElementById('modal')
+if (modal) {
+  const modalBody = modal.querySelector('.modal__body')
+  const modalMessages = modal.querySelector('.modal__messages')
+
+  document.addEventListener('click', async (event) => {
+    const link = event.target.closest('a[data-modal]')
+    if (!link || event.metaKey || event.ctrlKey || event.shiftKey) return
+    event.preventDefault()
+    modal.classList.remove('modal--photo')
+    modalMessages.hidden = true
+    modalBody.innerHTML = '<div class="modal__loading"><span class="spinner spinner--lg" aria-hidden="true"></span></div>'
+    modal.showModal()
+    try {
+      modalBody.innerHTML = (await api(link.dataset.modal)).html
+    } catch (error) {
+      modal.close()
+      showMessage(error.message, 'danger')
+    }
+  })
+
+  // <a href="<first photo>" data-modal-images="<url> <url>">: the photos in the modal, as a carousel when there are several.
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[data-modal-images]')
+    if (!link || event.metaKey || event.ctrlKey || event.shiftKey) return
+    event.preventDefault()
+    const urls = link.dataset.modalImages.split(' ').filter(Boolean)
+    modalMessages.hidden = true
+    modal.classList.add('modal--photo')
+    modalBody.replaceChildren(buildCarousel(urls, link.dataset.modalLabel || 'Photo'))
+    modal.showModal()
+    updateCarousel(modalBody.querySelector('[data-carousel]'))
+  })
+
+  // The close button, or a click on the backdrop (the dialog itself, outside its content). Esc closes natively.
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal || event.target.closest('[data-modal-close]')) modal.close()
+  })
+  modal.addEventListener('close', () => {
+    modal.querySelectorAll('video').forEach((video) => video.pause())
+  })
+}
+
+// Carousel: <div data-carousel> with a .carousel__track, optional [data-carousel-step="-1|1"] buttons and
+// [data-carousel-dot="<index>"] dots. Buttons and dots follow swipes too.
+const carouselBehavior = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
+
+const updateCarousel = (carousel) => {
+  const track = carousel?.querySelector('.carousel__track')
+  if (!track) return
+  const index = Math.round(track.scrollLeft / Math.max(track.clientWidth, 1))
+  const last = track.children.length - 1
+  carousel.querySelector('[data-carousel-step="-1"]')?.toggleAttribute('disabled', index <= 0)
+  carousel.querySelector('[data-carousel-step="1"]')?.toggleAttribute('disabled', index >= last)
+  carousel.querySelectorAll('[data-carousel-dot]').forEach((dot, position) => {
+    dot.setAttribute('aria-current', String(position === index))
+  })
+}
+
+document.addEventListener('click', (event) => {
+  const control = event.target.closest('[data-carousel-step], [data-carousel-dot]')
+  const carousel = control?.closest('[data-carousel]')
+  const track = carousel?.querySelector('.carousel__track')
+  if (!track) return
+  const width = track.clientWidth
+  if ('carouselStep' in control.dataset) {
+    track.scrollBy({ left: Number(control.dataset.carouselStep) * width, behavior: carouselBehavior() })
+  } else {
+    track.scrollTo({ left: Number(control.dataset.carouselDot) * width, behavior: carouselBehavior() })
+  }
+})
+
+document.addEventListener('scroll', (event) => updateCarousel(event.target.closest?.('[data-carousel]')), true)
+document.querySelectorAll('[data-carousel]').forEach(updateCarousel)
+
+// Markup for a carousel of photos (the photo viewer): track, buttons and dots when there is more than one.
+const buildCarousel = (urls, label) => {
+  const make = (tag, className, attributes = {}) => {
+    const element = document.createElement(tag)
+    if (className) element.className = className
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value)
+    return element
+  }
+  const carousel = make('div', 'carousel photo-viewer', { 'data-carousel': '' })
+  const track = make('ol', 'carousel__track', { 'aria-label': label })
+  urls.forEach((url, index) => {
+    const item = make('li')
+    item.append(make('img', '', { src: url, alt: `${label} ${index + 1} of ${urls.length}` }))
+    track.append(item)
+  })
+  carousel.append(track)
+  if (urls.length > 1) {
+    const nav = make('div', 'carousel__nav')
+    const arrow = document.querySelector('#carousel-arrow')
+    for (const [step, name] of [['-1', 'Previous photo'], ['1', 'Next photo']]) {
+      const button = make('button', `carousel__btn carousel__btn--${step === '1' ? 'next' : 'prev'}`, {
+        type: 'button', 'data-carousel-step': step, 'aria-label': name,
+      })
+      if (arrow) button.append(arrow.content.cloneNode(true))
+      nav.append(button)
+    }
+    const dots = make('div', 'carousel__dots')
+    urls.forEach((_, index) => {
+      dots.append(make('button', 'carousel__dot', { type: 'button', 'data-carousel-dot': index, 'aria-label': `Photo ${index + 1}` }))
+    })
+    carousel.append(nav, dots)
+  }
+  return carousel
+}
 
 // Photo thumbnails: <input type="file" data-photo-preview="list-id"> shows the chosen images in #list-id.
 document.addEventListener('change', (event) => {
@@ -205,6 +369,8 @@ if (draft) {
     draft.dataset.draftStatus = state.status
     const title = draft.querySelector('[data-draft-title]')
     if (title) title.textContent = state.title
+    const story = draft.querySelector('[data-draft-story]')
+    if (story && state.story) story.innerHTML = state.story
     const alertBox = draft.querySelector('[data-draft-alert]')
     if (alertBox) {
       alertBox.replaceChildren()

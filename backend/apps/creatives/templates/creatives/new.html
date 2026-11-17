@@ -4,10 +4,10 @@
 
 {% block content %}
   <div class="studio studio--narrow">
-    <a href="{% url 'publishing' %}" class="back-link">Back to publishing</a>
+    <a href="{% url 'publishing' %}" class="back-link">{% include "components/icon.html" with name="back" size=18 %}Create</a>
     <header class="page-header">
       <div>
-        <h1 class="page-header__title">Create a post</h1>
+        <h1 class="page-header__title">Create a <em>post</em></h1>
         <p class="page-header__description">Add a photo of your product. Hookd turns it into post ready photos with a caption and hashtags you can edit.</p>
       </div>
     </header>
@@ -18,7 +18,7 @@
     <form method="post" enctype="multipart/form-data" class="story" data-busy-scope>
       {% csrf_token %}
 
-      <section class="card card--padded story-step" aria-labelledby="step-photos-title">
+      <section class="story-step story-step--butter" aria-labelledby="step-photos-title">
         <span class="story-step__number" aria-hidden="true">1</span>
         <div class="story-step__body">
           <h2 id="step-photos-title" class="section-title">Add your product photos</h2>
@@ -49,7 +49,7 @@
         </div>
       </section>
 
-      <section class="card card--padded story-step" aria-labelledby="step-look-title">
+      <section class="story-step story-step--lilac" aria-labelledby="step-look-title">
         <span class="story-step__number" aria-hidden="true">2</span>
         <div class="story-step__body">
           <h2 id="step-look-title" class="section-title">Pick a look</h2>
@@ -65,7 +65,7 @@
         </div>
       </section>
 
-      <section class="card card--padded story-step" aria-labelledby="step-format-title">
+      <section class="story-step story-step--blush" aria-labelledby="step-format-title">
         <span class="story-step__number" aria-hidden="true">3</span>
         <div class="story-step__body">
           <h2 id="step-format-title" class="section-title">One photo or a carousel?</h2>
@@ -81,7 +81,7 @@
         </div>
       </section>
 
-      <section class="card card--padded story-step" aria-labelledby="step-notes-title">
+      <section class="story-step story-step--sage" aria-labelledby="step-notes-title">
         <span class="story-step__number" aria-hidden="true">4</span>
         <div class="story-step__body">
           <h2 id="step-notes-title" class="section-title">Anything special? <span class="story-step__optional">Optional</span></h2>

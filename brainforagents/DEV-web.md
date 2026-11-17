@@ -17,12 +17,16 @@ an `html` snippet rendered from the same partial the page uses; simple values co
 ```
 backend/
   templates/
-    base.html                   <head> (Inter font, CSS, app.js), blocks: title, head (extra stylesheets), body
+    base.html                   <head> (Inter and Urbanist fonts, CSS, app.js), blocks: title, head (extra stylesheets), body
     layouts/auth.html           Brand panel (logo links to the landing page) + form panel (login, signup). Block: panel
-    layouts/app.html            Sidebar shell for signed in pages (Studio, Publishing, Agent, Replies with the pending
-                                review count, Connections, user, log out). Block: content. Pages set `nav_section`
-                                ("studio", "publishing", "agent" or "inbox") for the active link
-    components/                 Design system partials (see below)
+    layouts/app.html            Shell for signed in pages: a sticky white side panel (`.app-side`) with icon links Profile,
+                                Create, Replies (pending review count), Agent (Hooky as its icon), Connections at the
+                                bottom, then the user and a log out icon button. Under 768px the panel is a top bar (logo,
+                                avatar, log out) and the same links become a fixed bottom tab bar, like the Instagram app.
+                                Block: content. Pages set `nav_section` ("studio", "publishing", "agent" or "inbox").
+                                Also holds the shared `<dialog id="modal">` (`.modal`) that `data-modal` links fill
+    components/                 Design system partials (see below), including icon.html: line icons (grid, plus, chat,
+                                heart, reel, carousel, refresh, upload, external, sparkle, reply, plug, drafts, back, logout)
     404.html                    Shown when DEBUG is false
   static/
     css/tokens.css              Design tokens (the only place raw values live)
@@ -54,8 +58,8 @@ backend/
     templates/creatives/        new.html, detail.html, draft_card.html
   apps/agent/
     forms.py, views.py, urls.py agent settings, preview, video brain, reply inbox (see DEV-agent.md)
-    templates/agent/            account.html, preview.html, inbox.html
-    context_processors.py       agent_pending_count for the sidebar
+    templates/agent/            account.html, status_bar.html, inbox.html
+    context_processors.py       agent_pending_count for the side panel badge
   apps/core/templatetags/hookd_ui.py initials filter (avatar fallback)
   apps/core/templates/core/landing.html  Public landing page (see below)
   apps/core/templates/core/model_figure.html  Inline SVG AI model figure used by the landing page
@@ -68,8 +72,12 @@ Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [B
 
 ## Design system
 
-Tokens in `static/css/tokens.css`: brand primary `--color-primary` (#db2777, rose pink), ink `--color-ink`, neutral surfaces,
-status colors with `-soft` backgrounds, Inter font, 4px spacing scale (`--space-1..8`), radii `sm/md/lg/full`.
+The signed in app shares the landing page look: cream background (`--color-bg` is `--color-cream`), warm neutral surfaces
+and borders, white or pastel cards with `--radius-xl`, black pill buttons, Urbanist (`--font-display`) for headings, buttons,
+nav, tabs and numbers with Inter for body text, italic rose `<em>` accents in titles, and Hooky the mascot.
+Tokens in `static/css/tokens.css`: rose `--color-primary` (#db2777) for accents, links, focus and badges, ink `--color-ink`
+for primary buttons and active states, the landing pastels, status colors with `-soft` backgrounds, 4px spacing scale
+(`--space-1..10`), radii `sm/md/lg/xl/2xl/full`.
 
 Brand kit in `brand/` at the repo root (not served): `logo.svg` / `logo.png` (ink), `logo-white.svg` / `logo-white.png`
 (for dark backgrounds), `icon.svg` / `icon-512.png` (app icon, also the favicon). The wordmark is hand drawn geometric
@@ -78,44 +86,66 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 
 | Class / partial | Variants | Notes |
 |---|---|---|
-| `.btn` | `--primary/--secondary/--ghost/--danger`, `--sm/--md/--lg`, `--block` | Works on `<button>` and `<a>`. app.js adds a spinner and `aria-busy` on submit |
+| `.btn` | `--primary` (ink pill) `/--secondary` (ink outline) `/--ghost/--danger`, `--sm/--md/--lg`, `--block`, `--icon` (round, icon only, needs `aria-label`) | Works on `<button>` and `<a>`. app.js adds a spinner and `aria-busy` on submit |
 | `components/field.html` | `field=<bound field>` | Label, input, error or `help_text` message with aria ids. Widget `attrs` give `autocomplete`, `placeholder` |
 | `components/form_errors.html` | `form=` | First non field error as a danger alert |
 | `components/textarea_field.html` | `field=` | Like `field.html` for `Textarea` widgets (`rows`, `placeholder` from widget attrs) |
-| `components/checkbox_field.html` | `field=` | `BooleanField` as a `.checkbox` label with help text |
+| `components/checkbox_field.html` | `field=`, `switch=True` | `BooleanField` as a `.checkbox` label with help text; `switch` draws an on or off switch (`.checkbox--switch`, `role="switch"`) |
 | `components/choice_field.html` | `field=` | Radio `ChoiceField` as a `.choice-group` fieldset |
 | `components/select_field.html` | `field=` | `ChoiceField` as a `<select>` styled with `.field__input` |
 | `.checkbox` | | Inline checkbox and label |
 | `components/messages.html` | | Django messages as `.alert--<level_tag>` |
-| `components/replies_badge.html` | `agent_pending_count` | `#nav-replies-count`: the sidebar "Replies" badge, also redrawn by the inbox actions |
+| `components/replies_badge.html` | `agent_pending_count` | `#nav-replies-count`: the side panel "Replies" badge, also redrawn by the inbox actions |
+| `components/icon.html` | `name`, `size` | Inline SVG line icon (`.icon`), `currentColor` |
+| `core/mascot.html` | `uid`, `size` | Hooky (`.mascot`, styles in `components.css`), used by the app too: nav, profile avatar badge, highlights, panels, empty states |
+| `.bubble` | `--fan`, `--agent`, `__who` | Chat bubbles: commenter (white) and agent reply (ink). Landing thread, reply inbox, preview |
+| `.modal` | `__close`, `__messages`, `__body`, `__loading` | Shared `<dialog>` in `layouts/app.html`, width `--modal-width` |
+| `.carousel` | `__track`, `__nav`, `__btn--prev/next`, `__dots`, `__dot` | Swipeable row (`data-carousel`) with optional arrows over a 4:5 photo and dots; app.js keeps them in step. Used by the draft preview and the photo viewer (`.photo-viewer`, `.modal--photo`, width `--photo-viewer-width`) |
+| `.chips` / `.chip` | | Small pill buttons that add a value (voice styles) |
+| `.panel` | `--butter/lilac/blush/sage/sky` | Pastel rounded block with `__head`, `__mascot`, `__lede`; inputs and tiles stay white on it |
 | `.card` | `--padded` | `.card__header`, `.card__footer` |
 | `.badge` | `--neutral/--success/--warning/--danger/--info` | |
 | `.alert` | `--success/--warning/--danger/--info` | `.alert__title`, `.alert__body` |
 | `.spinner` | `--sm/--md/--lg` | |
 | `components/avatar.html` | `name`, `src`, `size` | Initials when no image or the image fails to load |
-| `.page-header` | | `__title`, `__description`, `__actions` |
+| `.page-header` | | `__title` (Urbanist, an `<em>` word is the rose italic accent), `__description`, `__actions` |
 | `components/brand_logo.html` | `inverse` | Inline SVG "hookd." wordmark (`.logo`), letters use `currentColor`, the dot is `.logo__dot` (`--color-primary`), height `--logo-height`. Same paths as `brand/logo.svg`; change both together |
 | `.inline-form` | | `display: contents`, for forms that only wrap buttons |
 | `.field__input--textarea`, `--file` | | Textarea and file input variants of `.field__input` |
 | `.choice-group` / `.choice` | | Radio options as bordered pills; checked one is highlighted |
-| `.tabs` | `__link`, `__link--active` | Horizontal tab links (account switcher) |
-| `.metrics` | `__tile`, `__label`, `__value` | Grid of metric tiles (`<dl>`); partial `content/metric_tiles.html` |
+| `.tabs` | `__link`, `__link--active`, `__link--empty` (dimmed, count 0), `__count` | White pill switcher like the landing nav, active link in ink (account switcher, inbox status) |
+| `.metrics` | `__tile`, `__label`, `__value`, `--inline` | Grid of white metric tiles (`<dl>`), or one row of numbers; partial `content/metric_tiles.html` (`inline=True`) |
 | `.section-title`, `.section-header` | | Section heading, and heading row with an action |
 | `.hint` | | Small muted text |
 | `.back-link` | | "Back to ..." link above a page header |
-| `.empty-state` | | Centered empty message with an action |
+| `.empty-state` | `__mascot`, `__title` | Centered empty message, usually with Hooky and an action |
 | `.load-more` | | Centered wrapper for a load more link |
 
-Page blocks for the studio (`pages.css`): `.studio` (`--narrow`, `__account`, `__section`), `.post-grid`, `.post-card`,
-`.post-detail`, `.comment-list`, `.comment`, `.compose`, `.job-list`, `.job`. Story pages (agent settings, post studio): `.story` (form column), `.story__actions`,
-`.story-step` (numbered card; `__number`, `__body`, `__optional`, `__details`), stacked under 560px. Reply agent:
-`.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.reply-card`. Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
+App shell (`pages.css`): `.app`, `.app-side` (`__logo`, `__nav`, `__link`, `__link--active`, `__link--secondary`, `__user`,
+`__user-info`, `__user-name`, `__user-email`), `.app-main` (`__messages`).
+Page blocks for the studio: `.studio` (centered column, `--narrow`, `--medium`, `__section`), the profile (`.profile`: `__avatar`,
+`__avatar--live` (Hooky's ring colors around the avatar while the agent is on), `__hooky`, `__body`, `__top`, `__username`,
+`__actions`, `__stats`, `__bio`, `__name`, `__status(--on)`, `__switcher`; on phones a grid with the avatar beside the name and
+numbers like the Instagram app), `.highlights` / `.highlight` (`--butter/lilac/blush/sage/sky`, `__circle`, `__count`,
+`__label`; story highlight style shortcuts), `.profile-insights`, `.profile-tabs`, `.post-grid` (3 columns), `.post-tile`
+(`__link`, `__fallback` (pastel caption square when there is no image or it fails), `__type`, `__overlay` (likes and comments
+on hover), `__status`, `__working`), the post page (`.post-view`: `__media`, `__side`, `__head`, `__name`, `__open`,
+`__thread`, `__caption`, `__more`, `__foot`; `.post-extras`), the post modal (`.post-modal`: `__media`, `__side`, `__body`,
+`__caption`, `__meta`, `__brain`, `__foot`), `.comment-list`, `.comment` (`__body`, `__author`, `__text`,
+`__time`), `.compose`, `.job-list`, `.job`, the create page (`.create-hero`: `__copy`, `__lede`, `__actions`, `__steps`;
+`.create-step--butter/lilac/sage`, `__icon`). Story pages (post studio): `.story` (form column),
+`.story__actions`, `.story-step` (numbered pastel card, `--butter/lilac/blush/sage`; `__number`, `__body`, `__optional`),
+stacked under 560px. Reply agent: `.agent-status` (`--on`, `__mascot`, `__text`, `__title`, `__account`, `__meta`, `__paused`,
+`__pending`, `__switch`), `.agent-layout`, `.agent-settings`, `.agent-card` (`__lede`), `.save-bar` (`__text`), `.agent-try`
+(`__form`, `__result`), `.agent-safety` (`__more`), `.agent-form`, `.agent-limits`, `.agent-preview` (`__outcome`, `__reply`), `.reply-list`, `.reply-card` (`__post`, `__thumb`, `__why`, `__why-icon`,
+`__note`, `__retry`), `.reply-row` (`--you` indented, `__text`, `__meta`), `.reply-composer` (`__label`, `__input`, `__actions`). Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
 `__input`), `.photo-preview`, `.tips`, `.look-grid` (`--three`), `.look-choice` (`__title`, `__hint`; card radios), `.progress`,
 `.progress-steps` (`__item--active`), `.creative` (`__side`, `__panel`, `__form`, `__actions`, `__inline`), `.ig-preview` (`__head`, `__name`,
-`__swipe`, `__caption`), `.slides`, `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.slide-versions`
-(`__list`, `__item`; earlier photos in a `<details>`), `.draft-card` (`__media`,
-`__working`), `.how-it-works` (`__steps`), `.brain-questions`, `.brain-facts`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
-`--content-narrow-width`, `--media-max-height`, `--preview-width`, `--thumb-size`.
+`__caption`), `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.draft-story` (`__step`, `__step--done/active/todo`, `__marker`, `__marker--photo`, `__title`, `__detail`, `__view`), `.slide-versions`
+(`__list`, `__item`; earlier photos in a `<details>`), `.brain-questions`, `.brain-facts`. `base.css` resets every
+`fieldset` and `legend`. Layout tokens: `--sidebar-width`, `--nav-height`, `--tabbar-height`, `--content-max-width`,
+`--content-narrow-width`, `--content-medium-width`, `--modal-width`, `--photo-viewer-width`, `--media-max-height`, `--preview-width`, `--thumb-size`, `--profile-avatar(-sm)`,
+`--highlight-size(-sm)`, `--overlay-media`.
 
 `app.js` hooks: `<form data-confirm="...">` asks before submitting. `data-busy-scope` on a container disables all
 its buttons while one of its forms submits. Buttons that must stay disabled carry `data-disabled`.
@@ -132,7 +162,14 @@ signup, connect (OAuth redirect), compose and the post studio's create, post and
 with `next` or removes itself; optional `data-more-label` renames it after the first page, `data-empty-text` replaces it
 when the first page is empty (details in `DEV-content.md`). `[data-draft]` drives the post studio draft page
 (`DEV-creatives.md`).
-`<input type="file" data-photo-preview="<list id>">` shows thumbnails of the chosen photos. `<textarea data-char-count="<id>">`
+`data-include="<form id>"` on a data-api form also sends that form's fields it does not have itself.
+`<form data-unsaved="<bar id>">` shows the bar after any edit and hides it on a successful save or a reset.
+`<a href="<page>" data-modal="<api url>">` opens the shared modal with the endpoint's `html` instead of leaving the
+page (Ctrl, Cmd or Shift click still opens the page; close button, backdrop click or Esc closes it; `showMessage` writes
+into the open modal). `<a href="<first photo>" data-modal-images="<url> <url>" data-modal-label="...">` shows the photos in the modal as a
+carousel. `<div data-carousel>`: `[data-carousel-step="-1|1"]` buttons scroll one item, `[data-carousel-dot="<n>"]`
+jumps, both follow swipes (disabled at the ends, `aria-current` dot). `<input data-autosubmit>` submits its form on change. `<textarea data-send-shortcut>`: Ctrl or Cmd + Enter submits its form. `<button data-append-to="<field id>" data-text="...">` adds the
+text to the end of that field once. `<input type="file" data-photo-preview="<list id>">` shows thumbnails of the chosen photos. `<textarea data-char-count="<id>">`
 writes "n / max characters" into the element with that id.
 
 ## Landing page
@@ -140,9 +177,9 @@ writes "n / max characters" into the element with that id.
 `/` renders `core/landing.html` for everyone, so it is the first page people see (logout also returns here), the marketing page with the tagline "Your very own agent to get the world
 hookd". Positioned as an AI social media manager for sellers and creators; the page sells the agent first (comment to order on Instagram); the photo studio is a secondary, bonus section near the end.
 
-Look: cream background, rounded pastel cards (butter, lilac, blush, sage, sky, peach, mint), black pill buttons (landing scoped overrides of `.btn`),
-the Urbanist display font (loaded in the page's `head` block) with italic `<em>` accents in headings, and Hooky the mascot.
-Hooky is `core/mascot.html`: an original inline SVG, a yellow chat bubble with a hook curl on top, cheeks and a smile, wrapped in pink to lilac glow rings
+Look: cream background, rounded pastel cards (butter, lilac, blush, sage, sky, peach, mint), black pill buttons (the shared `.btn`),
+the Urbanist display font (loaded by `base.html`) with italic `<em>` accents in headings, and Hooky the mascot.
+Hooky is `core/mascot.html` (styles in `components.css`, shared with the app): an original inline SVG, a yellow chat bubble with a hook curl on top, cheeks and a smile, wrapped in pink to lilac glow rings
 drawn as stacked strokes of one shape (`.mascot`, `__ring--1..5`, `__body`, `__eye`, `__shine`, `__cheek`, `__smile`, `__float`, sizes `--xs` (no rings), `--md`,
 default full width). Include it with a unique `uid` per use (the shape's SVG id): `{% include "core/mascot.html" with uid="closing" size="md" %}`.
 Hooky appears in the "asks you" learn card and the closing card.
@@ -179,8 +216,8 @@ screens narrower than 768px. Anchor links scroll with CSS `scroll-behavior: smoo
 `scroll-margin-top` for the sticky nav.
 
 Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.hero-flow` (`__step`, `__step--butter/lilac/blush/sage/win`,
-`__icon`), `.hero__stage`, `.hero-visual`, `.hero-phone`, `.reel` (`__media`, `__chip`, `__play`, `__caption`, `__meta`), `.thread`, `.bubble` (`--fan`, `--agent`, `__who`), `.stage-tag`,
-`.mascot`, `.section-intro`, `.audience`, `.pipeline`, `.board` (`__col--butter/lilac/blush/sage/sky`, `__head`, `__count`), `.lead` (`--focus`, `__who`,
+`__icon`), `.hero__stage`, `.hero-visual`, `.hero-phone`, `.reel` (`__media`, `__chip`, `__play`, `__caption`, `__meta`), `.thread` (animates the shared `.bubble`s), `.stage-tag`,
+`.section-intro`, `.audience`, `.pipeline`, `.board` (`__col--butter/lilac/blush/sage/sky`, `__head`, `__count`), `.lead` (`--focus`, `__who`,
 `__avatar`, `__text`, `__tag--agent/won`), `.perk` (`--peach/mint/lilac`), `.decide`, `.decide-node`, `.decide-out`, `.learn`, `.learn-step`
 (`--butter/blush/lilac/sage`), `.pill`, `.ask-card`, `.brain-lines`, `.safe`, `.safe-tile` (`--peach/sky/mint`), `.bonus`, `.bonus-tile`, `.flatlay`,
 `.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.landing-footer`
@@ -215,11 +252,12 @@ Landing tokens: `--font-display`, `--text-3xl`, `--text-display`, `--leading-dis
 | GET | `/studio/posts/<id>/` | `post-detail` | login | Post, insights, "Show comments" |
 | POST | `/api/posts/<id>/insights/refresh/` | `api-post-insights-refresh` | login (JSON) | Refetches insights: `{html}` of the insights block |
 | GET | `/api/posts/<id>/comments/?after=` | `api-post-comments` | login (JSON) | 25 comments: `{html, next, count}` |
+| GET | `/api/posts/<id>/preview/` | `api-post-preview` | login (JSON) | The post and its Video brain for the modal: `{html}` |
 | GET | `/studio/publishing/` | `publishing` | login | "Create a post", the user's post studio drafts, then publish jobs of all the user's accounts |
 | GET/POST | `/studio/publishing/new/`, `/studio/publishing/drafts/...`, `/studio/publishing/files/...`, `/api/drafts/...`, `/api/slides/...`, `/api/versions/...` | `creative-*`, `api-draft-*`, `api-slide-redo`, `api-version-use` | login | Post studio pages and JSON endpoints, listed in `DEV-creatives.md` |
 | POST | `/api/publishing/<id>/check/` | `api-publish-check` | login (JSON) | Advances a processing job: `{html, message, message_kind}` with its row |
 | GET | `/publish-media/<token>/` | `publish-asset` | none | Upload file for the platform, only while its job is processing |
-| GET, POST | `/agent/...`, `/api/agent/...` | `agent`, `agent-account`, `agent-preview`, `agent-inbox`, `api-agent-settings`, `api-agent-preview`, `api-agent-post-brain`, `api-reply-approve`, `api-reply-reject`, `api-reply-retry` | login | Reply agent pages and JSON actions, listed in `DEV-agent.md` |
+| GET, POST | `/agent/...`, `/api/agent/...` | `agent`, `agent-account`, `agent-inbox`, `api-agent-settings`, `api-agent-enabled`, `api-agent-preview`, `api-agent-post-brain`, `api-reply-approve`, `api-reply-reject`, `api-reply-retry` | login | Reply agent pages and JSON actions, listed in `DEV-agent.md` |
 | GET, POST | `/webhooks/<platform>/` | `webhook` | none, CSRF exempt | Platform webhooks: GET handshake echoes the challenge, POST verifies the signature and stores comments. 403 on bad token or signature, 404 unknown platform. See `DEV-comments.md` |
 
 The callback path has no trailing slash because it must match `INSTAGRAM_REDIRECT_URI`. If the session was lost,

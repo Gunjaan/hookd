@@ -1,34 +1,38 @@
 {% extends "layouts/app.html" %}
 
-{% block title %}Publishing{% endblock %}
+{% block title %}Create{% endblock %}
 
 {% block content %}
   <div class="studio">
-    <header class="page-header">
-      <div>
-        <h1 class="page-header__title">Publishing</h1>
-        <p class="page-header__description">Turn a product photo into a ready to post Instagram post, then post it from here.</p>
-      </div>
-      <div class="page-header__actions">
-        <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Create a post</a>
-      </div>
-    </header>
-
     {% include "components/messages.html" %}
 
-    <section class="studio__section" aria-labelledby="drafts-title">
+    <header class="create-hero">
+      <div class="create-hero__copy">
+        <p class="eyebrow">Post studio</p>
+        <h1 class="page-header__title">One product photo in. A ready <em>post</em> out.</h1>
+        <p class="create-hero__lede">Photos, a caption and hashtags you can edit, and Hooky already knows the product when the comments start.</p>
+        <div class="create-hero__actions">
+          <a href="{% url 'creative-new' %}" class="btn btn--primary btn--lg">Create a post</a>
+        </div>
+      </div>
+      <ol class="create-hero__steps" aria-label="How it works">
+        <li class="create-step create-step--butter"><span class="create-step__icon">{% include "components/icon.html" with name="upload" size=22 %}</span>Add a product photo</li>
+        <li class="create-step create-step--lilac"><span class="create-step__icon">{% include "components/icon.html" with name="sparkle" size=22 %}</span>Pick a look</li>
+        <li class="create-step create-step--sage"><span class="create-step__icon">{% include "components/icon.html" with name="grid" size=22 %}</span>Edit and post</li>
+      </ol>
+    </header>
+
+    <section id="drafts" class="studio__section" aria-labelledby="drafts-title">
       <h2 id="drafts-title" class="section-title">Drafts</h2>
       {% if creatives %}
         <ul class="post-grid">
           {% for creative in creatives %}{% include "creatives/draft_card.html" %}{% endfor %}
         </ul>
       {% else %}
-        <div class="card card--padded how-it-works">
-          <ol class="how-it-works__steps">
-            <li><strong>Add a product photo.</strong> Any phone photo works.</li>
-            <li><strong>Pick a look.</strong> On a model, studio, lifestyle or flat lay, one photo or a carousel.</li>
-            <li><strong>Get a ready post.</strong> Photos plus a caption and hashtags you can edit, then post.</li>
-          </ol>
+        <div class="empty-state">
+          <span class="empty-state__mascot">{% include "core/mascot.html" with uid="no-drafts" %}</span>
+          <p class="empty-state__title">No drafts yet</p>
+          <p>Any phone photo works. Hookd turns it into post ready photos.</p>
           <a href="{% url 'creative-new' %}" class="btn btn--primary btn--md">Create your first post</a>
         </div>
       {% endif %}
