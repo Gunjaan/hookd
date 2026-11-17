@@ -38,7 +38,8 @@
                 <p>
                   <strong>Hooky was not sure, so it is asking you.</strong>
                   {{ reply.decision.reason }}
-                  <a href="{% url 'agent-account' account.pk %}#knows-title">Teach Hooky</a> so it can answer this on its own next time.
+                  Write the right answer below and Hooky learns it from your reply, so it can answer this on its own next time.
+                  Or <a href="{% url 'agent-account' account.pk %}#knows-title">teach Hooky</a> yourself.
                 </p>
               </div>
 
@@ -61,7 +62,7 @@
                 <div>
                   <p class="reply-row__text"><strong>{{ account.username }}</strong> {{ reply.final_text }}</p>
                   <p class="reply-row__meta">
-                    {% if reply.status == 'sent' %}Sent by Hooky {{ reply.sent_at|date:"j M, H:i" }}
+                    {% if reply.status == 'sent' %}{% if reply.written_by_creator %}Written by you, sent{% else %}Sent by Hooky{% endif %} {{ reply.sent_at|date:"j M, H:i" }}
                     {% elif reply.status == 'queued' or reply.status == 'sending' %}Goes out around {{ reply.scheduled_for|date:"j M, H:i" }}
                     {% elif reply.status == 'rejected' %}Discarded, not sent
                     {% elif reply.status == 'failed' %}Not sent{% endif %}
@@ -80,7 +81,18 @@
               </form>
             {% endif %}
 
-            {% if reply.status != 'pending_review' and reply.final_text and confidence is not None %}
+            {% with learned=reply.learned_facts.all %}
+              {% if learned %}
+                <div class="reply-card__learned">
+                  <p class="reply-card__learned-title">Hooky learned from your reply</p>
+                  <ul class="brain-facts">
+                    {% for fact in learned %}<li><strong>{{ fact.label }}:</strong> {{ fact.text }} <span class="learned-fact__meta">· {% if fact.post_id %}this post only{% else %}all posts{% endif %}</span></li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            {% if reply.status != 'pending_review' and reply.final_text and confidence is not None and not reply.written_by_creator %}
               <p class="reply-card__note">
                 Hooky was
                 {% if confidence >= 0.8 %}sure{% elif confidence >= 0.5 %}fairly sure{% else %}not sure{% endif %}:

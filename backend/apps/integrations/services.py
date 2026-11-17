@@ -12,6 +12,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from apps.comments.services import record_incoming_comments
+from apps.messaging.services import record_incoming_messages
 from apps.integrations import model_querysets as queries
 from apps.integrations.exceptions import (
     AccountAlreadyLinked,
@@ -152,7 +153,7 @@ def answer_webhook_challenge(*, platform: str, params) -> str:
 
 
 def process_webhook(*, platform: str, body: bytes, headers) -> int:
-    """Verify and handle one webhook delivery. Returns the number of new comments stored."""
+    """Verify and handle one webhook delivery. Returns the number of new comments and messages stored."""
     provider = get_provider(platform)
     if not provider.verify_webhook_signature(body, headers):
         raise WebhookVerificationError("Invalid webhook signature.")
@@ -162,7 +163,9 @@ def process_webhook(*, platform: str, body: bytes, headers) -> int:
         raise WebhookVerificationError("Webhook body is not valid JSON.") from exc
     if not isinstance(payload, dict):
         raise WebhookVerificationError("Webhook body is not a JSON object.")
-    return record_incoming_comments(platform=platform, comments=provider.parse_webhook_comments(payload))
+    return record_incoming_comments(
+        platform=platform, comments=provider.parse_webhook_comments(payload)
+    ) + record_incoming_messages(platform=platform, messages=provider.parse_webhook_messages(payload))
 
 
 @dataclass

@@ -1,4 +1,5 @@
-"""Prompt and output schema for AI reply engines. The system prompt is a constant so its prefix can be cached."""
+"""Prompts and output schemas for the AI reply engine and brain learner. System prompts are constants so their prefix
+can be cached."""
 
 import json
 
@@ -13,6 +14,8 @@ WRITING THE REPLY
 - Reply in the commenter's language and script: Hinglish gets Hinglish, Tamil gets Tamil, English gets English.
 - Start with @ and the commenter's username. Then 1 or 2 short sentences, under 200 characters in total.
 - Follow the seller's voice.
+- The caption is the seller's own words about this post: prices, sizes, offers and dates in it are facts you can \
+use, just like the shop and post facts. If they disagree, the post facts win.
 - Use only facts from the shop facts, post facts and caption. Never invent prices, sizes, stock, dates, discounts \
 or links. No hashtags. At most 1 emoji unless the voice says otherwise.
 - If the facts list the options (sizes, colors, variants) and the one asked for is not in the list, say which \
@@ -33,6 +36,9 @@ comment needs no facts (praise, thanks, greetings). At most 0.4 when a needed fa
 
 Reply only with JSON that matches the schema."""
 
+# Instagram's caption limit: the whole caption is sent, since it often holds the answer.
+CAPTION_MAX_LENGTH = 2200
+
 REPLY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -52,8 +58,62 @@ def reply_request(context: AgentContext) -> str:
         "voice": context.voice.strip(),
         "shop_facts": context.account_knowledge.strip(),
         "post_facts": context.post_knowledge.strip(),
-        "post_caption": context.post_caption.strip()[:1000],
+        "post_caption": context.post_caption.strip()[:CAPTION_MAX_LENGTH],
         "commenter": context.author_username,
         "comment": context.comment_text.strip(),
+    }
+    return json.dumps({key: value for key, value in payload.items() if value}, ensure_ascii=False, separators=(",", ":"))
+
+
+LEARN_RULES = """FACT RULES
+- Only facts a buyer could ask about: price, sizes, colors, material, stock, offer and its dates, delivery time and \
+area, shipping cost, cash on delivery, returns, how to order, contact, location, opening hours.
+- Only what the text states. Never guess or round numbers. No opinions, hype, hashtags, emojis or greetings.
+- label: 1 to 3 words naming the topic, for example Price, Sizes, Delivery, How to order. Use the same label for the \
+same topic every time.
+- text: the fact in one short sentence, under 200 characters, in the text's language.
+- scope "post" for facts about this product or post (its price, sizes, colors, stock). Scope "account" for facts \
+about the whole shop (shipping, cash on delivery, returns, how to order, location).
+- Nothing factual: an empty list.
+
+Reply only with JSON that matches the schema."""
+
+LEARN_CAPTION_SYSTEM = """You build the memory of a small online seller's comment reply agent. You get the caption \
+of one of their Instagram posts. List the facts in it the agent can use to answer buyers' comments. At most 12 facts.
+
+""" + LEARN_RULES
+
+LEARN_REPLY_SYSTEM = """You build the memory of a small online seller's comment reply agent. A buyer asked a \
+question the agent could not answer, and the seller wrote the reply themselves. List the facts the seller's reply \
+states, so the agent can answer the next buyer who asks the same thing. At most 3 facts. A reply that only promises \
+to get back, thanks the buyer or asks them to DM states no fact.
+
+""" + LEARN_RULES
+
+LEARN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "scope": {"type": "string", "enum": ["post", "account"]},
+                    "label": {"type": "string"},
+                    "text": {"type": "string"},
+                },
+                "required": ["scope", "label", "text"],
+            },
+        },
+    },
+    "required": ["facts"],
+}
+
+
+def learn_reply_request(*, question: str, answer: str, post_caption: str) -> str:
+    payload = {
+        "post_caption": post_caption.strip()[:CAPTION_MAX_LENGTH],
+        "buyer_comment": question.strip(),
+        "seller_reply": answer.strip(),
     }
     return json.dumps({key: value for key, value in payload.items() if value}, ensure_ascii=False, separators=(",", ":"))

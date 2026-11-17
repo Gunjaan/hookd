@@ -1,0 +1,17 @@
+{# Arguments: facts (LearnedFact list), empty_text. Facts Hooky picked up on its own, each with a Remove action (api-agent-fact-forget removes the row). #}
+{% if facts %}
+  <ul class="learned-facts">
+    {% for fact in facts %}
+      <li class="learned-fact">
+        <p class="learned-fact__text"><strong>{{ fact.label }}:</strong> {{ fact.text }}</p>
+        <span class="learned-fact__meta">{{ fact.get_source_display }} · {{ fact.created_at|date:"j M" }}</span>
+        <form method="post" action="{% url 'api-agent-fact-forget' fact.pk %}" class="learned-fact__forget" data-api data-replace=".learned-fact">
+          {% csrf_token %}
+          <button type="submit" class="btn btn--ghost btn--sm">Remove</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="hint">{{ empty_text }}</p>
+{% endif %}

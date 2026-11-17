@@ -86,6 +86,7 @@ def post_detail(request, post_id: int):
             "account": post.account,
             "insights_error": insights_error,
             "brain_form": post_brain_form(post),
+            "learned_facts": agent_services.post_learned_facts(post),
         },
     )
 

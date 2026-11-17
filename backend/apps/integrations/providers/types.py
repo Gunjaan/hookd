@@ -38,6 +38,23 @@ class IncomingComment:
 
 
 @dataclass(frozen=True)
+class IncomingMessage:
+    """A direct message parsed from a platform webhook: sent to the account, or by it (echo)."""
+
+    account_external_id: str
+    external_id: str
+    participant_external_id: str  # the other person in the conversation
+    is_from_account: bool = False
+    kind: str = "text"  # MessageKind value
+    text: str = ""
+    story_external_id: str = ""  # the account's story a story reply answers
+    media_url: str = ""  # story or attachment media, a CDN URL that expires
+    reply_to_external_id: str = ""  # the message this one quotes
+    sent_at: datetime | None = None
+    payload: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class MediaItem:
     """One post, reel or story on a connected account. Counts are None when the platform hides them."""
 

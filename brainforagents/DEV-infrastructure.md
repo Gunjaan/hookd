@@ -95,11 +95,11 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `EMAIL_PORT` | | `465` | `465` turns on implicit SSL (`EMAIL_USE_SSL`), any other port (`587`) uses STARTTLS (`EMAIL_USE_TLS`) |
 | `EMAIL_HOST_USER` | | `support@hookd.world` | Mailbox to log in with. Also the sender: `DEFAULT_FROM_EMAIL = SERVER_EMAIL = Hookd <EMAIL_HOST_USER>`, so mail passes SPF and DMARC |
 | `EMAIL_HOST_PASSWORD` | for real mail | | That mailbox's password |
-| `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` |
+| `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` (includes `INSTAGRAM_WEBHOOK_FIELDS`, default `comments`) |
 | `GEMINI_API_KEY` | for AI | | Google AI Studio key for the post studio and the reply agent (`apps/core/gemini.py`) |
 | `GEMINI_COPY_MODEL` | | `gemini-3.5-flash-lite` | Text model that plans shots and writes captions |
 | `GEMINI_IMAGE_MODEL` | | `gemini-nano-banana-2.1` | Image model that renders post photos |
-| `GEMINI_REPLY_MODEL` | | `gemini-3.5-flash-lite` | Text model that writes comment replies (`DEV-agent.md`). The reply agent uses Gemini only when `GEMINI_API_KEY` is set |
+| `GEMINI_REPLY_MODEL` | | `gemini-3.5-flash-lite` | Text model that writes comment replies and learns brain facts from captions and inbox replies (`DEV-agent.md`). The reply agent uses Gemini only when `GEMINI_API_KEY` is set |
 
 Not an env var: `AI_MODEL_PRICES` in `config/settings.py` holds USD per million input and output tokens per model, used
 to record the cost of every post studio AI call (`DEV-creatives.md`). Add an entry when changing `GEMINI_COPY_MODEL` or

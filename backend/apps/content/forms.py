@@ -34,7 +34,10 @@ class ComposeForm(forms.Form):
     kind = forms.ChoiceField(choices=PublishKind.choices, initial=PublishKind.IMAGE, widget=forms.RadioSelect)
     media = MultipleFileField(
         label="Media",
-        help_text="Image and carousel: JPEG up to 8 MB each, 2 to 10 for a carousel. Reel: MP4 or MOV up to 300 MB.",
+        help_text=(
+            "Image, carousel and story photo: JPEG up to 8 MB each, 2 to 10 for a carousel. "
+            "Reel and story video: MP4 or MOV up to 300 MB. Stories show no caption."
+        ),
     )
     caption = forms.CharField(
         required=False,
@@ -61,6 +64,8 @@ class ComposeForm(forms.Form):
             for upload in files:
                 if kind == PublishKind.REEL:
                     _check_file(upload, VIDEO_EXTENSIONS, VIDEO_MAX_BYTES, "a reel")
+                elif kind == PublishKind.STORY_VIDEO:
+                    _check_file(upload, VIDEO_EXTENSIONS, VIDEO_MAX_BYTES, "a story video")
                 else:
                     _check_file(upload, IMAGE_EXTENSIONS, IMAGE_MAX_BYTES, "images")
         except forms.ValidationError as exc:

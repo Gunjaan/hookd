@@ -12,6 +12,8 @@ agent (`DEV-agent.md`).
    `(platform, account_external_id)`, skips unknown accounts (logged, still 200 so Meta stops retrying), and creates
    each comment once. Every newly created comment not written by the account itself queues
    `apps.agent.tasks.handle_comment` with `transaction.on_commit`. Returns the number created.
+   The same delivery also goes through `provider.parse_webhook_messages` and
+   `messaging.services.record_incoming_messages` (`DEV-messaging.md`).
 4. The view answers `200 OK`. Duplicate deliveries are no-ops thanks to the unique constraint.
 
 The GET handshake (`hub.mode`, `hub.verify_token`, `hub.challenge`) is answered by

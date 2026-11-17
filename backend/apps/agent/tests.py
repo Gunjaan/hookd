@@ -15,7 +15,7 @@ from apps.accounts.model_querysets import create_user
 from apps.agent import services
 from apps.agent.constants import ReplyStatus
 from apps.agent.engines.base import AgentDecision
-from apps.agent.models import AgentProfile, CommentReply, PostBrain
+from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
@@ -507,3 +507,151 @@ class GeminiReplyEngineTests(AgentTestCase):
             with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
                 response = self.client.post(reverse("api-agent-preview", args=[self.account.pk]), {"text": "price?", "post": ""})
         self.assertContains(response, "Down.", status_code=400)
+
+
+class LearningTests(AgentTestCase):
+    """The brains fill themselves from captions and from replies the creator writes."""
+
+    def test_synced_post_is_not_read_until_someone_comments_then_only_once(self):
+        post = Post.objects.create(account=self.account, external_id="m2", caption="New drop! Kurta at Rs 799. Sizes 36 to 44 #ethnic\nDM to order")
+        self.assertFalse(LearnedFact.objects.exists())
+
+        self.handle(self.comment("Loved it", media="m2"))
+        self.assertEqual(
+            [fact.text for fact in LearnedFact.objects.order_by("pk")], ["Kurta at Rs 799.", "Sizes 36 to 44"]
+        )
+        self.assertTrue(all(fact.post == post and fact.source == "caption" for fact in LearnedFact.objects.all()))
+
+        Post.objects.filter(pk=post.pk).update(caption="Price drop: now Rs 699")
+        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption") as learner:
+            self.handle(self.comment("Nice", media="m2"))
+        learner.assert_not_called()
+        self.assertEqual(LearnedFact.objects.count(), 2)
+
+    def test_caption_read_works_with_the_agent_off(self):
+        self.profile.enabled = False
+        self.profile.save()
+        self.assertEqual(self.handle(self.comment("hi", media="m1")), "ignored")
+        self.assertTrue(PostBrain.objects.get(post=self.post).caption_learned_at)
+
+    def test_post_found_through_a_comment_is_read(self):
+        self.graph.on("GET", "m7", {"id": "m7", "caption": "Saree at Rs 1200", "media_type": "IMAGE", "media_product_type": "FEED"})
+        self.handle(self.comment("Loved it", media="m7"))
+        self.assertEqual(LearnedFact.objects.get().text, "Saree at Rs 1200")
+
+    def test_post_published_from_hookd_is_read(self):
+        from apps.content.models import PublishJob
+        from apps.content.signals import post_published
+
+        post = Post.objects.create(account=self.account, external_id="m3", caption="Bag at Rs 999")
+        job = PublishJob.objects.create(account=self.account, kind="image", status="published", post=post)
+        with self.captureOnCommitCallbacks(execute=True):
+            post_published.send(sender=PublishJob, job=job, post=post)
+        self.assertEqual(LearnedFact.objects.get().text, "Bag at Rs 999")
+
+    def test_learner_failure_is_retried_on_the_next_comment(self):
+        from apps.core.gemini import GeminiError
+
+        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption", side_effect=GeminiError()):
+            self.assertEqual(services.learn_from_post(self.post.pk), "failed")
+        self.assertIsNone(PostBrain.objects.get(post=self.post).caption_learned_at)
+        self.post.caption = "Kurta at Rs 799"
+        self.post.save()
+        self.assertEqual(services.learn_from_post(self.post.pk), "learned 1")
+        self.assertEqual(services.learn_from_post(self.post.pk), "already_learned")
+
+    def test_learned_facts_answer_comments_and_typed_facts_win(self):
+        PostBrain.objects.create(post=self.post, caption_learned_at=timezone.now())
+        LearnedFact.objects.create(account=self.account, post=self.post, label="Sizes", text="Sizes S to XL", source="caption")
+        LearnedFact.objects.create(account=self.account, label="Delivery", text="Delivery in 9 days", source="caption")
+        self.profile.knowledge = "Delivery: 3 to 5 days across India"
+        self.profile.save()
+        comment = self.comment("is size XL available?")
+        self.assertEqual(self.handle(comment), ReplyStatus.QUEUED)
+        self.assertEqual(comment.agent_reply.final_text, "@fan1 Sizes: Sizes S to XL")
+
+        preview = services.preview_reply(account=self.account, text="delivery time?", post=self.post)
+        self.assertIn("3 to 5 days", preview.decision.reply_text)
+
+    def test_rewritten_inbox_reply_teaches_the_next_answer(self):
+        comment = self.comment("does it come in cotton?")
+        reply = CommentReply.objects.create(
+            comment=comment, status=ReplyStatus.PENDING_REVIEW, draft_text="@fan1 We will get back to you soon!",
+            final_text="@fan1 We will get back to you soon!",
+        )
+        self.reply_ok(comment)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("api-reply-approve", args=[reply.pk]), {"text": "@fan1 Yes, 100% cotton"})
+        fact = LearnedFact.objects.get()
+        self.assertEqual(
+            (fact.post, fact.source, fact.text, fact.source_reply), (self.post, "reply", "Yes, 100% cotton", reply)
+        )
+        self.assertFalse(AgentProfile.objects.get(pk=self.profile.pk).knowledge.count("cotton"))
+        sent_tab = self.client.get(reverse("agent-inbox"), {"status": ReplyStatus.SENT})
+        self.assertContains(sent_tab, "Hooky learned from your reply")
+        self.assertContains(sent_tab, "this post only")
+        self.assertContains(sent_tab, "Written by you, sent")
+        self.assertNotContains(sent_tab, "Hooky was not sure")
+
+        follow_up = self.comment("cotton?", author="fan2")
+        self.assertEqual(self.handle(follow_up), ReplyStatus.QUEUED)
+        self.assertEqual(follow_up.agent_reply.final_text, "@fan2 does it come in cotton?: Yes, 100% cotton")
+
+    def test_approving_the_draft_unchanged_learns_nothing(self):
+        reply = CommentReply.objects.create(
+            comment=self.comment("hi?"), status=ReplyStatus.PENDING_REVIEW, draft_text="@fan1 Hello!", final_text="@fan1 Hello!"
+        )
+        with mock.patch("apps.agent.tasks.learn_from_reply.delay") as queued, mock.patch("apps.agent.tasks.send_reply.apply_async"):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(reverse("api-reply-approve", args=[reply.pk]), {"text": "@fan1 Hello!"})
+        queued.assert_not_called()
+
+    def test_same_topic_replaces_the_older_fact(self):
+        from apps.agent import model_querysets as queries
+
+        queries.save_learned_facts(self.account, [(None, "Delivery", "5 days")], source="caption", source_post=self.post)
+        queries.save_learned_facts(self.account, [(None, "delivery", "3 days")], source="reply", source_post=None)
+        self.assertEqual(list(LearnedFact.objects.values_list("text", flat=True)), ["3 days"])
+
+    def test_pages_list_learned_facts_and_remove_them(self):
+        shop = LearnedFact.objects.create(account=self.account, label="Returns", text="7 day returns", source="reply")
+        LearnedFact.objects.create(account=self.account, post=self.post, label="Price", text="Rs 799", source="caption")
+        page = self.client.get(reverse("agent-account", args=[self.account.pk]))
+        self.assertContains(page, "7 day returns")
+        self.assertContains(page, "Plus 1 fact about single posts")
+        modal = self.client.get(reverse("api-post-preview", args=[self.post.pk])).json()["html"]
+        self.assertIn("Rs 799", modal)
+        Post.objects.filter(pk=self.post.pk).update(insights_fetched_at=timezone.now())
+        self.assertContains(self.client.get(reverse("post-detail", args=[self.post.pk])), "Rs 799")
+
+        other = create_user(email="other@example.com", password="a-strong-pass-123")
+        self.client.force_login(other)
+        self.assertEqual(self.client.post(reverse("api-agent-fact-forget", args=[shop.pk])).status_code, 404)
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("api-agent-fact-forget", args=[shop.pk]))
+        self.assertEqual(response.json()["html"], "")
+        self.assertFalse(LearnedFact.objects.filter(pk=shop.pk).exists())
+
+
+class GeminiBrainLearnerTests(TestCase):
+    @override_settings(AGENT_REPLY_MODEL="cheap-model")
+    def test_facts_from_the_model_answer(self):
+        from apps.agent.engines.gemini import GeminiBrainLearner
+        from apps.agent.engines.prompts import LEARN_CAPTION_SYSTEM
+
+        answer = {"facts": [
+            {"scope": "post", "label": " Price ", "text": "Rs 799"},
+            {"scope": "account", "label": "Delivery", "text": "3 to 5 days"},
+            {"scope": "weird", "label": "Sizes", "text": "S to XL"},
+            {"scope": "post", "label": "", "text": "no label"},
+            "junk",
+        ]}
+        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+            facts = GeminiBrainLearner().from_caption("Kurta Rs 799")
+        self.assertEqual(
+            [(fact.scope, fact.label, fact.text) for fact in facts],
+            [("post", "Price", "Rs 799"), ("account", "Delivery", "3 to 5 days"), ("post", "Sizes", "S to XL")],
+        )
+        self.assertEqual(call.call_args.args, ("cheap-model", ["Kurta Rs 799"]))
+        self.assertEqual(call.call_args.kwargs["system"], LEARN_CAPTION_SYSTEM)
+        self.assertNotIn("{", LEARN_CAPTION_SYSTEM)

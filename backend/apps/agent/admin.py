@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.agent.models import AgentProfile, CommentReply, PostBrain
+from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 
 
 @admin.register(AgentProfile)
@@ -20,3 +20,11 @@ class CommentReplyAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("final_text", "comment__text", "comment__author_username")
     raw_id_fields = ("comment",)
+
+
+@admin.register(LearnedFact)
+class LearnedFactAdmin(admin.ModelAdmin):
+    list_display = ("label", "text", "account", "post", "source", "created_at")
+    list_filter = ("source",)
+    search_fields = ("label", "text")
+    raw_id_fields = ("post", "source_post")

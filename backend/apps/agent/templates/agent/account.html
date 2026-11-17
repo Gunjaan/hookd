@@ -25,6 +25,7 @@
     {% include "agent/status_bar.html" %}
 
     <div class="agent-layout">
+      <div class="agent-column">
       <form id="agent-settings" method="post" action="{% url 'api-agent-settings' account.pk %}" class="agent-settings" data-api data-unsaved="agent-unsaved" data-busy-scope>
         {% csrf_token %}
 
@@ -63,6 +64,18 @@
           <button type="submit" class="btn btn--primary btn--md">Save changes</button>
         </div>
       </form>
+
+      <section class="agent-card" aria-labelledby="learned-title">
+        <div>
+          <h2 id="learned-title" class="section-title">What Hooky <em>learned</em></h2>
+          <p class="agent-card__lede">Picked up on its own from your captions and the replies you write in the inbox. What you typed above always wins. Remove anything that is wrong.</p>
+        </div>
+        {% include "agent/learned_facts.html" with facts=learned_facts empty_text="Nothing yet. Hooky reads a post's caption when it gets its first comment, and learns from every reply you write for it." %}
+        {% if post_fact_count %}
+          <p class="hint">Plus {{ post_fact_count }} fact{{ post_fact_count|pluralize }} about single posts, listed in each post's Video brain.</p>
+        {% endif %}
+      </section>
+      </div>
 
       <aside id="try" class="agent-try" aria-labelledby="try-title">
         <div>

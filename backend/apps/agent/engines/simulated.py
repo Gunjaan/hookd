@@ -1,4 +1,4 @@
-"""Stand-in engine used until Claude is connected.
+"""Stand-in reply engine and brain learner, used without a Gemini key and in tests.
 
 Deliberately naive: the reply is the brain line sharing the most words with the comment (video brain first). A
 question no brain line answers gets a holding reply with low confidence, so it waits for the creator; anything
@@ -7,9 +7,11 @@ else gets a thank you.
 
 import re
 
-from apps.agent.engines.base import AgentContext, AgentDecision, ReplyEngine
+from apps.agent.constants import FactScope
+from apps.agent.engines.base import AgentContext, AgentDecision, BrainLearner, LearnedFactDraft, ReplyEngine
 
 WORD_PATTERN = re.compile(r"\w+")
+MENTION_PATTERN = re.compile(r"^@\S+\s*")
 # Words too common to tell brain lines apart.
 STOP_WORDS = frozenset(
     {
@@ -64,3 +66,36 @@ class SimulatedReplyEngine(ReplyEngine):
             confidence=confidence,
             reason=reason,
         )
+
+
+SENTENCE_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
+TAG_PATTERN = re.compile(r"[#@]\w+")
+CAPTION_FACT_LIMIT = 8
+FACT_MAX_LENGTH = 300
+LABEL_MAX_LENGTH = 80
+
+
+def _clean(text: str) -> str:
+    return " ".join(TAG_PATTERN.sub("", text).split())
+
+
+class SimulatedBrainLearner(BrainLearner):
+    """Stand-in learner: caption sentences with a number in them (prices, sizes, dates) become post facts, and the
+    creator's answer becomes a fact labelled with the question, so the word matching engine finds it next time."""
+
+    name = "simulated"
+
+    def from_caption(self, caption: str) -> list[LearnedFactDraft]:
+        sentences = (_clean(part) for part in SENTENCE_PATTERN.split(caption))
+        facts = [sentence for sentence in sentences if any(char.isdigit() for char in sentence)]
+        return [
+            LearnedFactDraft(scope=FactScope.POST, label="Caption", text=fact[:FACT_MAX_LENGTH])
+            for fact in facts[:CAPTION_FACT_LIMIT]
+        ]
+
+    def from_reply(self, *, question: str, answer: str, post_caption: str) -> list[LearnedFactDraft]:
+        answer = MENTION_PATTERN.sub("", answer).strip()
+        question = _clean(question)
+        if not answer or not question:
+            return []
+        return [LearnedFactDraft(scope=FactScope.POST, label=question[:LABEL_MAX_LENGTH], text=answer[:FACT_MAX_LENGTH])]

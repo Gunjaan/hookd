@@ -141,3 +141,11 @@ def reply_retry(request, reply_id: int):
     except HookdError as exc:
         return json_error(exc.message)
     return _reply_done(request, ReplyStatus.FAILED, "Reply scheduled again.")
+
+
+@api_login_required
+@require_POST
+def fact_forget(request, fact_id: int):
+    """Remove a fact Hooky learned on its own. Empty `html` removes its row."""
+    _found(services.forget_fact, user=request.user, fact_id=fact_id)
+    return json_ok(html="", message="Hooky forgot that.")

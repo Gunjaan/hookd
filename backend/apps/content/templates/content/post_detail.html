@@ -21,7 +21,8 @@
           {% include "components/avatar.html" with src=account.avatar_url name=account.username size=32 %}
           <span class="post-view__name">{{ account.username }}</span>
           <span class="badge badge--neutral">{{ post.get_product_type_display }}{% if post.media_type == 'carousel' %} · Carousel{% endif %}</span>
-          {% if post.permalink %}
+          {% if post.removed_at %}<span class="badge badge--warning" title="Deleted or archived on {{ account.get_platform_display }}. Its brain and learned facts are kept.">Removed from {{ account.get_platform_display }}</span>{% endif %}
+          {% if post.permalink and not post.removed_at %}
             <a href="{{ post.permalink }}" target="_blank" rel="noopener" class="post-view__open" title="View on {{ account.get_platform_display }}">{% include "components/icon.html" with name="external" size=18 %}<span class="visually-hidden">View on {{ account.get_platform_display }}</span></a>
           {% endif %}
         </header>
@@ -37,7 +38,7 @@
           <h2 id="post-comments-title" class="visually-hidden">Comments</h2>
           <ul id="comment-list" class="comment-list" aria-labelledby="post-comments-title"></ul>
           {% if post.comments_count != 0 %}
-            <button type="button" class="btn btn--secondary btn--sm post-view__more" data-load-more="{% url 'api-post-comments' post.pk %}" data-target="comment-list" data-more-label="Load more comments" data-empty-text="No comments.">Show comments</button>
+            {% if post.removed_at %}<p class="hint">Comments cannot be loaded: the post is no longer on {{ account.get_platform_display }}.</p>{% else %}<button type="button" class="btn btn--secondary btn--sm post-view__more" data-load-more="{% url 'api-post-comments' post.pk %}" data-target="comment-list" data-more-label="Load more comments" data-empty-text="No comments.">Show comments</button>{% endif %}
           {% else %}
             <p class="hint post-view__more">No comments yet.</p>
           {% endif %}
@@ -67,6 +68,10 @@
             <button type="submit" class="btn btn--primary btn--md">Save brain</button>
           </div>
         </form>
+        <div class="learned-block">
+          <p class="learned-block__title">Learned on its own</p>
+          {% include "agent/learned_facts.html" with facts=learned_facts empty_text="Nothing learned yet. Prices, sizes and offers in the caption show up here after the first comment." %}
+        </div>
       </section>
 
       <section class="panel panel--butter" aria-labelledby="post-insights-title">

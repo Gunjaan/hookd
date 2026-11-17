@@ -21,6 +21,7 @@ configuration). Works for Instagram professional accounts (Creator or Business).
 | `INSTAGRAM_REDIRECT_URI` | `{APP_URL}/auth/instagram/callback` | Must be registered under that step's "Redirect URL". HTTPS only |
 | `INSTAGRAM_GRAPH_API_VERSION` | `v27.0` | Used for every Graph call |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | | Random string, same value as "Verify token" in "3. Configure webhooks". Empty rejects every handshake |
+| `INSTAGRAM_WEBHOOK_FIELDS` | `comments` | Comma separated fields every connected account is subscribed to (`settings.INSTAGRAM["WEBHOOK_FIELDS"]`). Add `messages` to receive DMs, story replies and story mentions (`DEV-messaging.md`), then run `subscribe_webhooks` |
 
 Permissions are not sent by Hookd: they come from the login configuration (required `instagram_basic`,
 `instagram_manage_messages`; Hookd also needs `instagram_manage_comments`, `instagram_content_publish`).
@@ -51,7 +52,7 @@ and connect returns 503.
 
    `supports_token_refresh = False`, so the account row shows only "Reconnect" (one click through the Meta dialog).
 5. `subscribe_webhooks` (run by the base `on_account_connected`, the "Resubscribe" button and the
-   `subscribe_webhooks` command): `POST /{version}/{ig_id}/subscribed_apps` with `subscribed_fields=comments` and the
+   `subscribe_webhooks` command): `POST /{version}/{ig_id}/subscribed_apps` with `subscribed_fields=<INSTAGRAM_WEBHOOK_FIELDS>` and the
    account token. Must return `{"success": true}`, otherwise `ProviderAPIError` (logged into `status_detail`, the
    account stays connected). No Meta login is needed because the stored token never expires.
 
@@ -62,8 +63,9 @@ and connect returns 503.
 | `verify_webhook_challenge(params)` | `hub.mode=subscribe` and `hub.verify_token` equal to `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` (constant time) returns `hub.challenge`; anything else, or an empty configured token, raises `WebhookVerificationError` |
 | `verify_webhook_signature(body, headers)` | `X-Hub-Signature-256: sha256=<hex>` must equal HMAC SHA256 of the raw body keyed with `INSTAGRAM_APP_SECRET` (the Meta app secret) |
 | `parse_webhook_comments(payload)` | `object=instagram`; each `entry[].changes[]` with `field=comments` becomes an `IncomingComment`. Unified Login shape: `value.comment_id` (falls back to `value.id`), `text`, `from.id/username`, `media.id`, `parent_id`; `entry.id` is the Instagram account id, `entry.time` the timestamp |
+| `parse_webhook_messages(payload)` | `object=instagram`; each `entry[].messaging[]` event with a `message.mid` becomes an `IncomingMessage` (deleted messages, reactions, reads and postbacks are skipped). `message.is_echo` means the account sent it, so the participant is `recipient.id`, otherwise `sender.id`. Kind: `reply_to.story` (id, url) is a story reply, an attachment of type `story_mention` a story mention, `is_unsupported` unsupported, other attachments media, else text. `timestamp` is in milliseconds |
 
-`WEBHOOK_FIELDS = ("comments",)` in `provider.py`. After changing it, run `python manage.py subscribe_webhooks`. Meta notes: comments need Advanced Access in production and the app
+Fields come from `INSTAGRAM_WEBHOOK_FIELDS` (default `comments`). After changing it, run `python manage.py subscribe_webhooks`. Meta notes: comments need Advanced Access in production and the app
 must be Live to deliver real events for app users; no events for private accounts; retries for up to 36 hours, so
 handling is idempotent.
 
@@ -79,7 +81,7 @@ handling is idempotent.
 6. Only tester accounts can connect until App Review and Business Verification (Advanced Access).
 7. DMs only work when the creator turns on "Allow access to messages" (shown during Instagram login).
 8. "3. Configure webhooks": Callback URL `https://<host>/webhooks/instagram/` (trailing slash), Verify token =
-   `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, "Verify and save", then subscribe to the `comments` field.
+   `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, "Verify and save", then subscribe to the `comments` field (and `messages` for DMs and story replies, see "Webhook fields" below).
 
 ## Local development
 
@@ -103,7 +105,7 @@ All calls use the stored account token. Field and metric lists are constants at 
 | `fetch_media_insights` | `GET /{media_id}/insights?metric=...`. Feed: views, reach, likes, comments, saved, shares, total_interactions. Reels add `ig_reels_avg_watch_time`, `ig_reels_video_view_total_time` (ms). Stories: views, reach, replies, shares, total_interactions. Values from `values[0].value` |
 | `fetch_account_insights` | `GET /{ig_id}/insights?metric=views,reach,accounts_engaged,total_interactions&period=day&metric_type=total_value&since&until`. Values from `total_value.value` |
 | `publishing_quota` | `GET /{ig_id}/content_publishing_limit?fields=config,quota_usage` (100 API posts per 24 hours) |
-| `start_publish` | `POST /{ig_id}/media`: image `image_url`; reel `media_type=REELS&video_url`; carousel one `image_url&is_carousel_item=true` container per image, then `media_type=CAROUSEL&children=<ids>`. Caption on the top container |
+| `start_publish` | `POST /{ig_id}/media`: image `image_url`; reel `media_type=REELS&video_url`; carousel one `image_url&is_carousel_item=true` container per image, then `media_type=CAROUSEL&children=<ids>`. Caption on the top container. Story photo `media_type=STORIES&image_url`, story video `media_type=STORIES&video_url`, no caption (the API cannot add stickers, links or polls) |
 | `publish_status` | `GET /{container_id}?fields=status_code,status`. FINISHED or PUBLISHED, IN_PROGRESS, ERROR or EXPIRED (failed, `status` is the reason) |
 | `finish_publish` | `POST /{ig_id}/media_publish` with `creation_id`, then `get_media` |
 
@@ -121,6 +123,26 @@ if Meta reports it cannot fetch the media, check the tunnel URL in `APP_URL` is 
 The connected account's own replies come back through the `comments` webhook flagged `is_from_account`, so the agent
 never answers itself. Sending limits and pauses are in `DEV-agent.md`.
 
+## Webhook fields (Meta app, "3. Configure webhooks")
+
+| Field | Use in Hookd |
+|---|---|
+| `comments` | On. New comments for the reply agent |
+| `messages` | Turn on (and add to `INSTAGRAM_WEBHOOK_FIELDS`). DMs, story replies, story mentions and the account's own sent messages (echoes), stored by `apps.messaging` |
+| `messaging_postbacks` | Turn on before auto DMs use buttons or ice breakers (taps arrive here). Not parsed yet |
+| `story_insights` | On in the Meta app. Final story metrics when a story expires. Not parsed yet (story insights are fetched on the post page) |
+| `mentions` | Later: the account @mentioned in someone else's caption or comment. Story mentions come through `messages` |
+| `messaging_referral` | Later: ig.me links with a `ref` and click to message ads |
+| `messaging_seen`, `message_reactions`, `message_edit` | Not needed |
+| `messaging_handover`, `standby` | Only when another app (or Meta's inbox automation) shares the inbox through the handover protocol |
+| `live_comments` | Not needed (live videos) |
+
+Meta rules for the next steps: replies to a DM or story reply only within 24 hours of the person's last message
+(`Conversation.reply_window_ends_at`); no cold DMs; a private reply to a comment (`POST /{ig_id}/messages` with
+`recipient.comment_id`) is one message per comment within 7 days of it. Messaging needs `instagram_manage_messages`
+with Advanced Access, and the creator must allow message access under Instagram settings, Messages, Connected tools.
+
 ## Not built yet
 
-Private replies, DMs, `messages` webhook, hiding comments, stories publishing, video carousels.
+Sending DMs and private replies, auto replies to DMs and story replies, `messaging_postbacks` and `story_insights`
+parsing, hiding comments, video carousels.

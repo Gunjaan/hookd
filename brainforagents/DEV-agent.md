@@ -4,8 +4,9 @@ Answers new comments on connected accounts from an account brain and a per post 
 set up: when the brains hold the answer the reply goes out on its own, when a needed fact is missing the draft waits in
 the inbox for approval. The engine that writes replies is pluggable; today it is a **low cost Gemini model** (`GeminiReplyEngine`)
 until Claude is connected, with the word matching **simulated engine** standing in when `GEMINI_API_KEY` is empty and
-in tests. Brains are filled by the creator on the agent page and the post page, and by the post studio's "Teach your
-reply agent" questions (`DEV-creatives.md`). Sending is slow and capped on purpose so Hookd stays inside Meta's rate limits and anti-spam rules.
+in tests. Brains are filled by the creator on the agent page and the post page, by the post studio's "Teach your
+reply agent" questions (`DEV-creatives.md`), and **on their own** by the brain learner: a post's caption (read once, on
+the first comment or when Hookd publishes it) and every inbox reply the creator rewrote become learned facts (see "Learned brain"). Sending is slow and capped on purpose so Hookd stays inside Meta's rate limits and anti-spam rules.
 
 ## Flow
 
@@ -14,11 +15,13 @@ reply agent" questions (`DEV-creatives.md`). Sending is slow and capped on purpo
    Comments loaded in the studio are history and never queue the agent.
 2. `services.handle_new_comment` ignores the account's own comments. Otherwise it first calls
    `content.services.ensure_post`, which fetches and stores the post when it is unknown (posted outside Hookd, since
-   Instagram has no new post webhook), even when the agent is off. It then ignores the comment (no row) when the agent
+   Instagram has no new post webhook), even when the agent is off, and reads the post's caption once if it never
+   did (`learn_from_post`, synchronous so this reply can use the facts; also with the agent off). It then ignores the comment (no row) when the agent
    is off for the account, a reply already exists, or the platform has no `public_reply` capability. It stores a
    `skipped` reply when the post's video brain turns the agent off, the comment is a thread reply and
    `reply_to_threads` is off, or the comment is older than `MAX_COMMENT_AGE_HOURS`.
-3. It builds an `AgentContext` (comment, voice, account brain, post caption, video brain) and calls
+3. It builds an `AgentContext` (comment, voice, account brain, post caption, video brain; each brain is the
+   creator's text plus the learned facts, see "Learned brain") and calls
    `engines.registry.get_engine().decide(context)`.
 4. `_route` turns the decision into a status (first match wins):
 
@@ -45,6 +48,32 @@ reply agent" questions (`DEV-creatives.md`). Sending is slow and capped on purpo
 7. The creator works the inbox: approve (optionally edited, checked with `reply_text_problems`) -> `schedule_reply`,
    discard -> `rejected`, try again on a failed reply -> `schedule_reply`.
 
+## Learned brain
+
+The agent builds its own memory from what goes through Hookd, stored as `LearnedFact` rows next to (never inside)
+what the creator typed.
+
+| Source | Trigger | What is learned |
+|---|---|---|
+| Post caption, first comment | `handle_new_comment` calls `learn_from_post` for the comment's post (stored, or just fetched by `ensure_post`) | `learn_from_post`: claims the post (`claim_caption_learning`: a conditional update that sets `PostBrain.caption_learned_at` only while it is empty, so only one caller ever wins), then `learner.from_caption(caption)`. Once claimed it never reads that post again (`already_learned`), even if the caption changes. An empty caption learns nothing but stays claimed. A learner error releases the claim (`release_caption_learning`), logs and returns `failed`, so the next comment retries |
+| Post caption, published from Hookd | `receivers.learn_from_published_caption` on `content.signals.post_published`: queues `tasks.learn_from_post` on commit | Same as above |
+| Inbox reply | `approve_reply` when `CommentReply.written_by_creator` (the sent text differs from the draft, leading @mention ignored): queues `tasks.learn_from_reply` on commit | `learn_from_reply`: `learner.from_reply(question, answer, post_caption)`, the facts the creator's answer states, linked to the reply (`source_reply`) |
+
+Each fact has a scope: `post` facts go on the post (`LearnedFact.post`), `account` facts (shipping, returns, how to
+order) are shop wide (`post` empty); a fact without a stored post is shop wide. Saving replaces older learned facts on
+the same topic: same place (that post, or shop wide) and same label, case insensitive (`save_learned_facts`).
+
+Using them: `_context` loads up to `LEARNED_FACTS_LIMIT` (40) newest shop facts and post facts and appends them as
+`Label: text` lines after the creator's brain (`_brain_text`). A learned fact whose label matches a creator line
+(`Label: ...`) is left out, so what the creator typed always wins. The preview uses the same context.
+
+Captions answer questions directly too: the whole caption (up to 2200 characters) is in every reply request, and
+`REPLY_SYSTEM` tells the engine the caption's prices, sizes, offers and dates are usable facts (post facts win on a
+conflict).
+
+UI: the agent page's "What Hooky learned" card lists shop facts and counts post facts; the post page and post modal list
+the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-forget`).
+
 ## Meta compliance (why the limits exist)
 
 - Replies only to new comments people wrote on the creator's own posts, never to the account's own comments, and no
@@ -66,7 +95,8 @@ creator writes it in the inbox. The preview page shows the error as a message.
 | Setting | Default | Notes |
 |---|---|---|
 | `HOOKD_REPLY_ENGINE` | `apps.agent.engines.gemini.GeminiReplyEngine` when `GEMINI_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedReplyEngine` | Dotted path to a `ReplyEngine` |
-| `AGENT_REPLY_MODEL` | env `GEMINI_REPLY_MODEL`, else `gemini-3.5-flash-lite` | Text model for `GeminiReplyEngine` |
+| `AGENT_REPLY_MODEL` | env `GEMINI_REPLY_MODEL`, else `gemini-3.5-flash-lite` | Text model for `GeminiReplyEngine` and `GeminiBrainLearner` |
+| `HOOKD_BRAIN_LEARNER` | `apps.agent.engines.gemini.GeminiBrainLearner` when `GEMINI_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedBrainLearner` | Dotted path to a `BrainLearner` |
 | `AGENT_REPLY_LIMITS` | see below | One dict, read by `services._limit` |
 
 `AGENT_REPLY_LIMITS`: `MIN_SPACING_SECONDS` 45, `JITTER_SECONDS` 30, `MAX_PER_HOUR` 20, `MAX_PER_DAY` 150,
@@ -77,11 +107,14 @@ creator writes it in the inbox. The preview page shows the error as a message.
 
 - `base.py`: `AgentContext(comment_text, author_username, account_username, voice, account_knowledge, post_caption,
   post_knowledge)`, `AgentDecision(intent, language, reply_text, confidence, reason)`, `ReplyEngine` ABC (`name`,
-  `decide(context)`). Engines never send; their confidence decides between sending and review.
+  `decide(context)`). Engines never send; their confidence decides between sending and review. `LearnedFactDraft(scope, label, text)`
+  and the `BrainLearner` ABC (`name`, `from_caption(caption)`, `from_reply(question, answer, post_caption)`).
 - `simulated.py`: `SimulatedReplyEngine`. Reply = `@author ` + the brain line (video brain first, then account brain)
   sharing the most words with the comment (stop words dropped, plural "s" ignored), confidence 0.9. No such line and
   the comment has a "?": holding reply, confidence 0.3 (goes to review). Otherwise "Thank you so much!", 0.8.
-  Ignores `voice`; language is always `unknown`.
+  Ignores `voice`; language is always `unknown`. `SimulatedBrainLearner`: caption sentences (split on `.!?` and new
+  lines, hashtags and @mentions dropped) that contain a digit become post facts labelled `Caption` (at most 8); a
+  rewritten reply becomes one post fact labelled with the question, text = the answer without the @mention.
 - `prompts.py`: `REPLY_SYSTEM` (constant, cache friendly): says confident replies are posted unchecked; reply in the
   commenter's language and script, starts with `@username`, 1 or 2 sentences under 200 characters, follows the voice;
   only given facts, never invented prices, stock or links; options not in a listed set get the available ones; never
@@ -89,10 +122,18 @@ creator writes it in the inbox. The preview page shows the error as a message.
   fully answer or no facts are needed (praise, thanks); missing fact gives a holding reply with confidence at most
   0.4 and the fact named in `reason`; spam gets intent `spam` and an empty reply. `REPLY_SCHEMA` (intent, language,
   reply_text, confidence, reason). `reply_request(context)`: compact JSON with empty fields dropped and the caption
-  cut to 1000 characters.
+  cut to `CAPTION_MAX_LENGTH` (2200, Instagram's limit). The caption rule: its prices, sizes, offers and dates are
+  facts, post facts win on a conflict. Learner prompts (constants): `LEARN_RULES` (buyer facts only: price, sizes,
+  colors, material, stock, offer, delivery, shipping, COD, returns, how to order, contact, location, hours; only what
+  the text states; 1 to 3 word labels reused per topic; text under 200 characters in the text's language; scope
+  `post` for the product, `account` for the shop), `LEARN_CAPTION_SYSTEM` (at most 12 facts), `LEARN_REPLY_SYSTEM`
+  (at most 3, holding replies, thanks and "DM us" state none), `LEARN_SCHEMA` (`facts[]` of scope, label, text),
+  `learn_reply_request(question, answer, post_caption)`.
 - `gemini.py`: `GeminiReplyEngine` (`name = "gemini"`): one `core.gemini.generate_json` call, max 400 output tokens.
-  Confidence is clamped to 0..1 (unreadable is 0).
-- `registry.py`: `get_engine()`.
+  Confidence is clamped to 0..1 (unreadable is 0). `GeminiBrainLearner` (`name = "gemini"`): one `generate_json`
+  call, max 1200 output tokens; facts without a label or text are dropped, an unknown scope becomes `post`, labels are
+  cut to 80 and texts to 300 characters.
+- `registry.py`: `get_engine()`, `get_learner()`.
 
 **Plugging in Claude:** add `engines/claude.py` with a `ReplyEngine` that sends `prompts.REPLY_SYSTEM` (cached) and
 `prompts.reply_request(context)` and returns an `AgentDecision`, set `HOOKD_REPLY_ENGINE`, add the API key env var to
@@ -103,10 +144,11 @@ creator writes it in the inbox. The preview page shows the error as a message.
 | Model | Fields |
 |---|---|
 | `AgentProfile` (one per `SocialAccount`, `related_name="agent_profile"`, created lazily) | `enabled` (False), `voice`, `knowledge` (account brain, one fact per line), `reply_to_threads` (False), `paused_until`, `pause_reason`, `next_send_at` |
-| `PostBrain` (one per `content.Post`, `related_name="brain"`) | `knowledge` (video brain), `agent_enabled` (True) |
-| `CommentReply` (one per `comments.Comment`, `related_name="agent_reply"`) | `status` (`pending_review`, `queued`, `sending`, `sent`, `skipped`, `rejected`, `failed`), `draft_text` (engine output), `final_text` (what is sent), `decision` JSON (`intent`, `language`, `confidence`, `engine`, `engine_reason`, `reason`), `scheduled_for`, `sent_at`, `reply_external_id`, `error`, `attempts` |
+| `PostBrain` (one per `content.Post`, `related_name="brain"`) | `knowledge` (video brain), `agent_enabled` (True), `caption_learned_at` (set once when the caption is read) |
+| `LearnedFact` (`related_name="learned_facts"` on `SocialAccount` and `Post`) | `account`, `post` (empty = shop wide), `label`, `text`, `source` (`FactSource`: `caption`, `reply`), `source_post` (post whose caption or comment it came from, SET_NULL), `source_reply` (the inbox reply that taught it, `related_name="learned_facts"` on `CommentReply`, SET_NULL). Property `line` (`Label: text`). Newest first |
+| `CommentReply` (one per `comments.Comment`, `related_name="agent_reply"`) | `status` (`pending_review`, `queued`, `sending`, `sent`, `skipped`, `rejected`, `failed`), `draft_text` (engine output), `final_text` (what is sent; property `written_by_creator` when it differs from the draft), `decision` JSON (`intent`, `language`, `confidence`, `engine`, `engine_reason`, `reason`), `scheduled_for`, `sent_at`, `reply_external_id`, `error`, `attempts` |
 
-Choices in `constants.py`: `ReplyStatus`. All in the Django admin.
+Choices in `constants.py`: `ReplyStatus`, `FactSource`, `FactScope` (`post`, `account`). All in the Django admin.
 A video brain only exists for posts Hookd has synced (`Post` rows); comments on other posts use the account brain.
 
 ## Services (`services.py`)
@@ -121,16 +163,19 @@ A video brain only exists for posts Hookd has synced (`Post` rows); comments on 
 | `schedule_reply`, `send_reply`, `send_overdue_replies` | Steps 5 and 6; recovery sends queued replies more than 5 minutes past their slot |
 | `inbox`, `inbox_counts`, `get_user_reply` (`ReplyNotFound`), `approve_reply`, `reject_reply`, `retry_reply` | Inbox. Wrong status raises `ReplyNotEditable`, refused text `ReplyTextRejected` |
 | `pending_review_count(user)` | Side panel badge (context processor `context_processors.agent_nav`) |
+| `learn_from_post(post_id)`, `learn_from_reply(reply_id)` | Learned brain (see above). Return the outcome (`learned N`, `already_learned`, `failed`, `missing`) |
+| `account_learned_facts(account)`, `post_learned_facts(post)`, `post_learned_fact_count(account)`, `forget_fact(user, fact_id)` (`LearnedFactNotFound`) | Learned facts for the pages, and Remove |
 
-`model_querysets.py`: profile (`get_profile`, `get_or_create_profile`, `lock_profile`, `update_profile`), brain (`get_post_brain`, `save_post_brain`), replies (`reply_exists`, `create_reply_if_new`, `get_reply`,
+`model_querysets.py`: profile (`get_profile`, `get_or_create_profile`, `lock_profile`, `update_profile`), brain (`get_post_brain`, `save_post_brain`, `claim_caption_learning`, `release_caption_learning`), learned facts (`learned_facts`, `account_learned_facts`, `post_learned_facts`, `post_learned_fact_count`, `save_learned_facts`, `get_learned_fact_for_user`, `delete_learned_fact`), replies (`reply_exists`, `create_reply_if_new`, `get_reply`,
 `get_reply_for_user`, `update_reply`, `claim_reply_for_sending`, `sent_times_since`,
 `outgoing_texts_since`, `list_replies_for_user`, `reply_counts_for_user`,
 `pending_review_count`, `sent_reply_count`, `overdue_queued_reply_ids`). Uses `content.model_querysets.find_post`/`latest_posts` and
-`comments.model_querysets.get_comment`.
+`comments.model_querysets.get_comment`, `content.model_querysets.get_post`.
 
 ## Tasks and command
 
-`tasks.py`: `handle_comment(comment_id)`, `send_reply(reply_id)`; both return the outcome string.
+`tasks.py`: `handle_comment(comment_id)`, `send_reply(reply_id)`, `learn_from_post(post_id)`, `learn_from_reply(reply_id)`;
+all return the outcome string. `receivers.py` (connected in `AgentConfig.ready`): `learn_from_published_caption` on `post_published`.
 `send_due_replies` management command: cron every 10 minutes (`DEV-infrastructure.md`).
 
 ## Pages and JSON actions (`views.py`, `api.py`, `urls.py`, `forms.py`, `templates/agent/`)
@@ -141,16 +186,17 @@ forms and `HookdError` answer 400 `{"error"}` (shown as a message), other users'
 | Route | Name | Page |
 |---|---|---|
 | `GET /agent/` | `agent` | First account's agent page, or connections |
-| `GET /agent/accounts/<id>/` | `agent-account` | Built around what the creator checks and does most. Top: the status bar (`status_bar.html`, context from `views.status_context`): Hooky on or off for the account, what that means, replies sent in the last 7 days, the pause warning, a "N replies waiting for you" link to the inbox when any wait, and the on or off switch (`AgentEnabledForm`, `data-autosubmit`, saved at once by `api-agent-enabled`). Left: `AgentSettingsForm` (initial from the profile, saved by `api-agent-settings`) as three white cards: "What Hooky knows" (account brain, first because it decides what goes out on its own), "How Hooky sounds" (voice, with `VOICE_PICKS` chips that append a style), "Which comments" (thread replies switch). A save bar (`data-unsaved`) appears after any edit and stays at the bottom of the screen with Discard and Save changes. Right (`#try`, sticky): "Try it", a `PreviewForm` posting to `api-agent-preview` with `data-include="agent-settings"`, so the test uses the unsaved voice and brain; the answer fills `#preview-result`. Bottom: the sending limits as one line with a "How it works" `<details>`. Under 860px the test drops below the settings |
+| `GET /agent/accounts/<id>/` | `agent-account` | Built around what the creator checks and does most. Top: the status bar (`status_bar.html`, context from `views.status_context`): Hooky on or off for the account, what that means, replies sent in the last 7 days, the pause warning, a "N replies waiting for you" link to the inbox when any wait, and the on or off switch (`AgentEnabledForm`, `data-autosubmit`, saved at once by `api-agent-enabled`). Left: `AgentSettingsForm` (initial from the profile, saved by `api-agent-settings`) as three white cards: "What Hooky knows" (account brain, first because it decides what goes out on its own), "How Hooky sounds" (voice, with `VOICE_PICKS` chips that append a style), "Which comments" (thread replies switch). Under the form (`.agent-column`), a separate "What Hooky learned" card lists the learned shop facts (`learned_facts.html`) and how many post facts exist. A save bar (`data-unsaved`) appears after any edit and stays at the bottom of the screen with Discard and Save changes. Right (`#try`, sticky): "Try it", a `PreviewForm` posting to `api-agent-preview` with `data-include="agent-settings"`, so the test uses the unsaved voice and brain; the answer fills `#preview-result`. Bottom: the sending limits as one line with a "How it works" `<details>`. Under 860px the test drops below the settings |
 | `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each, `views.inbox_tabs`). Review items have an editable reply, "Send reply" (approve) and "Discard"; failed ones "Try again" |
 | `POST /api/agent/accounts/<id>/settings/` | `api-agent-settings` | `update_profile(**cleaned_data)`, `{message}` |
 | `POST /api/agent/accounts/<id>/enabled/` | `api-agent-enabled` | `AgentEnabledForm`: turns the agent on or off at once, `{message, fragments}` redrawing `#agent-status` |
 | `POST /api/agent/accounts/<id>/preview/` | `api-agent-preview` | `PreviewForm` (comment, optional post, optional unsaved `voice` and `knowledge`, used only when sent), `preview_reply`, `{html}` from `preview_result.html`. Engine errors are a 400 with the reason |
 | `POST /api/agent/posts/<id>/brain/` | `api-agent-post-brain` | `PostBrainForm` from the post page's "Video brain" card, `{message}` |
+| `POST /api/agent/facts/<id>/forget/` | `api-agent-fact-forget` | Deletes a learned fact, `{html: "", message}` removes its row (`data-replace=".learned-fact"`) |
 | `POST /api/agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `api-reply-approve`, `-reject`, `-retry` | `{html: "", fragments, message}`: the card is removed, `fragments` redraws `#inbox-tabs` (counts), `#nav-replies-count` (side panel badge) and, when the tab is now empty, `#inbox-list` |
 
-Templates: `account.html`, `status_bar.html`, `preview_result.html`, `inbox.html`, `inbox_tabs.html`, `inbox_list.html`;
-the side panel badge is `components/replies_badge.html`. Look: each inbox item reads like an Instagram thread: the post it is on (thumbnail and caption, from `services.inbox` setting `reply.post`, open the post and its Video brain in the shared modal; Ctrl or Cmd click opens the post page), the comment, then your reply indented under it. A review item adds a butter "Hooky was not sure, so it is asking you" note with the reason and a "Teach Hooky" link to the agent page brain, then the draft in a clearly editable white box (`.reply-composer`: pencil label, border, Discard and "Send reply", Ctrl or Cmd + Enter sends via `data-send-shortcut`). Other tabs show the reply with when it was or will be sent, and Hooky's certainty in words (sure, fairly sure, not sure) instead of the raw confidence. Empty status tabs are dimmed; an emptied review tab shows Hooky with "All caught up" (`inbox_list.html` takes `status`).
+Templates: `account.html`, `status_bar.html`, `learned_facts.html` (facts list with Remove, also used by the content post page and modal), `preview_result.html`, `inbox.html`, `inbox_tabs.html`, `inbox_list.html`;
+the side panel badge is `components/replies_badge.html`. Look: each inbox item reads like an Instagram thread: the post it is on (thumbnail and caption, from `services.inbox` setting `reply.post`, open the post and its Video brain in the shared modal; Ctrl or Cmd click opens the post page), the comment, then your reply indented under it. A review item adds a butter "Hooky was not sure, so it is asking you" note with the reason , a line saying Hooky learns from the reply the creator writes, and a "teach Hooky" link to the agent page brain, then the draft in a clearly editable white box (`.reply-composer`: pencil label, border, Discard and "Send reply", Ctrl or Cmd + Enter sends via `data-send-shortcut`). Other tabs show the reply with when it was or will be sent ("Written by you, sent" instead of "Sent by Hooky" for `written_by_creator`), what the creator's reply taught ("Hooky learned from your reply": each fact with "this post only" or "all posts", from `source_reply`, prefetched by `list_replies_for_user`; it replaces the certainty line for replies the creator wrote), and Hooky's certainty in words (sure, fairly sure, not sure) instead of the raw confidence. Empty status tabs are dimmed; an emptied review tab shows Hooky with "All caught up" (`inbox_list.html` takes `status`).
 
 ## Tests (`tests.py`)
 
@@ -162,4 +208,9 @@ early task waits; `send_due_replies`; Instagram text rules; inbox list, approve 
 empty list and badge), approve refused text, reject, retry, side panel count; settings save and on/off checkbox, home redirect, video brain save, preview stores
 nothing, 404 for other users. Gemini engine (model call mocked): decision mapped and clamped, compact request without
 empty fields or rules, unreadable confidence is 0, constant system prompt without `rule_id` in the schema, engine
-failure goes to review with the reason, preview shows the error.
+failure goes to review with the reason, preview shows the error. Learned brain: a synced post is not read until its first comment and then only
+once (a later caption change is ignored), read with the agent off, a post fetched for a comment is read, a post
+published from Hookd is read, learner failure is retried on the next comment, learned facts answer comments while typed facts
+win on the same label, a rewritten inbox reply teaches the next answer, an unchanged approval learns nothing, the same
+topic replaces the older fact, pages list facts and Remove works (404 for other users). Gemini learner: facts mapped,
+cleaned and invalid ones dropped, constant system prompt.

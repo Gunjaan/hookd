@@ -1,4 +1,4 @@
-{% load humanize %}{# Arguments: post, account, brain_form. Returned by api.post_preview into the shared modal (layouts/app.html). #}
+{% load humanize %}{# Arguments: post, account, brain_form, learned_facts. Returned by api.post_preview into the shared modal (layouts/app.html). #}
 <article class="post-modal" aria-labelledby="post-modal-title">
   <div class="post-modal__media">
     {% if post.media_type == 'video' and post.media_url %}
@@ -13,6 +13,7 @@
       {% include "components/avatar.html" with src=account.avatar_url name=account.username size=32 %}
       <h2 id="post-modal-title" class="post-view__name">{{ account.username }}</h2>
       <span class="badge badge--neutral">{{ post.get_product_type_display }}{% if post.media_type == 'carousel' %} · Carousel{% endif %}</span>
+      {% if post.removed_at %}<span class="badge badge--warning" title="Deleted or archived on {{ account.get_platform_display }}. Its brain and learned facts are kept.">Removed from {{ account.get_platform_display }}</span>{% endif %}
     </header>
 
     <div class="post-modal__body">
@@ -36,12 +37,16 @@
             <button type="submit" class="btn btn--primary btn--sm">Save brain</button>
           </div>
         </form>
+        <div class="learned-block">
+          <p class="learned-block__title">Learned on its own</p>
+          {% include "agent/learned_facts.html" with facts=learned_facts empty_text="Nothing learned yet. Prices, sizes and offers in the caption show up here after the first comment." %}
+        </div>
       </section>
     </div>
 
     <footer class="post-modal__foot">
       <a href="{% url 'post-detail' post.pk %}" class="btn btn--secondary btn--sm">Open full post</a>
-      {% if post.permalink %}<a href="{{ post.permalink }}" target="_blank" rel="noopener" class="btn btn--ghost btn--sm">{% include "components/icon.html" with name="external" size=16 %}View on {{ account.get_platform_display }}</a>{% endif %}
+      {% if post.permalink and not post.removed_at %}<a href="{{ post.permalink }}" target="_blank" rel="noopener" class="btn btn--ghost btn--sm">{% include "components/icon.html" with name="external" size=16 %}View on {{ account.get_platform_display }}</a>{% endif %}
     </footer>
   </div>
 </article>

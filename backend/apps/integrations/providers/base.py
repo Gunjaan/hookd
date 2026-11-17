@@ -16,6 +16,7 @@ from apps.integrations.providers.types import (
     AccountProfile,
     CommentPage,
     IncomingComment,
+    IncomingMessage,
     MediaItem,
     MediaPage,
     Metric,
@@ -89,6 +90,10 @@ class BaseProvider(ABC):
 
     def parse_webhook_comments(self, payload: dict) -> list[IncomingComment]:
         """Extract new comments from a verified webhook payload."""
+        return []
+
+    def parse_webhook_messages(self, payload: dict) -> list[IncomingMessage]:
+        """Extract direct messages (sent to or by the account) from a verified webhook payload."""
         return []
 
     # Content

@@ -7,6 +7,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.agent import services as agent_services
 from apps.content import services
 from apps.core.exceptions import HookdError
 from apps.core.http import api_login_required, json_error, json_ok
@@ -73,9 +74,13 @@ def post_preview(request, post_id: int):
     """The post in a modal (opened from the reply inbox): `{html}` with media, caption, counts and its Video brain.
     Uses the stored post, no platform call."""
     post = _post(request, post_id)
-    html = render_to_string(
-        "content/post_modal.html", {"post": post, "account": post.account, "brain_form": post_brain_form(post)}, request=request
-    )
+    context = {
+        "post": post,
+        "account": post.account,
+        "brain_form": post_brain_form(post),
+        "learned_facts": agent_services.post_learned_facts(post),
+    }
+    html = render_to_string("content/post_modal.html", context, request=request)
     return json_ok(html=html)
 
 

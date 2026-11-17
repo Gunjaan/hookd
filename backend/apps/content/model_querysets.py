@@ -26,6 +26,7 @@ def upsert_post(account: SocialAccount, item: MediaItem) -> Post:
             "like_count": item.like_count,
             "comments_count": item.comments_count,
             "synced_at": timezone.now(),
+            "removed_at": None,
         },
     )
     return post
@@ -36,12 +37,18 @@ def posts_in_order(account: SocialAccount, external_ids: list[str]) -> list[Post
     return [by_id[external_id] for external_id in external_ids if external_id in by_id]
 
 
-def delete_posts_missing_since(account: SocialAccount, *, since: datetime, keep_external_ids: list[str]) -> int:
-    """Remove cached posts newer than `since` that the platform no longer returns (deleted on the platform)."""
-    deleted, _ = (
-        Post.objects.filter(account=account, posted_at__gte=since).exclude(external_id__in=keep_external_ids).delete()
+def mark_posts_missing_since(account: SocialAccount, *, since: datetime, keep_external_ids: list[str]) -> int:
+    """Mark stored posts newer than `since` that the platform no longer returns (deleted or archived) as removed.
+    Nothing is deleted, so the post's brain, learned facts and comments stay."""
+    return (
+        Post.objects.filter(account=account, posted_at__gte=since, removed_at__isnull=True)
+        .exclude(external_id__in=keep_external_ids)
+        .update(removed_at=timezone.now(), updated_at=timezone.now())
     )
-    return deleted
+
+
+def get_post(post_id: int) -> Post | None:
+    return Post.objects.select_related("account").filter(pk=post_id).first()
 
 
 def get_post_for_user(user, post_id: int) -> Post | None:
@@ -131,4 +138,4 @@ def posts_for_user_by_external_id(user, external_ids: set[str]) -> dict[tuple[in
 
 
 def latest_posts(account: SocialAccount, limit: int) -> list[Post]:
-    return list(Post.objects.filter(account=account).order_by("-posted_at")[:limit])
+    return list(Post.objects.filter(account=account, removed_at__isnull=True).order_by("-posted_at")[:limit])

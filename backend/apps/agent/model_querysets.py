@@ -2,11 +2,12 @@
 
 from datetime import datetime
 
-from django.db.models import Count, F, QuerySet
+from django.db import transaction
+from django.db.models import Count, F, Q, QuerySet
 from django.utils import timezone
 
 from apps.agent.constants import ReplyStatus
-from apps.agent.models import AgentProfile, CommentReply, PostBrain
+from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.integrations.models import SocialAccount
@@ -50,6 +51,67 @@ def save_post_brain(post: Post, *, knowledge: str, agent_enabled: bool) -> PostB
         post=post, defaults={"knowledge": knowledge, "agent_enabled": agent_enabled}
     )
     return brain
+
+
+def claim_caption_learning(post: Post) -> bool:
+    """Mark the post's caption as read. Only one caller ever wins, so a caption is read once."""
+    PostBrain.objects.get_or_create(post=post)
+    claimed = PostBrain.objects.filter(post=post, caption_learned_at__isnull=True).update(
+        caption_learned_at=timezone.now(), updated_at=timezone.now()
+    )
+    return claimed == 1
+
+
+def release_caption_learning(post: Post) -> None:
+    """Undo the claim after a failed read, so the next comment on the post tries again."""
+    PostBrain.objects.filter(post=post).update(caption_learned_at=None, updated_at=timezone.now())
+
+
+# Learned facts
+
+def learned_facts(account: SocialAccount, post: Post | None, limit: int) -> list[LearnedFact]:
+    """The account's shop facts plus, when given, the post's facts. Newest first, at most `limit` of each."""
+    shop = list(LearnedFact.objects.filter(account=account, post__isnull=True)[:limit])
+    return shop + (list(LearnedFact.objects.filter(post=post)[:limit]) if post else [])
+
+
+def account_learned_facts(account: SocialAccount, limit: int) -> list[LearnedFact]:
+    return list(LearnedFact.objects.filter(account=account, post__isnull=True)[:limit])
+
+
+def post_learned_facts(post: Post, limit: int) -> list[LearnedFact]:
+    return list(LearnedFact.objects.filter(post=post)[:limit])
+
+
+def post_learned_fact_count(account: SocialAccount) -> int:
+    return LearnedFact.objects.filter(account=account, post__isnull=False).count()
+
+
+def save_learned_facts(
+    account: SocialAccount, facts: list[tuple[Post | None, str, str]], *, source: str, source_post: Post | None,
+    source_reply: CommentReply | None = None,
+) -> list[LearnedFact]:
+    """Store (post, label, text) facts. An older fact on the same topic (same post or shop wide, same label) is
+    replaced."""
+    with transaction.atomic():
+        for post, label, _ in facts:
+            same_place = Q(post=post) if post else Q(post__isnull=True)
+            LearnedFact.objects.filter(same_place, account=account, label__iexact=label).delete()
+        return LearnedFact.objects.bulk_create(
+            LearnedFact(
+                account=account, post=post, label=label, text=text, source=source, source_post=source_post,
+                source_reply=source_reply,
+            )
+            for post, label, text in facts
+        )
+
+
+def get_learned_fact_for_user(user, fact_id: int) -> LearnedFact | None:
+    return LearnedFact.objects.filter(account__user=user, pk=fact_id).first()
+
+
+def delete_learned_fact(fact: LearnedFact) -> None:
+    fact.delete()
 
 
 # Replies
@@ -105,6 +167,7 @@ def list_replies_for_user(user, status: str, limit: int) -> list[CommentReply]:
     return list(
         CommentReply.objects.filter(comment__account__user=user, status=status)
         .select_related("comment__account")
+        .prefetch_related("learned_facts")
         .order_by("-created_at")[:limit]
     )
 

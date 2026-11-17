@@ -4,12 +4,16 @@ Flow: a webhook comment queues `handle_new_comment`, which asks the engine (`eng
 skipped, a reply the brains cannot fully back (low confidence) or that fails a safety check waits for review, and
 everything else is scheduled. `schedule_reply` hands out send slots at least MIN_SPACING_SECONDS apart per account, and
 `send_reply` re-checks the hourly and daily caps and any rate limit pause right before calling the platform.
+
+The brains also fill themselves: a post's caption is read once (the first comment on it, or when Hookd publishes it),
+and every inbox reply the creator rewrote is read too. The brain learner (`learn_from_post`, `learn_from_reply`) turns
+them into LearnedFact rows that sit next to what the creator typed. What the creator typed wins on the same topic.
 """
 
 import logging
 import random
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.conf import settings
@@ -17,11 +21,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.agent import model_querysets as queries
-from apps.agent.constants import ReplyStatus
-from apps.agent.engines.base import AgentContext, AgentDecision
-from apps.agent.engines.registry import get_engine
-from apps.agent.exceptions import ReplyNotEditable, ReplyNotFound, ReplyTextRejected
-from apps.agent.models import AgentProfile, CommentReply, PostBrain
+from apps.agent.constants import FactScope, FactSource, ReplyStatus
+from apps.agent.engines.base import AgentContext, AgentDecision, LearnedFactDraft
+from apps.agent.engines.registry import get_engine, get_learner
+from apps.agent.exceptions import LearnedFactNotFound, ReplyNotEditable, ReplyNotFound, ReplyTextRejected
+from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 from apps.comments import model_querysets as comment_queries
 from apps.comments.models import Comment
 from apps.content import model_querysets as post_queries
@@ -44,6 +48,8 @@ OVERDUE_AFTER = timedelta(minutes=5)
 EARLY_TOLERANCE = timedelta(seconds=5)
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
 SPAM_INTENT = "spam"
+# Learned facts per brain (shop, post) handed to the engine, newest first.
+LEARNED_FACTS_LIMIT = 40
 
 def _limit(name: str):
     return settings.AGENT_REPLY_LIMITS[name]
@@ -107,15 +113,29 @@ class Routing:
     reason: str
 
 
-def _context(*, account: SocialAccount, profile: AgentProfile, post: Post | None, brain: PostBrain | None, text: str, author: str) -> AgentContext:
+def _brain_text(written: str, facts: list[LearnedFact]) -> str:
+    """The creator's lines, then learned facts on topics the creator did not write about: what they typed wins."""
+    written_labels = {line.split(":", 1)[0].strip().lower() for line in written.splitlines() if ":" in line}
+    learned = [fact.line for fact in facts if fact.label.lower() not in written_labels]
+    return "\n".join(part for part in (written.strip(), *learned) if part)
+
+
+def _context(
+    *, account: SocialAccount, profile: AgentProfile, post: Post | None, brain: PostBrain | None, text: str, author: str,
+    voice: str | None = None, knowledge: str | None = None,
+) -> AgentContext:
+    """`voice` and `knowledge` replace the saved ones (the agent page tests unsaved edits)."""
+    facts = queries.learned_facts(account, post, LEARNED_FACTS_LIMIT)
     return AgentContext(
         comment_text=text,
         author_username=author,
         account_username=account.username,
-        voice=profile.voice,
-        account_knowledge=profile.knowledge,
+        voice=profile.voice if voice is None else voice,
+        account_knowledge=_brain_text(
+            profile.knowledge if knowledge is None else knowledge, [fact for fact in facts if fact.post_id is None]
+        ),
         post_caption=post.caption if post else "",
-        post_knowledge=brain.knowledge if brain else "",
+        post_knowledge=_brain_text(brain.knowledge if brain else "", [fact for fact in facts if fact.post_id]),
     )
 
 
@@ -175,6 +195,9 @@ def handle_new_comment(comment_id: int) -> str:
         return "ignored"
     # Stores posts made outside Hookd even when the agent is off, so the studio knows about them.
     post = content_services.ensure_post(account, comment.media_external_id)
+    if post is not None:
+        # Read the caption the first time someone comments on the post, before answering, so this reply can use it.
+        learn_from_post(post.pk)
     profile = queries.get_profile(account)
     if profile is None or not profile.enabled or not supports_replies(account):
         return "ignored"
@@ -233,11 +256,10 @@ def preview_reply(
     """What the agent would do with `text`. `voice` and `knowledge` replace the saved ones (unsaved edits). Stores and sends nothing."""
     profile = queries.get_or_create_profile(account)
     brain = queries.get_post_brain(post) if post else None
-    context = _context(account=account, profile=profile, post=post, brain=brain, text=text, author="customer")
-    if voice is not None:
-        context = replace(context, voice=voice)
-    if knowledge is not None:
-        context = replace(context, account_knowledge=knowledge)
+    context = _context(
+        account=account, profile=profile, post=post, brain=brain, text=text, author="customer", voice=voice,
+        knowledge=knowledge,
+    )
     decision = get_engine().decide(context)
     if brain is not None and not brain.agent_enabled:
         routing = Routing(ReplyStatus.SKIPPED, "The agent is off for this post.")
@@ -373,6 +395,11 @@ def approve_reply(reply: CommentReply, text: str) -> CommentReply:
     if problems:
         raise ReplyTextRejected(" ".join(problems))
     queries.update_reply(reply, final_text=text)
+    if reply.written_by_creator:
+        # The creator wrote what Hooky did not know: learn it for the next buyer asking the same.
+        from apps.agent.tasks import learn_from_reply as learn_from_reply_task
+
+        transaction.on_commit(lambda: learn_from_reply_task.delay(reply.pk))
     return schedule_reply(reply)
 
 
@@ -386,3 +413,69 @@ def retry_reply(reply: CommentReply) -> CommentReply:
     if reply.status != ReplyStatus.FAILED:
         raise ReplyNotEditable()
     return schedule_reply(reply)
+
+
+# Learning
+
+
+def _placed(facts: list[LearnedFactDraft], post: Post | None) -> list[tuple[Post | None, str, str]]:
+    """(post, label, text) rows: post facts on the post, shop facts (or any fact without a post) on the account."""
+    return [(post if fact.scope == FactScope.POST else None, fact.label, fact.text) for fact in facts]
+
+
+def learn_from_post(post_id: int) -> str:
+    """Learn the facts in a post's caption, once per post. Returns the outcome (stored as task result)."""
+    post = post_queries.get_post(post_id)
+    if post is None:
+        return "missing"
+    if not queries.claim_caption_learning(post):
+        return "already_learned"
+    if not post.caption.strip():
+        return "learned 0"
+    try:
+        facts = get_learner().from_caption(post.caption)
+    except HookdError as exc:
+        queries.release_caption_learning(post)
+        logger.warning("Could not learn from the caption of post %s: %s", post.pk, exc.message)
+        return "failed"
+    queries.save_learned_facts(post.account, _placed(facts, post), source=FactSource.CAPTION, source_post=post)
+    return f"learned {len(facts)}"
+
+
+def learn_from_reply(reply_id: int) -> str:
+    """Learn the facts in a reply the creator wrote in the inbox. Returns the outcome (stored as task result)."""
+    reply = queries.get_reply(reply_id)
+    if reply is None:
+        return "missing"
+    comment = reply.comment
+    post = post_queries.find_post(comment.account, comment.media_external_id)
+    try:
+        facts = get_learner().from_reply(
+            question=comment.text, answer=reply.final_text, post_caption=post.caption if post else ""
+        )
+    except HookdError as exc:
+        logger.warning("Could not learn from reply %s: %s", reply.pk, exc.message)
+        return "failed"
+    queries.save_learned_facts(
+        comment.account, _placed(facts, post), source=FactSource.REPLY, source_post=post, source_reply=reply
+    )
+    return f"learned {len(facts)}"
+
+
+def account_learned_facts(account: SocialAccount) -> list[LearnedFact]:
+    return queries.account_learned_facts(account, LEARNED_FACTS_LIMIT)
+
+
+def post_learned_facts(post: Post) -> list[LearnedFact]:
+    return queries.post_learned_facts(post, LEARNED_FACTS_LIMIT)
+
+
+def post_learned_fact_count(account: SocialAccount) -> int:
+    return queries.post_learned_fact_count(account)
+
+
+def forget_fact(*, user, fact_id: int) -> None:
+    fact = queries.get_learned_fact_for_user(user, fact_id)
+    if fact is None:
+        raise LearnedFactNotFound()
+    queries.delete_learned_fact(fact)

@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from apps.comments import model_querysets as comment_queries
 from apps.content import model_querysets as queries
-from apps.content.exceptions import PostNotFound, PublishingUnavailable, PublishJobNotFound, PublishQuotaReached
+from apps.content.exceptions import PostNotFound, PostRemoved, PublishingUnavailable, PublishJobNotFound, PublishQuotaReached
 from apps.content.models import Post, PublishAsset, PublishJob
 from apps.content.signals import post_published
 from apps.integrations import model_querysets as account_queries
@@ -93,7 +93,7 @@ def recent_posts(account: SocialAccount, *, force: bool = False) -> PostPage:
     if page.posts:
         oldest = min((post.posted_at for post in page.posts if post.posted_at), default=None)
         if oldest:
-            queries.delete_posts_missing_since(
+            queries.mark_posts_missing_since(
                 account, since=oldest, keep_external_ids=[post.external_id for post in page.posts]
             )
     cache.set(
@@ -160,7 +160,7 @@ def post_insights(post: Post, *, force: bool = False) -> Post:
     """Fetch the post's metrics when they are missing, older than INSIGHTS_TTL, or `force`."""
     provider = get_provider(post.account.platform)
     fresh = post.insights_fetched_at and timezone.now() - post.insights_fetched_at < INSIGHTS_TTL
-    if (fresh and not force) or Capability.INSIGHTS not in provider.capabilities:
+    if (fresh and not force) or post.removed_at or Capability.INSIGHTS not in provider.capabilities:
         return post
     with _platform_call(post.account):
         metrics = provider.fetch_media_insights(post.account, post.external_id, post.product_type)
@@ -178,6 +178,8 @@ class CommentList:
 
 def post_comments(post: Post, *, after: str = "") -> CommentList:
     """One page of comments, fetched live. New ones are stored so the agent has the history."""
+    if post.removed_at:
+        raise PostRemoved()
     provider = get_provider(post.account.platform)
     with _platform_call(post.account):
         page = provider.list_comments(post.account, post.external_id, limit=COMMENTS_PAGE_SIZE, after=after)

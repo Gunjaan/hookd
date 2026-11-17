@@ -15,3 +15,15 @@ def handle_comment(comment_id: int) -> str:
 def send_reply(reply_id: int) -> str:
     """Send one queued reply within the sending limits. Returns the outcome, stored as the task result."""
     return services.send_reply(reply_id)
+
+
+@shared_task
+def learn_from_post(post_id: int) -> str:
+    """Learn the facts in a post's caption. Returns the outcome, stored as the task result."""
+    return services.learn_from_post(post_id)
+
+
+@shared_task
+def learn_from_reply(reply_id: int) -> str:
+    """Learn the facts in a reply the creator wrote. Returns the outcome, stored as the task result."""
+    return services.learn_from_reply(reply_id)

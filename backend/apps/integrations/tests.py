@@ -307,3 +307,18 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
         self.assertEqual(response.json()["message"], "@mine was disconnected.")
         self.assertNotIn("@mine", response.json()["fragments"]["provider-instagram"])
         self.assertIsNone(queries.get_account_for_user(self.user, own.pk))
+
+
+class WebhookFieldsTests(TestCase):
+    @override_settings(INSTAGRAM={**INSTAGRAM_TEST_SETTINGS, "WEBHOOK_FIELDS": ["comments", "messages"]})
+    def test_account_is_subscribed_to_the_configured_fields(self):
+        from apps.integrations.providers.instagram.client import InstagramClient
+        from apps.integrations.providers.instagram.provider import InstagramProvider
+
+        user = create_user(email="c@example.com", password="a-strong-pass-123")
+        account = queries.upsert_account(
+            user=user, platform="instagram", profile=AccountProfile(external_id="1784"), tokens=TokenBundle(access_token="t")
+        )
+        with mock.patch.object(InstagramClient, "post", return_value={"success": True}) as post:
+            InstagramProvider().subscribe_webhooks(account)
+        self.assertEqual(post.call_args.args[1]["subscribed_fields"], "comments,messages")

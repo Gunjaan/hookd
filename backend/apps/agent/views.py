@@ -72,6 +72,8 @@ def account_settings(request, account_id: int):
             "voice_picks": VOICE_PICKS,
             "supports_replies": services.supports_replies(account),
             "limits": services.sending_limits(),
+            "learned_facts": services.account_learned_facts(account),
+            "post_fact_count": services.post_learned_fact_count(account),
         },
     )
 

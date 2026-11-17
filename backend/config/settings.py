@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.integrations',
     'apps.comments',
+    'apps.messaging',
     'apps.content',
     'apps.agent',
     'apps.creatives',
@@ -256,6 +257,12 @@ HOOKD_REPLY_ENGINE = (
     else 'apps.agent.engines.simulated.SimulatedReplyEngine'
 )
 AGENT_REPLY_MODEL = env_str('GEMINI_REPLY_MODEL', 'gemini-3.5-flash-lite')
+# Fills the brains on its own from post captions and the replies the creator writes in the inbox (same model).
+HOOKD_BRAIN_LEARNER = (
+    'apps.agent.engines.gemini.GeminiBrainLearner'
+    if GEMINI_API_KEY and not TESTING
+    else 'apps.agent.engines.simulated.SimulatedBrainLearner'
+)
 
 # Conservative sending limits per account, well inside Meta's rate limits and anti-spam rules.
 AGENT_REPLY_LIMITS = {
@@ -278,6 +285,9 @@ INSTAGRAM = {
     ),
     'GRAPH_API_VERSION': env_str('INSTAGRAM_GRAPH_API_VERSION', 'v27.0'),
     'WEBHOOK_VERIFY_TOKEN': env_str('INSTAGRAM_WEBHOOK_VERIFY_TOKEN'),
+    # Fields each connected account is subscribed to. Add "messages" once the login configuration grants
+    # instagram_manage_messages, then run `manage.py subscribe_webhooks`.
+    'WEBHOOK_FIELDS': env_list('INSTAGRAM_WEBHOOK_FIELDS', 'comments'),
 }
 
 

@@ -11,3 +11,7 @@ class ReplyNotEditable(HookdError):
 
 class ReplyTextRejected(HookdError):
     default_message = "The platform would reject this reply."
+
+
+class LearnedFactNotFound(HookdError):
+    default_message = "Fact not found."

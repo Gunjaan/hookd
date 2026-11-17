@@ -16,7 +16,10 @@ Replies: POST /{comment_id}/replies posts a public reply under a comment.
 Content: /{ig_id}/media lists posts, /{media_id}/insights and /{ig_id}/insights
 return metrics, /{media_id}/comments pages comments. Publishing creates a
 container from public media URLs, waits for status_code FINISHED, then calls
-/{ig_id}/media_publish.
+/{ig_id}/media_publish. Stories use the same flow with media_type STORIES.
+
+Messages: with the `messages` webhook field subscribed, DMs, story replies and story mentions arrive under
+entry[].messaging[] and are parsed by `parse_webhook_messages`.
 """
 
 import hashlib
@@ -28,7 +31,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.utils import timezone
 
-from apps.integrations.constants import Capability, MediaType, Platform, ProductType, PublishKind, PublishState
+from apps.integrations.constants import Capability, MediaType, MessageKind, Platform, ProductType, PublishKind, PublishState
 from apps.integrations.exceptions import ProviderAPIError, TokenExpiredError, WebhookVerificationError
 from apps.integrations.providers.base import BaseProvider
 from apps.integrations.providers.instagram.client import LOGIN_DIALOG_URL, InstagramClient
@@ -36,6 +39,7 @@ from apps.integrations.providers.types import (
     AccountProfile,
     CommentPage,
     IncomingComment,
+    IncomingMessage,
     MediaItem,
     MediaPage,
     Metric,
@@ -120,7 +124,6 @@ CONTAINER_STATES = {
 }
 
 # Webhook fields each connected account is subscribed to.
-WEBHOOK_FIELDS = ("comments",)
 
 # Instagram rejects comments longer than 300 characters, with more than 4 hashtags or more than 1 URL,
 # or written entirely in capitals.
@@ -137,6 +140,24 @@ def _timestamp(value) -> datetime | None:
         return datetime.fromtimestamp(int(value), tz=UTC)
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _ms_timestamp(value) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(value) / 1000, tz=UTC)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _message_kind(message: dict) -> str:
+    attachments = message.get("attachments") or []
+    if (message.get("reply_to") or {}).get("story"):
+        return MessageKind.STORY_REPLY
+    if any(item.get("type") == "story_mention" for item in attachments):
+        return MessageKind.STORY_MENTION
+    if message.get("is_unsupported"):
+        return MessageKind.UNSUPPORTED
+    return MessageKind.MEDIA if attachments else MessageKind.TEXT
 
 
 def _iso_timestamp(value) -> datetime | None:
@@ -297,7 +318,7 @@ class InstagramProvider(BaseProvider):
     def subscribe_webhooks(self, account) -> None:
         data = self.client.post(
             self.client.graph_url(f"{account.external_id}/subscribed_apps"),
-            {"subscribed_fields": ",".join(WEBHOOK_FIELDS), "access_token": account.access_token},
+            {"subscribed_fields": ",".join(self.config.get("WEBHOOK_FIELDS") or ["comments"]), "access_token": account.access_token},
         )
         if not data.get("success"):
             raise ProviderAPIError("Instagram did not confirm the webhook subscription.")
@@ -347,6 +368,39 @@ class InstagramProvider(BaseProvider):
                     )
                 )
         return comments
+
+    def parse_webhook_messages(self, payload: dict) -> list[IncomingMessage]:
+        """`messages` field events under entry[].messaging[]. Echoes (sent by the account, `is_echo`) swap sender
+        and recipient. Deleted messages and other events (reactions, reads, postbacks) are skipped."""
+        if payload.get("object") != "instagram":
+            return []
+        messages = []
+        for entry in payload.get("entry") or []:
+            for event in entry.get("messaging") or []:
+                message = event.get("message") or {}
+                if not message.get("mid") or message.get("is_deleted"):
+                    continue
+                is_echo = bool(message.get("is_echo"))
+                participant = (event.get("recipient") if is_echo else event.get("sender")) or {}
+                reply_to = message.get("reply_to") or {}
+                story = reply_to.get("story") or {}
+                attachment = next(iter(message.get("attachments") or []), {})
+                messages.append(
+                    IncomingMessage(
+                        account_external_id=str(entry.get("id", "")),
+                        external_id=str(message["mid"]),
+                        participant_external_id=str(participant.get("id", "")),
+                        is_from_account=is_echo,
+                        kind=_message_kind(message),
+                        text=message.get("text", ""),
+                        story_external_id=str(story.get("id", "")),
+                        media_url=story.get("url") or (attachment.get("payload") or {}).get("url", ""),
+                        reply_to_external_id=str(reply_to.get("mid") or ""),
+                        sent_at=_ms_timestamp(event.get("timestamp")),
+                        payload=event,
+                    )
+                )
+        return messages
 
     # Content
 
@@ -435,6 +489,11 @@ class InstagramProvider(BaseProvider):
             return self._create_container(
                 account, {"media_type": "CAROUSEL", "children": ",".join(children), "caption": caption}
             )
+        # Stories take no caption, and the API cannot add stickers, links or polls.
+        if kind == PublishKind.STORY:
+            return self._create_container(account, {"media_type": "STORIES", "image_url": media_urls[0]})
+        if kind == PublishKind.STORY_VIDEO:
+            return self._create_container(account, {"media_type": "STORIES", "video_url": media_urls[0]})
         raise ProviderAPIError(f"Instagram cannot publish {kind}.")
 
     def publish_status(self, account, publish_id: str) -> PublishStatus:

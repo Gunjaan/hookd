@@ -167,12 +167,35 @@ class DashboardTests(StudioTestCase):
         self.client.logout()
         self.assertEqual(self.client.get(reverse("api-account-posts", args=[self.account.pk])).status_code, 401)
 
-    def test_sync_removes_posts_deleted_on_the_platform(self):
-        self.make_post(external_id="gone", posted_at=timezone.now())
+    def test_sync_marks_posts_gone_from_the_platform_as_removed_and_keeps_them(self):
+        from apps.agent.models import LearnedFact, PostBrain
+
+        gone = self.make_post(external_id="gone", posted_at=timezone.now(), permalink="https://instagram.com/p/gone")
+        PostBrain.objects.create(post=gone, knowledge="Size: 25x50cm")
+        LearnedFact.objects.create(account=self.account, post=gone, label="Sizes", text="25x50cm", source="reply")
         self.make_post(external_id="old", posted_at=timezone.now() - timedelta(days=400))
         self.graph.on("GET", f"{IG_ID}/media", {"data": [media(1, timestamp="2026-01-01T00:00:00+0000")]})
         self.client.get(reverse("studio-account", args=[self.account.pk]))
-        self.assertEqual(sorted(Post.objects.values_list("external_id", flat=True)), ["m1", "old"])
+        self.assertEqual(sorted(Post.objects.values_list("external_id", flat=True)), ["gone", "m1", "old"])
+        gone.refresh_from_db()
+        self.assertIsNotNone(gone.removed_at)
+        self.assertIsNone(Post.objects.get(external_id="old").removed_at)
+        self.assertTrue(PostBrain.objects.filter(post=gone).exists())
+        self.assertTrue(LearnedFact.objects.filter(post=gone).exists())
+
+        page = self.client.get(reverse("post-detail", args=[gone.pk]))
+        self.assertContains(page, "Removed from Instagram")
+        self.assertContains(page, "Comments cannot be loaded")
+        self.assertNotContains(page, "https://instagram.com/p/gone")
+        self.assertEqual(self.client.get(reverse("api-post-comments", args=[gone.pk])).status_code, 400)
+        self.assertEqual(self.graph.count("GET", "gone/insights"), 0)
+
+    def test_a_removed_post_that_comes_back_is_restored(self):
+        post = self.make_post(external_id="m1", removed_at=timezone.now())
+        self.graph.on("GET", f"{IG_ID}/media", {"data": [media(1)]})
+        self.client.get(reverse("studio-account", args=[self.account.pk]))
+        post.refresh_from_db()
+        self.assertIsNone(post.removed_at)
 
     def test_refresh_bypasses_the_cache(self):
         self.graph.on("GET", f"{IG_ID}/media", {"data": [media(1)]})
@@ -351,6 +374,21 @@ class PublishingTests(StudioTestCase):
         self.assertEqual(self.containers[2]["media_type"], "CAROUSEL")
         self.assertEqual(self.containers[2]["children"], "child1,child2")
         self.assertEqual(PublishJob.objects.get().status, "published")
+
+    def test_story_photo_and_video_publish_without_caption(self):
+        self.graph.on("GET", "child1", {"status_code": "FINISHED"})
+        self.compose(kind="story", media=jpeg())
+        self.assertEqual(self.containers[0]["media_type"], "STORIES")
+        self.assertIn("image_url", self.containers[0])
+        self.assertNotIn("caption", self.containers[0])
+        self.assertEqual(PublishJob.objects.get().status, "published")
+
+        self.graph.on("GET", "child2", {"status_code": "FINISHED"})
+        self.compose(kind="story_video", media=SimpleUploadedFile("clip.mp4", b"video", content_type="video/mp4"))
+        self.assertEqual((self.containers[1]["media_type"], "video_url" in self.containers[1]), ("STORIES", True))
+
+        response = self.compose(kind="story_video", media=jpeg())
+        self.assertContains(response, "a story video must be MP4 or MOV")
 
     def test_reel_waits_for_processing_then_celery_publishes(self):
         self.graph.on("GET", "container1", {"status_code": "IN_PROGRESS"})

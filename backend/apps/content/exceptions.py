@@ -5,6 +5,10 @@ class PostNotFound(HookdError):
     default_message = "Post not found."
 
 
+class PostRemoved(HookdError):
+    default_message = "This post is no longer on the platform (deleted or archived)."
+
+
 class PublishJobNotFound(HookdError):
     default_message = "Publish request not found."
 

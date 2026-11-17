@@ -26,7 +26,8 @@ posts" and the post page's "Show comments" (then "Load more comments", "No comme
 `<button data-load-more>` (`DEV-web.md`).
 
 `GET /api/posts/<id>/preview/` (`api-post-preview`) answers `{html}` from `post_modal.html`: the stored post (media,
-caption, counts, date, no platform call) with its Video brain form and links to the full post and the platform. The
+caption, counts, date, no platform call) with its Video brain form, the facts Hooky learned about it
+(`agent/learned_facts.html`, from `agent.services.post_learned_facts`; the post page shows the same list) and links to the full post and the platform. The
 reply inbox, the publish job rows ("View post") and the post studio draft page open it in the shared modal
 (`data-modal`), so the creator never leaves the page they are on. `views.post_brain_form`
 builds the Video brain form for the post page and the modal.
@@ -38,8 +39,12 @@ refetches insights and answers `{html}` from `post_insights.html` into `#post-in
 `job_item.html` row.
 
 Recent posts sync: the cache holds `{ids, next}` per account (`content:recent-posts:<account pk>`). A sync upserts the
-page into `Post` and deletes cached posts newer than the oldest returned one that the platform no longer returns
-(deleted on the platform). Account insights are cached under `content:account-insights:<account pk>`.
+page into `Post` and marks stored posts newer than the oldest returned one that the platform no longer returns
+(deleted or archived) as removed (`removed_at`, `mark_posts_missing_since`). Removed posts are never deleted, so their
+Video brain, learned facts and comments stay; a removed post that is returned again is restored (`upsert_post` clears
+`removed_at`). Removed posts skip insights calls, "Show comments" is replaced by a note (`post_comments` raises
+`PostRemoved`), the post page and modal show a "Removed from Instagram" badge and hide the platform link, and they are
+left out of the agent preview's post choices (`latest_posts`). Account insights are cached under `content:account-insights:<account pk>`.
 
 A `TokenExpiredError` from any call marks the account `expired` (with the message) and the page shows the error.
 
@@ -58,10 +63,11 @@ A `TokenExpiredError` from any call marks the account `expired` (with the messag
 | `posted_at`, `like_count`, `comments_count` | Counts are null when the platform hides them |
 | `insights` | JSON list of `{key, label, value, unit}` (`unit` is `count` or `milliseconds`) |
 | `insights_fetched_at`, `synced_at` | |
+| `removed_at` | Set when the platform stops returning the post (deleted or archived); cleared if it comes back. The row is kept |
 
 ### `PublishJob`
 
-`account` (`related_name="publish_jobs"`), `kind` (`PublishKind`: `image`, `reel`, `carousel`), `caption`,
+`account` (`related_name="publish_jobs"`), `kind` (`PublishKind`: `image`, `reel`, `carousel`, `story` (photo), `story_video`), `caption`,
 `status` (`processing`, `published`, `failed`), `publish_id` (platform container id), `error`, `post` (FK set when
 live), `published_at`.
 
@@ -77,7 +83,8 @@ The platform downloads media from a public URL, so uploads are served by the `pu
 `APP_URL` must start with `https://` (the tunnel URL in development), otherwise `PublishingUnavailable`.
 
 1. `/studio/accounts/<id>/compose/` validates with `ComposeForm`: image is 1 JPEG up to 8 MB, carousel 2 to 10
-   JPEGs, reel 1 MP4 or MOV up to 300 MB, caption up to 2200 characters.
+   JPEGs, reel 1 MP4 or MOV up to 300 MB, story photo 1 JPEG, story video 1 MP4 or MOV, caption up to 2200
+   characters (stories publish without it).
 2. `services.create_publish_job` checks `Capability.PUBLISH`, the HTTPS `APP_URL` and the remaining quota
    (`PublishQuotaReached`), stores the job and assets, then calls `provider.start_publish` with the asset URLs.
    A platform error marks the job failed.
@@ -94,7 +101,8 @@ Carousels are images only for now (video children need their own processing wait
 The post studio (`DEV-creatives.md`) also publishes through `create_publish_job`: its drafts post as `image` or
 `carousel` jobs. `views.publish_job_message(job)` is the shared success, failure or processing text as `(tone, text)`;
 `views.announce_publish_job(request, job)` adds it as a Django message.
-`signals.post_published` (kwargs `job`, `post`) is sent by `advance_publish_job` once a job is live, so other apps
+Syncing posts does not read their captions; the agent reads a caption once, on the post's first comment or through
+`post_published` (`DEV-agent.md`). `signals.post_published` (kwargs `job`, `post`) is sent by `advance_publish_job` once a job is live, so other apps
 react without content importing them (the post studio saves its reply agent answers).
 The publishing page lists the user's drafts (`creatives.services.list_creatives`) above the jobs.
 
@@ -115,13 +123,13 @@ The publishing page lists the user's drafts (`creatives.services.list_creatives`
 | `schedule_publish_poll(job)`, `poll_publish_job(job_id)` | Queue the next status check on commit / Celery entry point |
 | `list_publish_jobs(user)`, `get_user_publish_job(user, job_id)`, `find_servable_asset(token)` | |
 
-`model_querysets.py`: `upsert_post`, `posts_in_order`, `delete_posts_missing_since`, `get_post_for_user`,
+`model_querysets.py`: `upsert_post`, `posts_in_order`, `mark_posts_missing_since`, `get_post`, `get_post_for_user`,
 `save_post_insights`, `create_publish_job`, `create_publish_asset`, `set_publish_id`, `mark_publish_job_published`,
 `mark_publish_job_failed`, `delete_publish_assets`, `list_publish_assets`, `processing_publish_jobs`,
 `get_publish_job`, `list_publish_jobs_for_user`, `get_publish_job_for_user`, `find_servable_asset`, `find_post`,
 `latest_posts` and `posts_for_user_by_external_id` (used by the reply agent).
 
-Errors (`exceptions.py`): `PostNotFound`, `PublishJobNotFound`, `PublishingUnavailable`, `PublishQuotaReached`.
+Errors (`exceptions.py`): `PostNotFound`, `PostRemoved`, `PublishJobNotFound`, `PublishingUnavailable`, `PublishQuotaReached`.
 
 ## Templates and filters
 

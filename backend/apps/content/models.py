@@ -24,6 +24,11 @@ class Post(TimeStampedModel):
     insights = models.JSONField(default=list, blank=True, help_text="List of {key, label, value, unit}.")
     insights_fetched_at = models.DateTimeField(null=True, blank=True)
     synced_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the platform stopped returning the post (deleted or archived). The row and everything tied to "
+        "it (brain, learned facts, comments) are kept. Cleared if the post comes back.",
+    )
 
     class Meta:
         ordering = ["-posted_at", "-pk"]

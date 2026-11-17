@@ -142,7 +142,9 @@ stacked under 560px. Reply agent: `.agent-status` (`--on`, `__mascot`, `__text`,
 `__input`), `.photo-preview`, `.tips`, `.look-grid` (`--three`), `.look-choice` (`__title`, `__hint`; card radios), `.progress`,
 `.progress-steps` (`__item--active`), `.creative` (`__side`, `__panel`, `__form`, `__actions`, `__inline`), `.ig-preview` (`__head`, `__name`,
 `__caption`), `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.draft-story` (`__step`, `__step--done/active/todo`, `__marker`, `__marker--photo`, `__title`, `__detail`, `__view`), `.slide-versions`
-(`__list`, `__item`; earlier photos in a `<details>`), `.brain-questions`, `.brain-facts`. `base.css` resets every
+(`__list`, `__item`; earlier photos in a `<details>`), `.brain-questions`, `.brain-facts`. Learned brain: `.reply-card__learned` (`-title`; inbox card list of what a reply taught), `.agent-column` (agent page left column: settings form plus the
+learned card), `.learned-block` (`__title`; the list under a Video brain form), `.learned-facts`, `.learned-fact`
+(`__text`, `__meta`, `__forget`). `base.css` resets every
 `fieldset` and `legend`. Layout tokens: `--sidebar-width`, `--nav-height`, `--tabbar-height`, `--content-max-width`,
 `--content-narrow-width`, `--content-medium-width`, `--modal-width`, `--photo-viewer-width`, `--media-max-height`, `--preview-width`, `--thumb-size`, `--profile-avatar(-sm)`,
 `--highlight-size(-sm)`, `--overlay-media`.
