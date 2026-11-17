@@ -1,0 +1,48 @@
+{# Arguments: replies. Approve, discard and retry post with fetch (data-api) and remove their card. #}
+<div id="inbox-list">
+  {% if not replies %}
+    <div class="empty-state card card--padded"><p>Nothing here.</p></div>
+  {% else %}
+    <ul class="job-list">
+      {% for reply in replies %}
+        <li class="card card--padded reply-card" data-busy-scope>
+          <div class="comment__header">
+            <span class="comment__author">@{{ reply.comment.author_username|default:"unknown" }}</span>
+            <span class="hint">on @{{ reply.comment.account.username }}</span>
+            {% if reply.comment.commented_at %}<time class="comment__time" datetime="{{ reply.comment.commented_at|date:'c' }}">{{ reply.comment.commented_at|timesince }} ago</time>{% endif %}
+          </div>
+          <p class="comment__text">{{ reply.comment.text }}</p>
+          <p class="hint">
+            {{ reply.decision.reason }}
+            {% if reply.decision.confidence is not None %} · Confidence {{ reply.decision.confidence|floatformat:2 }}{% endif %}
+          </p>
+          {% if reply.error %}<p class="job__error">{{ reply.error }}</p>{% endif %}
+
+          {% if reply.status == 'pending_review' %}
+            <form method="post" action="{% url 'api-reply-approve' reply.pk %}" class="reply-card__form" data-api data-replace=".reply-card">
+              {% csrf_token %}
+              <label for="reply-text-{{ reply.pk }}" class="visually-hidden">Reply</label>
+              <textarea id="reply-text-{{ reply.pk }}" name="text" rows="2" maxlength="2200" class="field__input field__input--textarea" required>{{ reply.final_text }}</textarea>
+              <div class="reply-card__actions">
+                <button type="submit" class="btn btn--primary btn--sm">Approve and send</button>
+                <button type="submit" formaction="{% url 'api-reply-reject' reply.pk %}" formnovalidate class="btn btn--ghost btn--sm">Discard</button>
+              </div>
+            </form>
+          {% elif reply.final_text %}
+            <p class="agent-reply-text">{{ reply.final_text }}</p>
+            <p class="hint">
+              {% if reply.status == 'sent' %}Sent {{ reply.sent_at|date:"j M, H:i" }}
+              {% elif reply.status == 'queued' or reply.status == 'sending' %}Goes out around {{ reply.scheduled_for|date:"j M, H:i" }}{% endif %}
+            </p>
+            {% if reply.status == 'failed' %}
+              <form method="post" action="{% url 'api-reply-retry' reply.pk %}" class="inline-form" data-api data-replace=".reply-card">
+                {% csrf_token %}
+                <button type="submit" class="btn btn--secondary btn--sm">Try again</button>
+              </form>
+            {% endif %}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

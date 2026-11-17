@@ -24,14 +24,26 @@ image model renders. Claude replaces the copy engine later with one new file (se
    "Change: <tweak>", the branding list). The result is stored as a 1080x1350 JPEG (`imaging.post_jpeg`, center
    crop). After each slide `_settle` makes the draft `ready` when nothing is pending and at least one slide worked,
    `failed` when none did.
-5. The draft page refreshes itself (`<meta http-equiv="refresh" content="4">`) while `planning` or `generating`.
+5. While `planning` or `generating`, `app.js` polls `api-draft-progress` every 4 s (step 6). Leaving `planning`
+   reloads the page once (the whole draft layout appears).
    `expire_stale_work` (run on every view) fails planning or slides pending longer than 5 minutes (lost worker
    task), so the page never spins forever.
-6. Editing: "Redo this photo" (`regenerate_slide`, optional tweak) re-renders that slide only. "Save draft"
-   (`update_copy`) stores caption, hashtags and the question answers (`answer_0..5`, inputs outside the form joined
-   with `form="draft-form"`). "Rewrite" (`rewrite_caption`) is one text only call from the stored
-   brief, no photos resent.
-7. "Post now" posts the same form to `creative-publish`: saves the edited copy, then `publish_creative` sends the
+   The draft page shows the seller's own photos ("Your photos", the `CreativeSource` files) in every state.
+6. Editing happens **in place, no page reload** (`api.py`, `[data-draft]` in `app.js`), so edits are never wiped.
+   Buttons carry `data-draft-action="<api url>"` and POST the `#draft-form` fields (caption, hashtags, answers
+   `answer_0..5` joined with `form="draft-form"`, rewrite instruction); a redo adds its slide's change text as `tweak`.
+   Every button is `type="button"`, so Enter in a field submits nothing. "Redo this photo" (`regenerate_slide`)
+   re-renders that slide only; the current
+   image is kept as a `CreativeSlideVersion` first (the version takes over the file, nothing is copied), so a failed
+   redo still has the old photo. "Earlier versions (n)" under each slide shows them with Download and "Use this one"
+   (`use_slide_version`, no AI call: the images swap and the replaced one becomes a version). Redo and "Use this one"
+   show only when the draft is `ready` or `failed`. "Save draft" (`update_copy`) stores the copy and writes the
+   normalized values back. "Rewrite" (`rewrite_caption`) saves the posted copy and answers, then makes one text only
+   call from the stored brief and the edited caption, no photos resent.
+   Draft state (`views.draft_state`, used by the page and the endpoints): `status`, `title`, `working`, `can_post`,
+   `alert` (`kind`, `text`) and `slides` (`id`, `key`, `html` from `creatives/slide.html`). The page swaps a slide only
+   when its `key` (status, update time, versions, whether photos can change) differs, and toggles "Post now".
+7. "Post now" is the one real form post (`#draft-form` action `creative-publish`, submitted by app.js): saves the edited copy, then `publish_creative` sends the
    ready slides as JPEG uploads to `content.services.create_publish_job` (`image` for one slide, `carousel` for
    more) with caption + blank line + hashtags (max 2200, `CreativeCaptionTooLong`). The draft links the job and
    becomes `published`, unless the job failed at once (then it stays `ready`). Quota, HTTPS `APP_URL` and polling
@@ -49,7 +61,13 @@ image model renders. Claude replaces the copy engine later with one new file (se
 - One text call per draft does analysis, branding, shots, caption, hashtags and reply agent questions together,
   JSON schema output, `max_output_tokens` 2560 (rewrite 1024). The questions cost no extra call.
 - One image call per slide, `response_modalities=["IMAGE"]` (no text back), aspect ratio `4:5`.
-- Redo renders one slide; rewrite never resends photos; daily draft cap per user.
+- Redo renders one slide; rewrite never resends photos; going back to an earlier photo costs nothing; redo controls
+  are hidden while anything renders; daily draft cap per user.
+- **Usage and cost are recorded for every billed call** (`CreativeAiCall`): plan, each render (also a render that
+  answered without a photo, `CreativeEngineError.usage`) and rewrite. Cost = tokens x `AI_MODEL_PRICES` (USD per
+  million, `config/settings.py`) at call time, so history keeps the price of its day. Admin only: the `Creative` list
+  shows tokens and cost per draft, the "Creative ai calls" list filters by user, kind, model and date with a totals
+  line for the filtered calls (`templates/admin/creatives/creativeaicall/change_list.html`). Sellers never see it.
 - System prompts are constants with no per request values, so providers with prompt caching can reuse the prefix
   (tested by `PromptTests`).
 
@@ -65,11 +83,12 @@ image model renders. Claude replaces the copy engine later with one new file (se
 ## Engines (`engines/`)
 
 - `base.py`: `ProductPhoto(data, mime_type)`, `ShotPlan(role, prompt)`, `BrainQuestion(label, question, scope,
-  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions)`, `PostCopy(caption, hashtags)`; ABCs `CopyEngine.plan(photos, request_text)`,
-  `CopyEngine.rewrite(request_text)`, `ImageEngine.render(photos, prompt) -> bytes`. Engines never touch the database.
+  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions, usage)`, `PostCopy(caption, hashtags, usage)`,
+  `RenderedImage(data, usage)` (`usage` is a `core.gemini.TokenUsage`); ABCs `CopyEngine.plan(photos, request_text)`,
+  `CopyEngine.rewrite(request_text)`, `ImageEngine.render(photos, prompt) -> RenderedImage`. Engines never touch the database.
 - `gemini.py`: `GeminiCopyEngine`, `GeminiImageEngine` through `apps.core.gemini` (`generate_json`, `generate`; API
   and network errors are `GeminiError`, see `DEV-core.md`). No planned shot or no image in the answer is a
-  `CreativeEngineError`. Unknown question scopes become `post`.
+  `CreativeEngineError` (with `usage` when the model answered). Unknown question scopes become `post`.
 - `registry.py`: `get_copy_engine()`, `get_image_engine()` from the dotted path settings.
 
 **Plugging in Claude:** add `engines/claude.py` with a `CopyEngine` that sends `prompts.PLAN_SYSTEM` (with
@@ -87,6 +106,7 @@ the key in `start_creative` for whichever engines are configured. Images stay on
 | `CREATIVE_COPY_MODEL` | env `GEMINI_COPY_MODEL`, else `gemini-3.5-flash-lite` | Text model |
 | `CREATIVE_IMAGE_MODEL` | env `GEMINI_IMAGE_MODEL`, else `gemini-nano-banana-2.1` | Image model |
 | `CREATIVE_DAILY_LIMIT` | `20` | New drafts per user per 24 h |
+| `AI_MODEL_PRICES` | copy and image model prices | USD per million input and output tokens per model name |
 
 ## Models
 
@@ -95,9 +115,11 @@ the key in `start_creative` for whichever engines are configured. Images stay on
 | `Creative` | `user`, `status` (`planning`, `generating`, `ready`, `failed`, `published`), `look`, `format_choice`, `notes`, `brief` JSON (`product`, `branding`, `audience`), `caption`, `hashtags` ("#a #b" string), `brain_questions` JSON (list of `{label, question, scope, answer}`), `brain_saved_at`, `error`, `publish_job` (FK `content.PublishJob`, SET_NULL). Properties `is_working`, `answered_questions` |
 | `CreativeSource` | `creative`, `token`, `position`, `file` (`MEDIA_ROOT/creatives/sources/<token>.jpg`) |
 | `CreativeSlide` | `creative`, `position`, `role`, `prompt`, `tweak`, `status` (`pending`, `ready`, `failed`), `image` (`MEDIA_ROOT/creatives/slides/<uuid>.jpg`), `error` |
+| `CreativeSlideVersion` | `slide` (`versions`), `image`, `tweak` (the change that made it). Newest first |
+| `CreativeAiCall` | `creative` (`ai_calls`), `slide` (SET_NULL), `kind` (`plan`, `render`, `rewrite`), `model`, `input_tokens`, `output_tokens`, `cost_usd`. Property `total_tokens` |
 
-Choices: `Look`, `FormatChoice` in `models.py`. All in the Django admin (sources and slides inline).
-Files are deleted with the draft (`model_querysets.delete_creative`) and when a slide is re-rendered.
+Choices: `Look`, `FormatChoice` in `models.py`. All in the Django admin (sources, slides and AI calls inline on the draft, versions inline on the slide).
+Files (sources, slides, versions) are deleted with the draft (`model_querysets.delete_creative`); a redo keeps the old file as a version.
 
 ## Services (`services.py`)
 
@@ -105,16 +127,18 @@ Files are deleted with the draft (`model_querysets.delete_creative`) and when a 
 |---|---|
 | `list_creatives(user)`, `get_user_creative` (`CreativeNotFound`), `publish_accounts(user)` | Pages |
 | `start_creative`, `generate_creative`, `render_slide`, `expire_stale_work` | Flow steps 2 to 5 |
-| `regenerate_slide` (`SlideNotFound`, `CreativeNotReady`), `update_copy`, `rewrite_caption`, `delete_creative` | Editing |
+| `regenerate_slide` (`SlideNotFound`, `CreativeNotReady`), `use_slide_version` (`SlideVersionNotFound`), `update_copy`, `rewrite_caption`, `delete_creative` | Editing. Redo, swap and rewrite take `copy` (caption, hashtags, answers) and save it first (`_save_copy`). Editable in `ready`, `generating` and `failed` with a brief |
+| `call_cost(usage)` | USD for a `TokenUsage` at `AI_MODEL_PRICES` |
 | `publish_creative` | Step 7 |
 | `save_brain_answers(creative, post)`, `save_brain_answers_for_job(job, post)`, `merge_brain_lines(existing, lines)` | Step 8, through `agent.services` (`get_post_brain`, `save_post_brain`, `get_profile`, `update_profile`) |
-| `user_file(user, kind, file_id)` | A slide image or source photo of the user's own draft |
+| `user_file(user, kind, file_id)` | A slide image, earlier version or source photo of the user's own draft |
 | `format_hashtags(tags)`, `full_caption(caption, hashtags)` | Hashtags lowercased, punctuation removed, deduplicated, max 30, as "#a #b" |
 
 `model_querysets.py`: `create_creative`, `add_source`, `list_sources`, `count_creatives_since`, `get_creative`,
 `get_creative_for_user`, `list_creatives_for_user` (30 newest), `update_creative`, `save_plan`, `find_creative_for_job`, `get_slide`,
-`get_slide_for_user`, `get_source_for_user`, `mark_slide_pending`, `save_slide_image`, `mark_slide_failed`,
-`slide_statuses`, `ready_slides`, `delete_creative`.
+`get_slide_for_user`, `get_source_for_user`, `mark_slide_pending` (archives the current image), `save_slide_image`, `mark_slide_failed`,
+`get_version_for_user`, `swap_version_into_slide`, `slide_statuses`, `ready_slides`, `add_ai_call`, `with_usage_totals`,
+`usage_totals`, `delete_creative`.
 `imaging.py`: `source_jpeg`, `post_jpeg` (Pillow). `receivers.py`: `post_published` receiver. Errors in `exceptions.py`.
 `forms.brain_answers(data)`: the `answer_0..5` values, max 300 characters each.
 
@@ -122,15 +146,19 @@ Files are deleted with the draft (`model_querysets.delete_creative`) and when a 
 
 `tasks.py`: `generate_creative(creative_id)` returns the draft status, `render_slide(slide_id)` the slide status.
 
-## Pages (`views.py`, `urls.py`, `forms.py`, `templates/creatives/`)
+## Pages and JSON endpoints (`views.py`, `api.py`, `urls.py`, `forms.py`, `templates/creatives/`)
 
 | Route | Name | Page |
 |---|---|---|
 | `GET/POST /studio/publishing/new/` | `creative-new` | Four numbered `story-step` cards: photos (dropzone with thumbnails via app.js, tips), look cards, format cards, notes |
-| `GET /studio/publishing/drafts/<id>/` | `creative-detail` | Working: progress steps and auto refresh. Ready: Instagram style preview (account, scroll-snap carousel with 1/3 badges, per slide "Redo this photo" with optional change and Download, caption preview) beside one form with caption (character counter), hashtags, account select, "Save draft" and "Post now" (`formaction`), then a "Teach your reply agent" card (one input per question, prefilled when the notes said it, "Saved for this post" or "Saved for all your posts"), then a "Rewrite" form. Posted: "Your reply agent knows" with the saved facts and a link to edit them on the post. "Delete draft" with confirm |
-| `POST .../drafts/<id>/copy/`, `/rewrite/`, `/publish/`, `/delete/` | `creative-copy`, `creative-rewrite`, `creative-publish`, `creative-delete` | Back to the draft with a message; publish goes to the publishing list, delete to publishing |
-| `POST /studio/publishing/slides/<id>/redo/` | `creative-slide-redo` | Queues one slide render |
-| `GET /studio/publishing/files/<kind>/<id>/` (kind `slide` or `source`) | `creative-file` | Owner only JPEG; `?download=1` as attachment |
+| `GET /studio/publishing/drafts/<id>/` | `creative-detail` | "Your photos" (the uploads) on top. Planning: progress steps. Planning and generating: polls `api-draft-progress`. Ready: Instagram style preview (account, scroll-snap carousel with 1/3 badges, per slide "Redo this photo" with optional change, Download and "Earlier versions", caption preview) beside one form with caption (character counter), hashtags, account select, "Save draft" (JSON) and "Post now" (form post), then a "Teach your reply agent" card (one input per question, prefilled when the notes said it, "Saved for this post" or "Saved for all your posts"), then a "Rewrite" field (JSON, sends the draft form). Posted: "Your reply agent knows" with the saved facts and a link to edit them on the post. "Delete draft" with confirm |
+| `POST .../drafts/<id>/publish/`, `/delete/` | `creative-publish`, `creative-delete` | Publish saves the copy and goes to the publishing list, delete goes to publishing |
+| `GET /api/drafts/<id>/progress/` | `api-draft-progress` | Draft state JSON (runs `expire_stale_work`) |
+| `POST /api/drafts/<id>/copy/` | `api-draft-copy` | Save draft: `{caption, hashtags, full_caption, message}` |
+| `POST /api/drafts/<id>/rewrite/` | `api-draft-rewrite` | Saves the copy, rewrites: same answer as copy |
+| `POST /api/slides/<id>/redo/` | `api-slide-redo` | `tweak`, queues one slide render, answers the draft state |
+| `POST /api/versions/<id>/use/` | `api-version-use` | Puts an earlier photo back, answers the draft state and `message` |
+| `GET /studio/publishing/files/<kind>/<id>/` (kind `slide`, `version` or `source`) | `creative-file` | Owner only JPEG; `?download=1` as attachment |
 
 `draft_card.html` is the draft tile on `/studio/publishing/` (`content/publishing.html`: "Create a post" button,
 Drafts grid or a 3 step how it works card, then Published from Hookd). Other users' drafts, slides and files give 404.
@@ -148,3 +176,9 @@ cannot publish; HTTPS error shown; system prompts hold no placeholders; image pr
 Reply agent questions: stored and shown with prefilled answers, saved with the draft, publishing writes post facts to
 the video brain and shop facts to the account brain (same label replaced), a post that goes live later is taught
 through the signal, label merge; plan schema asks for questions.
+Edits and history (JSON endpoints): redo answers the working draft state and hides redo while rendering, redo while
+rendering is refused, redo leaves the copy alone, rewrite keeps answers and uses the edited caption; redo keeps the old
+photo as a version (also when the redo fails); "Use this one" swaps back with no AI call; progress reports state and
+fails a stale slide; save returns normalized copy; too long caption 400; login (401) and CSRF (403) enforced;
+originals shown; page wired to the endpoints with no meta refresh; other users get 404 for drafts, slides and versions. Usage: a row per plan, render and rewrite with
+cost from `AI_MODEL_PRICES`, failed render with usage recorded, unknown model costs 0, admin totals.

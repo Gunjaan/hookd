@@ -19,6 +19,7 @@ from apps.agent.models import AgentProfile, CommentReply, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
+from apps.core.gemini import JsonAnswer, TokenUsage
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.models import SocialAccount
 from apps.integrations.providers.instagram.provider import InstagramProvider
@@ -320,8 +321,13 @@ class InboxTests(AgentTestCase):
         reply = self.pending()
         self.reply_ok(reply.comment)
         with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(reverse("agent-reply-approve", args=[reply.pk]), {"text": "  @fan1 Edited  "})
-        self.assertEqual(response.status_code, 302)
+            response = self.client.post(reverse("api-reply-approve", args=[reply.pk]), {"text": "  @fan1 Edited  "})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["html"], "")
+        self.assertIn("Needs review (0)", data["fragments"]["inbox-tabs"])
+        self.assertIn("Nothing here.", data["fragments"]["inbox-list"])
+        self.assertNotIn("badge", data["fragments"]["nav-replies-count"])
         reply.refresh_from_db()
         self.assertEqual(reply.status, ReplyStatus.SENT)
         self.assertEqual(reply.final_text, "@fan1 Edited")
@@ -329,14 +335,17 @@ class InboxTests(AgentTestCase):
 
     def test_approve_rejects_text_the_platform_would_refuse(self):
         reply = self.pending()
-        response = self.client.post(reverse("agent-reply-approve", args=[reply.pk]), {"text": "x" * 301}, follow=True)
-        self.assertContains(response, "at most 300 characters")
+        response = self.client.post(reverse("api-reply-approve", args=[reply.pk]), {"text": "x" * 301})
+        self.assertContains(response, "at most 300 characters", status_code=400)
         reply.refresh_from_db()
         self.assertEqual(reply.status, ReplyStatus.PENDING_REVIEW)
 
     def test_reject_and_retry(self):
         reply = self.pending()
-        self.client.post(reverse("agent-reply-reject", args=[reply.pk]))
+        self.pending("@fan1 other")
+        response = self.client.post(reverse("api-reply-reject", args=[reply.pk]))
+        self.assertEqual(response.json()["message"], "Reply discarded.")
+        self.assertNotIn("inbox-list", response.json()["fragments"])
         reply.refresh_from_db()
         self.assertEqual(reply.status, ReplyStatus.REJECTED)
 
@@ -344,7 +353,7 @@ class InboxTests(AgentTestCase):
         reply.save()
         with mock.patch("apps.agent.tasks.send_reply.apply_async"):
             with self.captureOnCommitCallbacks(execute=True):
-                self.client.post(reverse("agent-reply-retry", args=[reply.pk]))
+                self.client.post(reverse("api-reply-retry", args=[reply.pk]))
         reply.refresh_from_db()
         self.assertEqual(reply.status, ReplyStatus.QUEUED)
 
@@ -355,16 +364,16 @@ class InboxTests(AgentTestCase):
 
 class SetupPageTests(AgentTestCase):
     def test_settings_page_saves(self):
-        url = reverse("agent-account", args=[self.account.pk])
-        page = self.client.get(url)
+        page = self.client.get(reverse("agent-account", args=[self.account.pk]))
         self.assertContains(page, "What should the agent know?")
         self.assertNotContains(page, "Special cases")
+        url = reverse("api-agent-settings", args=[self.account.pk])
         response = self.client.post(url, {"voice": "Friendly", "knowledge": "Open 10 to 7"})
-        self.assertRedirects(response, url)
+        self.assertEqual(response.json()["message"], "Agent settings saved.")
         self.profile.refresh_from_db()
         self.assertFalse(self.profile.enabled)
         self.assertEqual(self.profile.knowledge, "Open 10 to 7")
-        self.assertRedirects(self.client.post(url, {"enabled": "on"}), url)
+        self.assertEqual(self.client.post(url, {"enabled": "on"}).status_code, 200)
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.enabled)
 
@@ -376,7 +385,8 @@ class SetupPageTests(AgentTestCase):
     def test_video_brain_is_saved_from_the_post_page(self):
         with mock.patch("apps.content.services.post_insights", side_effect=lambda post, **_: post):
             self.assertContains(self.client.get(reverse("post-detail", args=[self.post.pk])), "Video brain")
-        self.client.post(reverse("agent-post-brain", args=[self.post.pk]), {"knowledge": "Rs 1499"})
+        response = self.client.post(reverse("api-agent-post-brain", args=[self.post.pk]), {"knowledge": "Rs 1499"})
+        self.assertEqual(response.json()["message"], "Video brain saved.")
         brain = PostBrain.objects.get(post=self.post)
         self.assertEqual(brain.knowledge, "Rs 1499")
         self.assertFalse(brain.agent_enabled)
@@ -384,7 +394,7 @@ class SetupPageTests(AgentTestCase):
     def test_preview_shows_the_reply_and_stores_nothing(self):
         PostBrain.objects.create(post=self.post, knowledge="Sizes S, M and L in stock")
         response = self.client.post(
-            reverse("agent-preview", args=[self.account.pk]), {"text": "M size available?", "post": self.post.pk}
+            reverse("api-agent-preview", args=[self.account.pk]), {"text": "M size available?", "post": self.post.pk}
         )
         self.assertContains(response, "@customer Sizes S, M and L in stock")
         self.assertContains(response, "Replies automatically")
@@ -398,9 +408,12 @@ class SetupPageTests(AgentTestCase):
         for method, url in [
             ("get", reverse("agent-account", args=[self.account.pk])),
             ("get", reverse("agent-preview", args=[self.account.pk])),
-            ("post", reverse("agent-post-brain", args=[self.post.pk])),
-            ("post", reverse("agent-reply-approve", args=[reply.pk])),
-            ("post", reverse("agent-reply-reject", args=[reply.pk])),
+            ("post", reverse("api-agent-settings", args=[self.account.pk])),
+            ("post", reverse("api-agent-preview", args=[self.account.pk])),
+            ("post", reverse("api-agent-post-brain", args=[self.post.pk])),
+            ("post", reverse("api-reply-approve", args=[reply.pk])),
+            ("post", reverse("api-reply-reject", args=[reply.pk])),
+            ("post", reverse("api-reply-retry", args=[reply.pk])),
         ]:
             self.assertEqual(getattr(self.client, method)(url).status_code, 404, url)
 
@@ -428,7 +441,7 @@ class GeminiReplyEngineTests(AgentTestCase):
     @override_settings(AGENT_REPLY_MODEL="cheap-model")
     def test_decision_from_the_model_answer(self):
         answer = {"intent": "price", "language": "Hindi (Hinglish)", "reply_text": " @fan1 Rs 799 hai! ", "confidence": 1.4, "reason": "Price fact."}
-        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=answer) as call:
+        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
             decision = self.engine.decide(self.context())
         self.assertEqual(
             (decision.reply_text, decision.confidence, decision.language),
@@ -444,7 +457,7 @@ class GeminiReplyEngineTests(AgentTestCase):
 
     def test_unreadable_confidence_is_zero(self):
         answer = {"intent": "x", "language": "English", "reply_text": "@fan1 hi", "confidence": "bad", "reason": ""}
-        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=answer):
+        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))):
             decision = self.engine.decide(self.context())
         self.assertEqual(decision.confidence, 0.0)
 
@@ -470,5 +483,5 @@ class GeminiReplyEngineTests(AgentTestCase):
 
         with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.gemini.GeminiReplyEngine"):
             with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
-                response = self.client.post(reverse("agent-preview", args=[self.account.pk]), {"text": "price?", "post": ""})
-        self.assertContains(response, "Down.")
+                response = self.client.post(reverse("api-agent-preview", args=[self.account.pk]), {"text": "price?", "post": ""})
+        self.assertContains(response, "Down.", status_code=400)

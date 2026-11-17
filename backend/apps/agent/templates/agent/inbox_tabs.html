@@ -1,0 +1,10 @@
+{# Arguments: tabs (list of status, label, count), status (the open tab). Redrawn by the reply actions in api.py. #}
+<nav id="inbox-tabs" class="tabs" aria-label="Reply status">
+  {% for value, label, count in tabs %}
+    <a
+      href="?status={{ value }}"
+      class="tabs__link{% if value == status %} tabs__link--active{% endif %}"
+      {% if value == status %}aria-current="page"{% endif %}
+    >{{ label }} ({{ count }})</a>
+  {% endfor %}
+</nav>

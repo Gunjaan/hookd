@@ -240,6 +240,12 @@ CREATIVE_COPY_MODEL = env_str('GEMINI_COPY_MODEL', 'gemini-3.5-flash-lite')
 CREATIVE_IMAGE_MODEL = env_str('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1')
 # New drafts per user per rolling 24 hours. Caps AI spend.
 CREATIVE_DAILY_LIMIT = 20
+# USD per million tokens, used to record the cost of every post studio AI call (admin only). Check
+# https://ai.google.dev/gemini-api/docs/pricing when changing models; a model missing here is recorded at cost 0.
+AI_MODEL_PRICES = {
+    'gemini-3.5-flash-lite': {'input': 0.25, 'output': 1.50},
+    'gemini-nano-banana-2.1': {'input': 0.50, 'output': 60.00},
+}
 
 # Comment reply agent (see brainforagents/DEV-agent.md). A low cost Gemini model writes replies for now (Claude
 # later). Without a key, and in tests, the keyword based simulated engine stands in.

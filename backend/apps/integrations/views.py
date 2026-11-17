@@ -1,4 +1,4 @@
-"""Connections pages (session auth). Business logic stays in services.py."""
+"""Connections pages (session auth), the OAuth callback and the webhook. Account actions live in api.py."""
 
 import logging
 
@@ -56,44 +56,6 @@ def oauth_callback(request, platform: str):
             return redirect("connections")
 
     return render(request, "integrations/oauth_callback.html", {"error_message": message}, status=400)
-
-
-@login_required
-@require_POST
-def account_refresh(request, account_id: int):
-    try:
-        account = services.get_user_account(user=request.user, account_id=account_id)
-        services.refresh_account_token(account)
-    except HookdError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, f"Token for @{account.username} refreshed.")
-    return redirect("connections")
-
-
-@login_required
-@require_POST
-def account_subscribe(request, account_id: int):
-    try:
-        account = services.get_user_account(user=request.user, account_id=account_id)
-        services.subscribe_account_webhooks(account)
-    except HookdError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, f"@{account.username} is subscribed to realtime events.")
-    return redirect("connections")
-
-
-@login_required
-@require_POST
-def account_disconnect(request, account_id: int):
-    try:
-        account = services.disconnect_account(user=request.user, account_id=account_id)
-    except HookdError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, f"@{account.username} was disconnected.")
-    return redirect("connections")
 
 
 @csrf_exempt

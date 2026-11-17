@@ -1,0 +1,2 @@
+{# Argument: agent_pending_count. The sidebar badge next to "Replies", redrawn by the reply actions in api.py. #}
+<span id="nav-replies-count">{% if agent_pending_count %} <span class="badge badge--warning">{{ agent_pending_count }}</span>{% endif %}</span>

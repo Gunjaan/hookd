@@ -253,8 +253,9 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
     def test_resubscribe_uses_stored_token_and_clears_warning(self):
         account = self._stored_account(detail="Webhook setup incomplete: boom")
         with self._patch_graph():
-            response = self.client.post(reverse("account-subscribe", args=[account.pk]), follow=True)
-        self.assertContains(response, "@asha.edits is subscribed to realtime events.")
+            response = self.client.post(reverse("api-account-subscribe", args=[account.pk]))
+        self.assertEqual(response.json()["message"], "@asha.edits is subscribed to realtime events.")
+        self.assertIn("@asha.edits", response.json()["fragments"]["provider-instagram"])
         self.assertTrue(self.subscribed)
         self.assertEqual(queries.find_account("instagram", "17841400000000").status_detail, "")
 
@@ -262,8 +263,8 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
         account = self._stored_account()
         self.subscribe_response = {"success": False}
         with self._patch_graph():
-            response = self.client.post(reverse("account-subscribe", args=[account.pk]), follow=True)
-        self.assertContains(response, "did not confirm the webhook subscription")
+            response = self.client.post(reverse("api-account-subscribe", args=[account.pk]))
+        self.assertContains(response, "did not confirm the webhook subscription", status_code=400)
         self.assertIn("Webhook setup incomplete", queries.find_account("instagram", "17841400000000").status_detail)
 
     def test_resubscribe_only_own_accounts(self):
@@ -274,8 +275,8 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
             profile=AccountProfile(external_id="1"),
             tokens=TokenBundle(access_token="x"),
         )
-        response = self.client.post(reverse("account-subscribe", args=[foreign.pk]), follow=True)
-        self.assertContains(response, "Connected account not found.")
+        response = self.client.post(reverse("api-account-subscribe", args=[foreign.pk]))
+        self.assertContains(response, "Connected account not found.", status_code=404)
 
     def test_subscribe_webhooks_command(self):
         self._stored_account()
@@ -298,10 +299,11 @@ class ConnectionPageTests(FakeGraphMixin, TestCase):
             profile=AccountProfile(external_id="1"),
             tokens=TokenBundle(access_token="x"),
         )
-        response = self.client.post(reverse("account-disconnect", args=[foreign.pk]), follow=True)
-        self.assertContains(response, "Connected account not found.")
+        response = self.client.post(reverse("api-account-disconnect", args=[foreign.pk]))
+        self.assertContains(response, "Connected account not found.", status_code=404)
         self.assertIsNotNone(queries.get_account_for_user(other, foreign.pk))
 
-        response = self.client.post(reverse("account-disconnect", args=[own.pk]), follow=True)
-        self.assertContains(response, "@mine was disconnected.")
+        response = self.client.post(reverse("api-account-disconnect", args=[own.pk]))
+        self.assertEqual(response.json()["message"], "@mine was disconnected.")
+        self.assertNotIn("@mine", response.json()["fragments"]["provider-instagram"])
         self.assertIsNone(queries.get_account_for_user(self.user, own.pk))

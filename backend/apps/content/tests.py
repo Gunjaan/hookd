@@ -127,7 +127,7 @@ class DashboardTests(StudioTestCase):
         self.assertContains(response, "Post 10")
         self.assertContains(response, "100 likes")
         self.assertContains(response, "4,321")
-        self.assertContains(response, "?after=CUR1")
+        self.assertContains(response, reverse("api-account-posts", args=[self.account.pk]) + "?after=CUR1")
         params = self.graph.calls[0][2]
         self.assertEqual(params["limit"], 10)
         self.assertNotIn("after", params)
@@ -142,12 +142,30 @@ class DashboardTests(StudioTestCase):
         response = self.client.get(reverse("studio-account", args=[self.account.pk]))
         self.assertNotContains(response, "Load older posts")
 
-    def test_older_posts_use_the_cursor(self):
-        self.graph.on("GET", f"{IG_ID}/media", lambda params: {"data": [media(11)] if params.get("after") == "CUR1" else []})
-        response = self.client.get(reverse("studio-account", args=[self.account.pk]), {"after": "CUR1"})
-        self.assertContains(response, "Older posts")
-        self.assertContains(response, "Post 11")
+    def test_older_posts_json_uses_the_cursor(self):
+        self.graph.on(
+            "GET", f"{IG_ID}/media",
+            lambda params: {"data": [media(11)], "paging": {"cursors": {"after": "CUR2"}, "next": "https://next"}}
+            if params.get("after") == "CUR1" else {"data": []},
+        )
+        data = self.client.get(reverse("api-account-posts", args=[self.account.pk]), {"after": "CUR1"}).json()
+        self.assertIn("Post 11", data["html"])
+        self.assertIn('class="post-card"', data["html"])
+        self.assertEqual(data["next"], reverse("api-account-posts", args=[self.account.pk]) + "?after=CUR2")
         self.assertEqual(self.graph.count("GET", f"{IG_ID}/insights"), 0)
+
+    def test_older_posts_json_last_page_has_no_next(self):
+        self.graph.on("GET", f"{IG_ID}/media", {"data": [media(12)]})
+        data = self.client.get(reverse("api-account-posts", args=[self.account.pk]), {"after": "CUR1"}).json()
+        self.assertIsNone(data["next"])
+
+    def test_older_posts_json_error_and_auth(self):
+        self.graph.on("GET", f"{IG_ID}/media", {"error": {"message": "Boom", "code": 2}}, status=500)
+        response = self.client.get(reverse("api-account-posts", args=[self.account.pk]), {"after": "CUR1"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse("api-account-posts", args=[self.account.pk])).status_code, 401)
 
     def test_sync_removes_posts_deleted_on_the_platform(self):
         self.make_post(external_id="gone", posted_at=timezone.now())
@@ -158,10 +176,10 @@ class DashboardTests(StudioTestCase):
 
     def test_refresh_bypasses_the_cache(self):
         self.graph.on("GET", f"{IG_ID}/media", {"data": [media(1)]})
-        url = reverse("studio-account", args=[self.account.pk])
-        self.client.get(url)
-        response = self.client.post(reverse("studio-refresh", args=[self.account.pk]))
-        self.assertRedirects(response, url, fetch_redirect_response=False)
+        self.client.get(reverse("studio-account", args=[self.account.pk]))
+        response = self.client.post(reverse("api-account-posts-refresh", args=[self.account.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("post-grid", response.json()["html"])
         self.assertEqual(self.graph.count("GET", f"{IG_ID}/media"), 2)
 
     def test_expired_token_marks_account_and_shows_error(self):
@@ -224,7 +242,8 @@ class PostDetailTests(StudioTestCase):
         self.client.get(url)
         self.assertEqual(self.graph.count("GET", "m1/insights"), 1)
 
-        self.client.post(reverse("post-insights-refresh", args=[post.pk]))
+        response = self.client.post(reverse("api-post-insights-refresh", args=[post.pk]))
+        self.assertIn("Reach", response.json()["html"])
         self.assertEqual(self.graph.count("GET", "m1/insights"), 2)
 
     def test_reel_insights_include_watch_time(self):
@@ -261,22 +280,23 @@ class PostDetailTests(StudioTestCase):
                 "paging": {"cursors": {"after": "C2"}, "next": "https://next"},
             },
         )
-        response = self.client.get(reverse("post-comments", args=[post.pk]))
-        self.assertContains(response, "@fan")
-        self.assertContains(response, "Love it")
-        self.assertContains(response, "?after=C2")
+        data = self.client.get(reverse("api-post-comments", args=[post.pk])).json()
+        self.assertIn("@fan", data["html"])
+        self.assertIn("Love it", data["html"])
+        self.assertEqual(data["next"], reverse("api-post-comments", args=[post.pk]) + "?after=C2")
+        self.assertEqual(data["count"], 2)
         self.assertEqual(self.graph.calls[0][2]["limit"], 25)
         self.assertEqual(Comment.objects.filter(account=self.account).count(), 2)
         self.assertTrue(Comment.objects.get(external_id="c2").is_from_account)
 
-        self.client.get(reverse("post-comments", args=[post.pk]))
+        self.client.get(reverse("api-post-comments", args=[post.pk]))
         self.assertEqual(Comment.objects.filter(account=self.account).count(), 2)
 
     def test_other_users_post_is_404(self):
         post = self.make_post()
         self.client.force_login(create_user(email="other@example.com", password="a-strong-pass-123"))
         self.assertEqual(self.client.get(reverse("post-detail", args=[post.pk])).status_code, 404)
-        self.assertEqual(self.client.get(reverse("post-comments", args=[post.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("api-post-comments", args=[post.pk])).status_code, 404)
 
 
 def jpeg(name="photo.jpg") -> SimpleUploadedFile:
@@ -388,13 +408,15 @@ class PublishingTests(StudioTestCase):
     def test_check_status_only_for_own_jobs(self):
         job = PublishJob.objects.create(account=self.account, kind="reel", publish_id="container1")
         self.client.force_login(create_user(email="other@example.com", password="a-strong-pass-123"))
-        self.assertEqual(self.client.post(reverse("publish-check", args=[job.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("api-publish-check", args=[job.pk])).status_code, 404)
 
     def test_stuck_job_times_out(self):
         self.graph.on("GET", "container1", {"status_code": "IN_PROGRESS"})
         job = PublishJob.objects.create(account=self.account, kind="reel", publish_id="container1")
         PublishJob.objects.filter(pk=job.pk).update(created_at=timezone.now() - timedelta(hours=2))
-        self.client.post(reverse("publish-check", args=[job.pk]))
+        response = self.client.post(reverse("api-publish-check", args=[job.pk]))
+        self.assertEqual(response.json()["message_kind"], "danger")
+        self.assertIn("Failed", response.json()["html"])
         job.refresh_from_db()
         self.assertEqual(job.status, "failed")
 

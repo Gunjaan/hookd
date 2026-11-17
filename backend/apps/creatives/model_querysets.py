@@ -1,11 +1,13 @@
 """All database access for the post studio lives here."""
 
 from datetime import datetime
+from decimal import Decimal
 
 from django.core.files.base import ContentFile
-from django.db.models import Prefetch, QuerySet
+from django.db.models import F, Prefetch, QuerySet, Sum
+from django.db.models.functions import Coalesce
 
-from apps.creatives.models import Creative, CreativeSlide, CreativeSource
+from apps.creatives.models import Creative, CreativeAiCall, CreativeSlide, CreativeSlideVersion, CreativeSource
 
 
 def create_creative(*, user, look: str, format_choice: str, notes: str) -> Creative:
@@ -32,7 +34,7 @@ def get_creative(creative_id: int) -> Creative | None:
 
 
 def get_creative_for_user(user, creative_id: int) -> Creative | None:
-    return Creative.objects.filter(pk=creative_id, user=user).prefetch_related("slides", "sources").first()
+    return Creative.objects.filter(pk=creative_id, user=user).prefetch_related("slides__versions", "sources").first()
 
 
 def list_creatives_for_user(user, limit: int = 30) -> QuerySet[Creative]:
@@ -77,22 +79,48 @@ def get_source_for_user(user, source_id: int) -> CreativeSource | None:
     return CreativeSource.objects.filter(pk=source_id, creative__user=user).first()
 
 
+def _archive_image(slide: CreativeSlide) -> None:
+    """Keep the slide's current image as an earlier version. The version takes over the file, nothing is copied."""
+    if slide.image:
+        CreativeSlideVersion.objects.create(slide=slide, image=slide.image.name, tweak=slide.tweak)
+
+
 def mark_slide_pending(slide: CreativeSlide, tweak: str) -> CreativeSlide:
+    _archive_image(slide)
+    slide.image = ""
     slide.status = CreativeSlide.Status.PENDING
     slide.tweak = tweak
     slide.error = ""
-    slide.save(update_fields=["status", "tweak", "error", "updated_at"])
+    slide.save(update_fields=["image", "status", "tweak", "error", "updated_at"])
     return slide
 
 
 def save_slide_image(slide: CreativeSlide, data: bytes) -> CreativeSlide:
-    old = slide.image.name
     slide.image.save("slide.jpg", ContentFile(data), save=False)
     slide.status = CreativeSlide.Status.READY
     slide.error = ""
     slide.save(update_fields=["image", "status", "error", "updated_at"])
-    if old:
-        slide.image.storage.delete(old)
+    return slide
+
+
+def get_version_for_user(user, version_id: int) -> CreativeSlideVersion | None:
+    return (
+        CreativeSlideVersion.objects.select_related("slide__creative")
+        .filter(pk=version_id, slide__creative__user=user)
+        .first()
+    )
+
+
+def swap_version_into_slide(version: CreativeSlideVersion) -> CreativeSlide:
+    """Put an earlier image back on its slide. The image it replaces becomes a version itself."""
+    slide = version.slide
+    _archive_image(slide)
+    slide.image = version.image.name
+    slide.tweak = version.tweak
+    slide.status = CreativeSlide.Status.READY
+    slide.error = ""
+    slide.save(update_fields=["image", "tweak", "status", "error", "updated_at"])
+    version.delete()
     return slide
 
 
@@ -111,8 +139,38 @@ def ready_slides(creative: Creative) -> list[CreativeSlide]:
     return list(CreativeSlide.objects.filter(creative=creative, status=CreativeSlide.Status.READY).order_by("position"))
 
 
+def add_ai_call(
+    creative: Creative, *, kind: str, model: str, input_tokens: int, output_tokens: int, cost_usd: Decimal,
+    slide: CreativeSlide | None = None,
+) -> CreativeAiCall:
+    return CreativeAiCall.objects.create(
+        creative=creative, slide=slide, kind=kind, model=model,
+        input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost_usd,
+    )
+
+
+def with_usage_totals(queryset: QuerySet[Creative]) -> QuerySet[Creative]:
+    """Annotate drafts with `total_tokens` and `total_cost` over their AI calls (admin list)."""
+    return queryset.annotate(
+        total_tokens=Coalesce(Sum(F("ai_calls__input_tokens") + F("ai_calls__output_tokens")), 0),
+        total_cost=Coalesce(Sum("ai_calls__cost_usd"), Decimal("0")),
+    )
+
+
+def usage_totals(queryset: QuerySet[CreativeAiCall]) -> dict:
+    """Calls, tokens and cost over a set of AI calls (admin changelist totals)."""
+    return queryset.aggregate(
+        input_tokens=Coalesce(Sum("input_tokens"), 0),
+        output_tokens=Coalesce(Sum("output_tokens"), 0),
+        cost=Coalesce(Sum("cost_usd"), Decimal("0")),
+    )
+
+
 def delete_creative(creative: Creative) -> None:
-    files = [source.file for source in creative.sources.all()] + [slide.image for slide in creative.slides.all() if slide.image]
+    files = [source.file for source in creative.sources.all()]
+    for slide in creative.slides.all():
+        files += [slide.image] if slide.image else []
+        files += [version.image for version in slide.versions.all()]
     creative.delete()
     for item in files:
         item.storage.delete(item.name)

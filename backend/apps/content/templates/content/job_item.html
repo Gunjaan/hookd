@@ -1,0 +1,23 @@
+{% load content_ui %}{# Argument: job (PublishJob). Also returned by api.publish_check. #}
+<li class="job card" data-busy-scope>
+  <div class="job__info">
+    <div class="job__title">
+      <span class="job__kind">{{ job.get_kind_display }}</span>
+      <span class="badge badge--{{ job.status|job_tone }}">{{ job.get_status_display }}</span>
+      <span class="job__account">@{{ job.account.username }}</span>
+    </div>
+    <p class="job__caption">{{ job.caption|default:"No caption"|truncatechars:120 }}</p>
+    {% if job.error %}<p class="job__error">{{ job.error }}</p>{% endif %}
+    <p class="hint">{{ job.created_at|date:"j M Y, H:i" }}</p>
+  </div>
+  <div class="job__actions">
+    {% if job.status == 'processing' %}
+      <form method="post" action="{% url 'api-publish-check' job.pk %}" class="inline-form" data-api data-replace=".job">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--secondary btn--sm">Check status</button>
+      </form>
+    {% elif job.post %}
+      <a href="{% url 'post-detail' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
+    {% endif %}
+  </div>
+</li>

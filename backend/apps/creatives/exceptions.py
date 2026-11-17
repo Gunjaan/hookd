@@ -10,7 +10,13 @@ class CreativeNotReady(HookdError):
 
 
 class CreativeEngineError(HookdError):
+    """`usage` is set when the model answered (and billed) but the answer was unusable."""
+
     default_message = "The AI could not finish this. Please try again."
+
+    def __init__(self, message: str | None = None, usage=None):
+        super().__init__(message)
+        self.usage = usage
 
 
 class CreativeDailyLimitReached(HookdError):
@@ -23,3 +29,7 @@ class CreativeCaptionTooLong(HookdError):
 
 class SlideNotFound(HookdError):
     default_message = "Photo not found."
+
+
+class SlideVersionNotFound(HookdError):
+    default_message = "That earlier photo was not found."

@@ -15,8 +15,8 @@ what exists, where it lives, how data flows, every endpoint, every env var and e
 
 ## 2. Project rules
 
-- **Stack:** Django in `backend/`. UI is server rendered Django templates with session auth (no JS framework,
-  no build step, no REST API).
+- **Stack:** Django in `backend/`. Plain HTML, CSS and JS: server rendered Django templates with session auth, plus
+  `fetch` to JSON endpoints. No JS framework (no Vue, React...) and no build step.
 - **No em dashes** anywhere: code, comments, UI copy, docs, commit messages. Use a colon, comma, or hyphen.
 - **Professional code, no filler.** No placeholder features, no commented out code, no speculative abstractions.
   Delete code, settings, dependencies and docs that nothing uses any more, unless the user says to keep them.
@@ -48,7 +48,11 @@ what exists, where it lives, how data flows, every endpoint, every env var and e
   `apps/<name>/templates/<name>/`. Views live in `views.py` / `urls.py`.
 - Use the design tokens in `backend/static/css/tokens.css` and the classes and partials listed in
   `brainforagents/DEV-web.md`. No raw colors, font sizes, or spacing values in CSS or templates.
-- Pages must work without JavaScript. `static/js/app.js` is for small enhancements only.
+- JavaScript is assumed. Lazy loading, polling and in-page actions call JSON endpoints with `fetch` (the `api()` helper
+  in `static/js/app.js`), never fetch and parse a full page. JSON views live in `apps/<name>/api.py` under `/api/...`
+  URLs, use `apps.core.http` (`api_login_required`, `json_ok`, `json_error`) and keep session auth and CSRF. Rich
+  repeated markup comes back as an `html` snippet rendered from the same partial the page uses; simple values come
+  back as plain data.
 
 ## 3. Running things
 

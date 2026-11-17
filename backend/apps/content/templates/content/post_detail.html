@@ -7,8 +7,6 @@
   <div class="studio">
     <a href="{% url 'studio-account' account.pk %}" class="back-link">Back to @{{ account.username }}</a>
 
-    {% include "components/messages.html" %}
-
     <div class="post-detail">
       <div class="post-detail__media card">
         {% if post.media_type == 'video' and post.media_url %}
@@ -31,26 +29,19 @@
         <section class="card card--padded" aria-labelledby="post-insights-title">
           <div class="card__header section-header">
             <h2 id="post-insights-title" class="section-title">Insights</h2>
-            <form method="post" action="{% url 'post-insights-refresh' post.pk %}" class="inline-form">
+            <form method="post" action="{% url 'api-post-insights-refresh' post.pk %}" class="inline-form" data-api data-target="post-insights">
               {% csrf_token %}
               <button type="submit" class="btn btn--ghost btn--sm">Refresh</button>
             </form>
           </div>
-          {% if insights_error %}
-            <div class="alert alert--warning"><div class="alert__body">Insights unavailable: {{ insights_error }}</div></div>
-          {% elif post.insights %}
-            {% include "content/metric_tiles.html" with metrics=post.insights %}
-            <p class="hint">Updated {{ post.insights_fetched_at|timesince }} ago.</p>
-          {% else %}
-            <p class="hint">No insights for this post.</p>
-          {% endif %}
+          <div id="post-insights">{% include "content/post_insights.html" %}</div>
         </section>
 
         <section class="card card--padded" aria-labelledby="post-brain-title">
           <div class="card__header section-header">
             <h2 id="post-brain-title" class="section-title">Video brain</h2>
           </div>
-          <form method="post" action="{% url 'agent-post-brain' post.pk %}" class="agent-form" data-busy-scope>
+          <form method="post" action="{% url 'api-agent-post-brain' post.pk %}" class="agent-form" data-api data-busy-scope>
             {% csrf_token %}
             {% include "components/textarea_field.html" with field=brain_form.knowledge %}
             {% include "components/checkbox_field.html" with field=brain_form.agent_enabled %}
@@ -68,7 +59,7 @@
           </div>
           <ul id="comment-list" class="comment-list"></ul>
           {% if post.comments_count != 0 %}
-            <a href="{% url 'post-comments' post.pk %}" class="btn btn--secondary btn--sm" data-load-more="comment-list">Show comments</a>
+            <button type="button" class="btn btn--secondary btn--sm" data-load-more="{% url 'api-post-comments' post.pk %}" data-target="comment-list" data-more-label="Load more comments" data-empty-text="No comments.">Show comments</button>
           {% else %}
             <p class="hint">No comments yet.</p>
           {% endif %}

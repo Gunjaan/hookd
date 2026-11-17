@@ -3,7 +3,7 @@
 from django.conf import settings
 from google.genai import types
 
-from apps.core.gemini import generate, generate_json
+from apps.core.gemini import generate, generate_json, token_usage
 from apps.creatives import prompts
 from apps.creatives.engines.base import (
     BrainQuestion,
@@ -12,6 +12,7 @@ from apps.creatives.engines.base import (
     PostBrief,
     PostCopy,
     ProductPhoto,
+    RenderedImage,
     ShotPlan,
 )
 from apps.creatives.exceptions import CreativeEngineError
@@ -39,17 +40,18 @@ def _questions(items) -> list[BrainQuestion]:
 class GeminiCopyEngine(CopyEngine):
     def plan(self, photos: list[ProductPhoto], request_text: str) -> PostBrief:
         # Medium resolution is enough to read labels on a 1024 px photo and costs far fewer tokens than high.
-        data = generate_json(
+        answer = generate_json(
             settings.CREATIVE_COPY_MODEL,
             [*_photo_parts(photos, "MEDIA_RESOLUTION_MEDIUM"), request_text],
             system=prompts.PLAN_SYSTEM,
             schema=prompts.PLAN_SCHEMA,
             max_output_tokens=PLAN_MAX_OUTPUT_TOKENS,
         )
+        data = answer.data
         slides = [ShotPlan(role=str(s.get("role", "")), prompt=str(s.get("prompt", ""))) for s in data.get("slides") or []]
         slides = [slide for slide in slides if slide.prompt.strip()]
         if not slides:
-            raise CreativeEngineError("The AI did not plan any photos. Please try again.")
+            raise CreativeEngineError("The AI did not plan any photos. Please try again.", usage=answer.usage)
         return PostBrief(
             product=str(data.get("product", "")),
             branding=[str(item) for item in data.get("branding") or []],
@@ -58,21 +60,27 @@ class GeminiCopyEngine(CopyEngine):
             caption=str(data.get("caption", "")),
             hashtags=[str(tag) for tag in data.get("hashtags") or []],
             questions=_questions(data.get("questions")),
+            usage=answer.usage,
         )
 
     def rewrite(self, request_text: str) -> PostCopy:
-        data = generate_json(
+        answer = generate_json(
             settings.CREATIVE_COPY_MODEL,
             [request_text],
             system=prompts.REWRITE_SYSTEM,
             schema=prompts.REWRITE_SCHEMA,
             max_output_tokens=REWRITE_MAX_OUTPUT_TOKENS,
         )
-        return PostCopy(caption=str(data.get("caption", "")), hashtags=[str(tag) for tag in data.get("hashtags") or []])
+        data = answer.data
+        return PostCopy(
+            caption=str(data.get("caption", "")),
+            hashtags=[str(tag) for tag in data.get("hashtags") or []],
+            usage=answer.usage,
+        )
 
 
 class GeminiImageEngine(ImageEngine):
-    def render(self, photos: list[ProductPhoto], prompt: str) -> bytes:
+    def render(self, photos: list[ProductPhoto], prompt: str) -> RenderedImage:
         response = generate(
             settings.CREATIVE_IMAGE_MODEL,
             [*_photo_parts(photos), prompt],
@@ -81,7 +89,10 @@ class GeminiImageEngine(ImageEngine):
                 image_config=types.ImageConfig(aspect_ratio="4:5"),
             ),
         )
+        usage = token_usage(settings.CREATIVE_IMAGE_MODEL, response)
         for part in response.parts or []:
             if part.inline_data and part.inline_data.data:
-                return part.inline_data.data
-        raise CreativeEngineError("The AI did not return a photo for this shot. Try again or change the request.")
+                return RenderedImage(data=part.inline_data.data, usage=usage)
+        raise CreativeEngineError(
+            "The AI did not return a photo for this shot. Try again or change the request.", usage=usage
+        )

@@ -1,5 +1,4 @@
 {% extends "layouts/app.html" %}
-{% load content_ui %}
 
 {% block title %}Publishing{% endblock %}
 
@@ -42,28 +41,7 @@
       {% else %}
         <ul class="job-list">
           {% for job in jobs %}
-            <li class="job card" data-busy-scope>
-              <div class="job__info">
-                <div class="job__title">
-                  <span class="job__kind">{{ job.get_kind_display }}</span>
-                  <span class="badge badge--{{ job.status|job_tone }}">{{ job.get_status_display }}</span>
-                  <span class="job__account">@{{ job.account.username }}</span>
-                </div>
-                <p class="job__caption">{{ job.caption|default:"No caption"|truncatechars:120 }}</p>
-                {% if job.error %}<p class="job__error">{{ job.error }}</p>{% endif %}
-                <p class="hint">{{ job.created_at|date:"j M Y, H:i" }}</p>
-              </div>
-              <div class="job__actions">
-                {% if job.status == 'processing' %}
-                  <form method="post" action="{% url 'publish-check' job.pk %}" class="inline-form">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn--secondary btn--sm">Check status</button>
-                  </form>
-                {% elif job.post %}
-                  <a href="{% url 'post-detail' job.post.pk %}" class="btn btn--secondary btn--sm">View post</a>
-                {% endif %}
-              </div>
-            </li>
+            {% include "content/job_item.html" %}
           {% endfor %}
         </ul>
       {% endif %}

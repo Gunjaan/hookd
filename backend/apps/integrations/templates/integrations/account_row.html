@@ -17,7 +17,7 @@
   </div>
   <div class="account__actions">
     {% if provider.supports_webhooks %}
-      <form method="post" action="{% url 'account-subscribe' account.pk %}" class="inline-form">
+      <form method="post" action="{% url 'api-account-subscribe' account.pk %}" class="inline-form" data-api>
         {% csrf_token %}
         <button type="submit" class="btn btn--ghost btn--sm">Resubscribe</button>
       </form>
@@ -27,15 +27,16 @@
       <button type="submit" class="btn btn--secondary btn--sm">Reconnect</button>
     </form>
     {% if provider.supports_token_refresh %}
-      <form method="post" action="{% url 'account-refresh' account.pk %}" class="inline-form">
+      <form method="post" action="{% url 'api-account-refresh' account.pk %}" class="inline-form" data-api>
         {% csrf_token %}
         <button type="submit" class="btn btn--ghost btn--sm">Refresh</button>
       </form>
     {% endif %}
     <form
       method="post"
-      action="{% url 'account-disconnect' account.pk %}"
+      action="{% url 'api-account-disconnect' account.pk %}"
       class="inline-form"
+      data-api
       data-confirm="Disconnect @{{ account.username }}? Hookd will stop managing this account."
     >
       {% csrf_token %}

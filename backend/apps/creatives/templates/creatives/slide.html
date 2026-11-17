@@ -1,0 +1,42 @@
+{# One photo of the draft preview, rendered by views.draft_state for the page and the draft JSON endpoints. Arguments: slide, slide_key, number (1 based), total, can_change_photos, tweak_max_length. #}
+<li class="slide" id="slide-{{ slide.pk }}" data-slide-id="{{ slide.pk }}" data-slide-key="{{ slide_key }}">
+  <div class="slide__media">
+    {% if slide.status == 'ready' %}
+      <img src="{% url 'creative-file' 'slide' slide.pk %}?v={{ slide.updated_at|date:'U' }}" alt="Photo {{ number }}: {{ slide.role }}" />
+    {% elif slide.status == 'pending' %}
+      <span class="slide__state"><span class="spinner spinner--md" aria-hidden="true"></span>Making photo {{ number }}</span>
+    {% else %}
+      <span class="slide__state slide__state--error">{{ slide.error }}</span>
+    {% endif %}
+    {% if total > 1 %}<span class="badge badge--neutral slide__count">{{ number }}/{{ total }}</span>{% endif %}
+  </div>
+  {% if can_change_photos %}
+    <div class="slide__redo">
+      <label for="tweak-{{ slide.pk }}" class="visually-hidden">What should change in photo {{ number }}?</label>
+      <input id="tweak-{{ slide.pk }}" type="text" maxlength="{{ tweak_max_length }}" placeholder="What should change? (optional)" class="field__input" data-tweak />
+      <button type="button" class="btn btn--secondary btn--sm" data-draft-action="{% url 'api-slide-redo' slide.pk %}">Redo this photo</button>
+    </div>
+  {% endif %}
+  {% if slide.status == 'ready' %}
+    <a href="{% url 'creative-file' 'slide' slide.pk %}?download=1" class="slide__download">Download</a>
+  {% endif %}
+  {% with versions=slide.versions.all %}
+    {% if versions %}
+      <details class="slide-versions">
+        <summary>Earlier versions ({{ versions|length }})</summary>
+        <ul class="slide-versions__list">
+          {% for version in versions %}
+            <li class="slide-versions__item">
+              <img src="{% url 'creative-file' 'version' version.pk %}" alt="Earlier version of photo {{ number }}" />
+              <span class="hint">{{ version.tweak|default:"First try" }}</span>
+              <a href="{% url 'creative-file' 'version' version.pk %}?download=1">Download</a>
+              {% if can_change_photos %}
+                <button type="button" class="btn btn--ghost btn--sm" data-draft-action="{% url 'api-version-use' version.pk %}">Use this one</button>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+  {% endwith %}
+</li>

@@ -1,7 +1,16 @@
 # DEV: Web UI (Django templates)
 
-The UI is server rendered with Django templates and session auth. No JavaScript framework, no build step.
-Views are thin: validate input, call `services.py`, render a template or redirect.
+The UI is plain HTML, CSS and JS: server rendered Django templates with session auth, plus `fetch` calls to JSON
+endpoints for lazy loading, polling and in-page actions. JavaScript is assumed. No JavaScript framework, no build step.
+Views are thin: validate input, call `services.py`, render a template, redirect, or answer JSON.
+
+## JSON endpoints
+
+JSON views live in `apps/<name>/api.py` with `/api/...` routes in the app's `urls.py`. They use `apps.core.http`:
+`api_login_required` (401 JSON when logged out), `json_ok(**data)`, `json_error(message, status=400)` for a
+`HookdError` (`{"error": message}`); other users' objects are 404. Session auth and CSRF stay on: `app.js` `api()`
+sends the `csrftoken` cookie as `X-CSRFToken`. Rich repeated markup (post cards, comments, draft slides) comes back as
+an `html` snippet rendered from the same partial the page uses; simple values come back as plain data.
 
 ## Where things live
 
@@ -22,8 +31,8 @@ backend/
     css/pages.css               Layout and feature blocks (auth, shell, provider, account, callback, not-found)
     css/landing.css             Public landing page only, loaded through the `head` block of core/landing.html
     js/landing.js               Landing page highlight boxes (see Landing page), loaded only by core/landing.html
-    js/app.js                   Progressive enhancement only (confirm dialogs, busy buttons, load more links,
-                                photo thumbnails, character counter)
+    js/app.js                   Page behaviour: api() and showMessage(), data-api forms, confirm dialogs, busy buttons, load more,
+                                photo thumbnails, character counter, post studio draft page
     img/favicon.svg             Brand icon: white geometric "h" plus rose dot on an ink rounded square (same art as brand/icon.svg)
     img/hero-reels.jpg          Hero phone: an earring seller's Instagram reels grid, cropped to the phone frame (corners via `--radius-phone`)
   apps/accounts/
@@ -78,6 +87,7 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `components/select_field.html` | `field=` | `ChoiceField` as a `<select>` styled with `.field__input` |
 | `.checkbox` | | Inline checkbox and label |
 | `components/messages.html` | | Django messages as `.alert--<level_tag>` |
+| `components/replies_badge.html` | `agent_pending_count` | `#nav-replies-count`: the sidebar "Replies" badge, also redrawn by the inbox actions |
 | `.card` | `--padded` | `.card__header`, `.card__footer` |
 | `.badge` | `--neutral/--success/--warning/--danger/--info` | |
 | `.alert` | `--success/--warning/--danger/--info` | `.alert__title`, `.alert__body` |
@@ -102,13 +112,26 @@ Page blocks for the studio (`pages.css`): `.studio` (`--narrow`, `__account`, `_
 `.agent-form`, `.agent-limits`, `.agent-facts`, `.agent-reply-text`, `.reply-card`. Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
 `__input`), `.photo-preview`, `.tips`, `.look-grid` (`--three`), `.look-choice` (`__title`, `__hint`; card radios), `.progress`,
 `.progress-steps` (`__item--active`), `.creative` (`__side`, `__panel`, `__form`, `__actions`, `__inline`), `.ig-preview` (`__head`, `__name`,
-`__swipe`, `__caption`), `.slides`, `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.draft-card` (`__media`,
+`__swipe`, `__caption`), `.slides`, `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.slide-versions`
+(`__list`, `__item`; earlier photos in a `<details>`), `.draft-card` (`__media`,
 `__working`), `.how-it-works` (`__steps`), `.brain-questions`, `.brain-facts`. `base.css` resets every `fieldset` and `legend`. Layout tokens: `--content-max-width`,
 `--content-narrow-width`, `--media-max-height`, `--preview-width`, `--thumb-size`.
 
 `app.js` hooks: `<form data-confirm="...">` asks before submitting. `data-busy-scope` on a container disables all
 its buttons while one of its forms submits. Buttons that must stay disabled carry `data-disabled`.
-`<a data-load-more="<list id>">` appends the next page's items in place (details in `DEV-content.md`).
+`api(url, {method, body})` fetches a JSON endpoint (FormData bodies, CSRF header, throws with the server's `error`);
+`showMessage(text, kind)` shows one alert in `#page-messages` (`layouts/app.html`, hidden while empty).
+`<form data-api action="<api url>">` is the way to do an in-page action: the submit posts the form (and a button's
+`formaction`) with `api()` instead of loading a page, disables the busy scope's buttons with a spinner on the pressed
+one, then applies the answer `{message, message_kind, html, fragments}`: `html` replaces the closest
+`data-replace="<selector>"` ancestor (empty html removes it) or fills `data-target="<id>"` (hidden while empty);
+`fragments` maps element ids to markup that replaces each element; `message` goes to `showMessage` (`message_kind`
+defaults to `success`, errors show as `danger`). Real form posts are left for flows that end on another page: login,
+signup, connect (OAuth redirect), compose and the post studio's create, post and delete.
+`<button data-load-more="<api url>" data-target="<list id>">` appends the endpoint's `html` to the list and keeps going
+with `next` or removes itself; optional `data-more-label` renames it after the first page, `data-empty-text` replaces it
+when the first page is empty (details in `DEV-content.md`). `[data-draft]` drives the post studio draft page
+(`DEV-creatives.md`).
 `<input type="file" data-photo-preview="<list id>">` shows thumbnails of the chosen photos. `<textarea data-char-count="<id>">`
 writes "n / max characters" into the element with that id.
 
@@ -181,27 +204,29 @@ Landing tokens: `--font-display`, `--text-3xl`, `--text-display`, `--leading-dis
 | GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)`, then static `coming_soon_card.html` cards for planned platforms (YouTube: "Coming soon" badge, disabled button, no provider or connect route) |
 | POST | `/connections/<platform>/connect/` | `connect-start` | login | Redirects the browser to the platform authorization URL. Used by "Connect", "Connect another" and each account's "Reconnect" button (the callback updates the existing account in place) |
 | GET | `/auth/<platform>/callback` | `oauth-callback` | login | Completes the connection, then redirects to connections with a success message. On `error`, missing params or a `HookdError` renders the failure page (400) |
-| POST | `/connections/accounts/<id>/refresh/` | `account-refresh` | login | Refreshes the token, message, back to connections. The "Refresh" button only shows when `provider.supports_token_refresh` (hidden for Instagram) |
-| POST | `/connections/accounts/<id>/subscribe/` | `account-subscribe` | login | "Resubscribe" button (shown when `provider.supports_webhooks`): re-runs the webhook subscription with the stored token, no platform login. Message, back to connections |
-| POST | `/connections/accounts/<id>/disconnect/` | `account-disconnect` | login | Deletes the account (confirm dialog), message, back to connections |
+| POST | `/api/connections/accounts/<id>/refresh/` | `api-account-refresh` | login (JSON) | Refreshes the token, redraws the provider card. The "Refresh" button only shows when `provider.supports_token_refresh` (hidden for Instagram) |
+| POST | `/api/connections/accounts/<id>/subscribe/` | `api-account-subscribe` | login (JSON) | "Resubscribe" button (shown when `provider.supports_webhooks`): re-runs the webhook subscription with the stored token, no platform login. Redraws the provider card |
+| POST | `/api/connections/accounts/<id>/disconnect/` | `api-account-disconnect` | login (JSON) | Deletes the account (confirm dialog), redraws the provider card |
 | GET | `/studio/` | `studio` | login | Redirects to the first account's dashboard, or to connections when none is connected |
-| GET | `/studio/accounts/<id>/` | `studio-account` | login | Dashboard: insights and 10 recent posts; `?after=<cursor>` shows the next 10. 404 for other users' accounts |
-| POST | `/studio/accounts/<id>/refresh/` | `studio-refresh` | login | Re-syncs recent posts, back to the dashboard |
+| GET | `/studio/accounts/<id>/` | `studio-account` | login | Dashboard: insights and 10 recent posts, "Load older posts" calls `api-account-posts`. 404 for other users' accounts |
+| GET | `/api/accounts/<id>/posts/?after=` | `api-account-posts` | login (JSON) | Next 10 post cards: `{html, next}` |
+| POST | `/api/accounts/<id>/posts/refresh/` | `api-account-posts-refresh` | login (JSON) | Re-syncs recent posts: `{html}` of the recent posts section |
 | GET/POST | `/studio/accounts/<id>/compose/` | `compose` | login | `ComposeForm`, publishes, then redirects to publishing |
 | GET | `/studio/posts/<id>/` | `post-detail` | login | Post, insights, "Show comments" |
-| POST | `/studio/posts/<id>/insights/refresh/` | `post-insights-refresh` | login | Refetches insights |
-| GET | `/studio/posts/<id>/comments/` | `post-comments` | login | 25 comments; `?after=<cursor>` for the next page |
+| POST | `/api/posts/<id>/insights/refresh/` | `api-post-insights-refresh` | login (JSON) | Refetches insights: `{html}` of the insights block |
+| GET | `/api/posts/<id>/comments/?after=` | `api-post-comments` | login (JSON) | 25 comments: `{html, next, count}` |
 | GET | `/studio/publishing/` | `publishing` | login | "Create a post", the user's post studio drafts, then publish jobs of all the user's accounts |
-| GET/POST | `/studio/publishing/new/`, `/studio/publishing/drafts/...`, `/studio/publishing/slides/<id>/redo/`, `/studio/publishing/files/...` | `creative-*` | login | Post studio pages, listed in `DEV-creatives.md` |
-| POST | `/studio/publishing/<id>/check/` | `publish-check` | login | Advances a processing job |
+| GET/POST | `/studio/publishing/new/`, `/studio/publishing/drafts/...`, `/studio/publishing/files/...`, `/api/drafts/...`, `/api/slides/...`, `/api/versions/...` | `creative-*`, `api-draft-*`, `api-slide-redo`, `api-version-use` | login | Post studio pages and JSON endpoints, listed in `DEV-creatives.md` |
+| POST | `/api/publishing/<id>/check/` | `api-publish-check` | login (JSON) | Advances a processing job: `{html, message, message_kind}` with its row |
 | GET | `/publish-media/<token>/` | `publish-asset` | none | Upload file for the platform, only while its job is processing |
-| GET/POST | `/agent/...` | `agent`, `agent-account`, `agent-preview`, `agent-post-brain`, `agent-inbox`, `agent-reply-approve`, `agent-reply-reject`, `agent-reply-retry` | login | Reply agent pages, listed in `DEV-agent.md` |
+| GET, POST | `/agent/...`, `/api/agent/...` | `agent`, `agent-account`, `agent-preview`, `agent-inbox`, `api-agent-settings`, `api-agent-preview`, `api-agent-post-brain`, `api-reply-approve`, `api-reply-reject`, `api-reply-retry` | login | Reply agent pages and JSON actions, listed in `DEV-agent.md` |
 | GET, POST | `/webhooks/<platform>/` | `webhook` | none, CSRF exempt | Platform webhooks: GET handshake echoes the challenge, POST verifies the signature and stores comments. 403 on bad token or signature, 404 unknown platform. See `DEV-comments.md` |
 
 The callback path has no trailing slash because it must match `INSTAGRAM_REDIRECT_URI`. If the session was lost,
 `login_required` sends the creator to `/login/?next=<callback with query>` and login returns them there.
 
-Errors: page views catch `HookdError` and show `exc.message` as a Django message or on the callback page.
+Errors: page views catch `HookdError` and show `exc.message` as a Django message or on the callback page; JSON views
+answer `{"error"}` and `app.js` shows it with `showMessage`.
 
 ## Tests
 

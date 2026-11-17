@@ -132,18 +132,24 @@ A video brain only exists for posts Hookd has synced (`Post` rows); comments on 
 `tasks.py`: `handle_comment(comment_id)`, `send_reply(reply_id)`; both return the outcome string.
 `send_due_replies` management command: cron every 10 minutes (`DEV-infrastructure.md`).
 
-## Pages (`views.py`, `urls.py`, `forms.py`, `templates/agent/`)
+## Pages and JSON actions (`views.py`, `api.py`, `urls.py`, `forms.py`, `templates/agent/`)
+
+Pages are GET only. Every action is a `<form data-api>` that posts with `fetch` to `api.py` (`DEV-web.md`): invalid
+forms and `HookdError` answer 400 `{"error"}` (shown as a message), other users' objects 404, logged out 401.
 
 | Route | Name | Page |
 |---|---|---|
 | `GET /agent/` | `agent` | First account's agent page, or connections |
-| `GET/POST /agent/accounts/<id>/` | `agent-account` | One `AgentSettingsForm` (initial from the profile, saved with `update_profile(**cleaned_data)`) in three numbered steps: 1 "Turn on auto replies" (`enabled` checkbox, help text explains that replies the brains answer go out on their own and the rest wait for approval), 2 "Replies sound like you" (voice, account brain as "What should the agent know?", thread replies), 3 safe sending limits in a `<details>`. Pause warning on top |
-| `GET/POST /agent/accounts/<id>/preview/` | `agent-preview` | `PreviewForm`: comment and optional post, shows outcome, confidence and reply |
-| `POST /agent/posts/<id>/brain/` | `agent-post-brain` | `PostBrainForm` from the post page's "Video brain" card |
-| `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each). Review items have an editable reply, "Approve and send" and "Discard" |
-| `POST /agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `agent-reply-approve`, `-reject`, `-retry` | Back to the inbox with a message |
+| `GET /agent/accounts/<id>/` | `agent-account` | One `AgentSettingsForm` (initial from the profile, saved by `api-agent-settings`) in three numbered steps: 1 "Turn on auto replies" (`enabled` checkbox, help text explains that replies the brains answer go out on their own and the rest wait for approval), 2 "Replies sound like you" (voice, account brain as "What should the agent know?", thread replies), 3 safe sending limits in a `<details>`. Pause warning on top |
+| `GET /agent/accounts/<id>/preview/` | `agent-preview` | `PreviewForm`: comment and optional post. `api-agent-preview` fills `#preview-result` with outcome, confidence and reply |
+| `GET /agent/inbox/?status=` | `agent-inbox` | Tabs: Needs review, Scheduled, Sent, Skipped, Failed, Rejected (100 newest each, `views.inbox_tabs`). Review items have an editable reply, "Approve and send" and "Discard"; failed ones "Try again" |
+| `POST /api/agent/accounts/<id>/settings/` | `api-agent-settings` | `update_profile(**cleaned_data)`, `{message}` |
+| `POST /api/agent/accounts/<id>/preview/` | `api-agent-preview` | `preview_reply`, `{html}` from `preview_result.html`. Engine errors are a 400 with the reason |
+| `POST /api/agent/posts/<id>/brain/` | `api-agent-post-brain` | `PostBrainForm` from the post page's "Video brain" card, `{message}` |
+| `POST /api/agent/replies/<id>/approve/`, `/reject/`, `/retry/` | `api-reply-approve`, `-reject`, `-retry` | `{html: "", fragments, message}`: the card is removed, `fragments` redraws `#inbox-tabs` (counts), `#nav-replies-count` (sidebar badge) and, when the tab is now empty, `#inbox-list` |
 
-Templates: `account.html`, `preview.html`, `inbox.html`. Other users' accounts, posts and replies give 404.
+Templates: `account.html`, `preview.html`, `preview_result.html`, `inbox.html`, `inbox_tabs.html`, `inbox_list.html`;
+the sidebar badge is `components/replies_badge.html`.
 
 ## Tests (`tests.py`)
 
@@ -151,8 +157,8 @@ Webhook comment queued once, own comment not queued; unknown post fetched for th
 skipped; spam skipped; video brain answer sent on its own (Graph call checked); praise thanked on its own; missing
 information goes to review; the same person can get several replies; repeated text; refused text; spacing
 45 to 75 s; hourly cap reschedules without a call; rate limit pauses and requeues; expired token; never sent twice;
-early task waits; `send_due_replies`; Instagram text rules; inbox list, approve edited text, approve refused text,
-reject, retry, sidebar count; settings save and on/off checkbox, home redirect, video brain save, preview stores
+early task waits; `send_due_replies`; Instagram text rules; inbox list, approve edited text (JSON with redrawn tabs,
+empty list and badge), approve refused text, reject, retry, sidebar count; settings save and on/off checkbox, home redirect, video brain save, preview stores
 nothing, 404 for other users. Gemini engine (model call mocked): decision mapped and clamped, compact request without
 empty fields or rules, unreadable confidence is 0, constant system prompt without `rule_id` in the schema, engine
 failure goes to review with the reason, preview shows the error.

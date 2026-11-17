@@ -124,9 +124,12 @@ No server storage; the platform's single use code prevents replay.
 policy block; the reply agent pauses the account), `WebhooksNotSupported`, `WebhookVerificationError` (webhook view answers 403),
 `FeatureNotSupported` (provider method the platform does not offer). Each has a user facing `default_message`; views show `exc.message`.
 
-## Views (`views.py`, `urls.py`)
+## Views (`views.py`, `api.py`, `urls.py`)
 
-Connections page, connect, OAuth callback, refresh, resubscribe (`account_subscribe`), disconnect, and `webhook` (no login, CSRF exempt). Routes and templates are in `DEV-web.md`.
+`views.py`: connections page, connect, OAuth callback and `webhook` (no login, CSRF exempt). `api.py`: the account
+actions refresh, resubscribe and disconnect, posted with fetch (`<form data-api>`). Each answers `{fragments, message}`
+with the platform's `provider_card.html` (`#provider-<platform>`) redrawn; a foreign account is a 404, a `HookdError`
+a 400 `{"error"}`. Routes and templates are in `DEV-web.md`.
 
 ## Management commands
 

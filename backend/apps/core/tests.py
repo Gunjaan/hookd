@@ -74,3 +74,17 @@ class GeminiTests(TestCase):
             client.return_value.models.generate_content.return_value.text = "not json"
             with self.assertRaises(GeminiError):
                 generate_json("model", ["hi"], system="s", schema={}, max_output_tokens=10)
+
+    @override_settings(GEMINI_API_KEY="key")
+    def test_json_answer_carries_token_usage(self):
+        from apps.core.gemini import generate_json
+
+        with mock.patch("apps.core.gemini.genai.Client") as client:
+            response = client.return_value.models.generate_content.return_value
+            response.text = '{"a": 1}'
+            response.usage_metadata.prompt_token_count = 120
+            response.usage_metadata.candidates_token_count = 30
+            response.usage_metadata.thoughts_token_count = None
+            answer = generate_json("model", ["hi"], system="s", schema={}, max_output_tokens=10)
+        self.assertEqual(answer.data, {"a": 1})
+        self.assertEqual((answer.usage.model, answer.usage.input_tokens, answer.usage.output_tokens), ("model", 120, 30))

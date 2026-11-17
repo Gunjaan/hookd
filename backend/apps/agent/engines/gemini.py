@@ -26,7 +26,7 @@ class GeminiReplyEngine(ReplyEngine):
             system=prompts.REPLY_SYSTEM,
             schema=prompts.REPLY_SCHEMA,
             max_output_tokens=MAX_OUTPUT_TOKENS,
-        )
+        ).data
         return AgentDecision(
             intent=str(data.get("intent", "")) or "comment",
             language=str(data.get("language", "")) or "unknown",

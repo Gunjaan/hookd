@@ -1,9 +1,11 @@
 import io
 from datetime import timedelta
+from decimal import Decimal
 from unittest import mock
 
+from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
@@ -13,9 +15,20 @@ from apps.content.models import PublishJob
 from apps.content.tests import IG_ID, StudioTestCase, media
 from apps.creatives import prompts, services
 from apps.agent.models import AgentProfile, PostBrain
-from apps.creatives.engines.base import BrainQuestion, CopyEngine, ImageEngine, PostBrief, PostCopy, ShotPlan
+from apps.core.gemini import TokenUsage
+from apps.creatives.engines.base import (
+    BrainQuestion,
+    CopyEngine,
+    ImageEngine,
+    PostBrief,
+    PostCopy,
+    RenderedImage,
+    ShotPlan,
+)
 from apps.creatives.exceptions import CreativeEngineError
-from apps.creatives.models import Creative, CreativeSlide
+from apps.creatives.models import Creative, CreativeAiCall, CreativeSlide, CreativeSlideVersion
+
+PRICES = {"copy-model": {"input": 0.25, "output": 1.5}, "image-model": {"input": 0.5, "output": 60}}
 
 
 def image_bytes(size=(2000, 1500), fmt="JPEG", color=(200, 30, 90)) -> bytes:
@@ -49,11 +62,12 @@ class FakeCopyEngine(CopyEngine):
                 BrainQuestion(label="Sizes", question="What sizes do you have?", scope="post", answer="S, M, L"),
                 BrainQuestion(label="Delivery", question="How long does delivery take?", scope="account", answer=""),
             ],
+            usage=TokenUsage("copy-model", input_tokens=2000, output_tokens=800),
         )
 
     def rewrite(self, request_text):
         FakeCopyEngine.calls.append(("rewrite", 0, request_text))
-        return PostCopy(caption="Shorter caption.", hashtags=["cotton"])
+        return PostCopy(caption="Shorter caption.", hashtags=["cotton"], usage=TokenUsage("copy-model", 300, 100))
 
 
 class FakeImageEngine(ImageEngine):
@@ -63,14 +77,15 @@ class FakeImageEngine(ImageEngine):
     def render(self, photos, prompt):
         FakeImageEngine.prompts.append(prompt)
         if any(marker in prompt for marker in FakeImageEngine.fail_on):
-            raise CreativeEngineError("Blocked shot.")
-        return image_bytes(size=(1024, 1024), fmt="PNG")
+            raise CreativeEngineError("Blocked shot.", usage=TokenUsage("image-model", 600, 0))
+        return RenderedImage(image_bytes(size=(1024, 1024), fmt="PNG"), usage=TokenUsage("image-model", 600, 1290))
 
 
 ENGINES = {
     "HOOKD_COPY_ENGINE": "apps.creatives.tests.FakeCopyEngine",
     "HOOKD_IMAGE_ENGINE": "apps.creatives.tests.FakeImageEngine",
     "GEMINI_API_KEY": "test-key",
+    "AI_MODEL_PRICES": PRICES,
 }
 
 
@@ -205,10 +220,17 @@ class EditTests(CreativeTestCase):
         FakeCopyEngine.calls = []
         FakeImageEngine.prompts = []
 
+    def draft_form(self, **data):
+        """What the draft page sends with Save draft and Rewrite: the edited copy and answers."""
+        return {"caption": "My edited caption", "hashtags": "#mine", "answer_0": "Rs 799", "answer_2": "3 days", **data}
+
+    def redo(self, slide, tweak=""):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse("api-slide-redo", args=[slide.pk]), {"tweak": tweak})
+
     def test_redo_renders_only_that_slide_with_the_change(self):
         slide = self.creative.slides.last()
-        with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(reverse("creative-slide-redo", args=[slide.pk]), {"tweak": "outdoor light"})
+        self.redo(slide, "outdoor light")
         self.assertEqual(len(FakeImageEngine.prompts), 1)
         self.assertIn("Shot 2 on a model", FakeImageEngine.prompts[0])
         self.assertIn("Change: outdoor light", FakeImageEngine.prompts[0])
@@ -216,42 +238,152 @@ class EditTests(CreativeTestCase):
         self.creative.refresh_from_db()
         self.assertEqual(self.creative.status, "ready")
 
-    def test_rewrite_is_text_only(self):
-        self.client.post(reverse("creative-rewrite", args=[self.creative.pk]), {"instruction": "shorter"})
+    def test_redo_answers_with_the_working_draft_state(self):
+        slide = self.creative.slides.first()
+        data = self.client.post(reverse("api-slide-redo", args=[slide.pk]), {"tweak": "outdoor"}).json()  # task not run
+        self.assertEqual((data["status"], data["working"], data["can_post"]), ("generating", True, False))
+        self.assertEqual(data["alert"]["kind"], "info")
+        first = data["slides"][0]
+        self.assertEqual(first["id"], slide.pk)
+        self.assertIn("Making photo 1", first["html"])
+        self.assertNotIn("Redo this photo", first["html"])  # nothing can be redone while a photo renders
+        self.assertIn("Earlier versions (1)", first["html"])
+
+    def test_redo_does_not_touch_the_copy(self):
+        self.client.post(reverse("api-draft-copy", args=[self.creative.pk]), self.draft_form())
+        self.redo(self.creative.slides.first())
+        self.creative.refresh_from_db()
+        self.assertEqual((self.creative.caption, self.creative.hashtags), ("My edited caption", "#mine"))
+        self.assertEqual([q["answer"] for q in self.creative.brain_questions], ["Rs 799", "S, M, L", "3 days"])
+
+    def test_redo_while_rendering_is_refused(self):
+        slides = list(self.creative.slides.all())
+        self.client.post(reverse("api-slide-redo", args=[slides[0].pk]))  # task not run
+        response = self.client.post(reverse("api-slide-redo", args=[slides[1].pk]))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "This draft is not ready yet.")
+
+    def test_redo_keeps_the_old_photo_as_a_version(self):
+        slide = self.creative.slides.first()
+        old_name = slide.image.name
+        self.redo(slide, "outdoor")
+        slide.refresh_from_db()
+        version = slide.versions.get()
+        self.assertEqual((version.image.name, version.tweak), (old_name, ""))
+        self.assertTrue(version.image.storage.exists(old_name))
+        self.assertNotEqual(slide.image.name, old_name)
+        self.assertContains(self.client.get(reverse("creative-detail", args=[self.creative.pk])), "Earlier versions (1)")
+
+    def test_failed_redo_still_has_the_old_photo(self):
+        slide = self.creative.slides.first()
+        FakeImageEngine.fail_on = {"Change: blocked"}
+        self.redo(slide, "blocked")
+        slide.refresh_from_db()
+        self.assertEqual((slide.status, slide.versions.count()), ("failed", 1))
+
+    def test_use_earlier_version_swaps_back_without_ai(self):
+        slide = self.creative.slides.first()
+        first = slide.image.name
+        self.redo(slide, "outdoor")
+        slide.refresh_from_db()
+        second = slide.image.name
+        FakeImageEngine.prompts = []
+        calls = CreativeAiCall.objects.count()
+        data = self.client.post(reverse("api-version-use", args=[slide.versions.get().pk])).json()
+        self.assertEqual((data["status"], data["can_post"], data["message"]), ("ready", True, "Earlier photo is back in the post."))
+        slide.refresh_from_db()
+        self.assertEqual(slide.image.name, first)
+        self.assertEqual(list(slide.versions.values_list("image", "tweak")), [(second, "outdoor")])
+        self.assertEqual((FakeImageEngine.prompts, CreativeAiCall.objects.count()), ([], calls))
+
+    def test_rewrite_is_text_only_and_keeps_answers(self):
+        data = self.client.post(reverse("api-draft-rewrite", args=[self.creative.pk]), self.draft_form(instruction="shorter")).json()
         kind, photo_count, request_text = FakeCopyEngine.calls[0]
         self.assertEqual((kind, photo_count), ("rewrite", 0))
         self.assertIn("Change: shorter", request_text)
         self.assertIn("SALT CO.", request_text)
+        self.assertIn("My edited caption", request_text)
+        self.assertEqual((data["caption"], data["hashtags"]), ("Shorter caption.", "#cotton"))
+        self.assertEqual(data["full_caption"], "Shorter caption.\n\n#cotton")
         self.creative.refresh_from_db()
         self.assertEqual((self.creative.caption, self.creative.hashtags), ("Shorter caption.", "#cotton"))
+        self.assertEqual(self.creative.brain_questions[0]["answer"], "Rs 799")
+
+    def test_draft_page_shows_original_photos(self):
+        source = self.creative.sources.get()
+        page = self.client.get(reverse("creative-detail", args=[self.creative.pk]))
+        self.assertContains(page, "Your photos")
+        self.assertContains(page, reverse("creative-file", args=["source", source.pk]))
+
+    def test_draft_page_uses_the_json_endpoints(self):
+        page = self.client.get(reverse("creative-detail", args=[self.creative.pk])).content.decode()
+        self.assertIn(f'data-draft="{reverse("api-draft-progress", args=[self.creative.pk])}"', page)
+        self.assertIn(reverse("api-draft-copy", args=[self.creative.pk]), page)
+        self.assertIn(reverse("api-slide-redo", args=[self.creative.slides.first().pk]), page)
+        self.assertNotIn('http-equiv="refresh"', page)
+
+    def test_progress_reports_the_draft_state(self):
+        data = self.client.get(reverse("api-draft-progress", args=[self.creative.pk])).json()
+        self.assertEqual((data["status"], data["title"], data["working"]), ("ready", "Your post is ready", False))
+        self.assertEqual(len(data["slides"]), 3)
+        self.assertIn("Redo this photo", data["slides"][0]["html"])
+
+    def test_progress_fails_a_stale_slide(self):
+        slide = self.creative.slides.first()
+        self.client.post(reverse("api-slide-redo", args=[slide.pk]))  # task not run
+        CreativeSlide.objects.filter(pk=slide.pk).update(updated_at=timezone.now() - timedelta(minutes=6))
+        data = self.client.get(reverse("api-draft-progress", args=[self.creative.pk])).json()
+        self.assertEqual((data["status"], data["working"]), ("ready", False))
+        self.assertIn("took too long", data["slides"][0]["html"])
 
     def test_save_copy_normalizes_hashtags(self):
-        self.client.post(
-            reverse("creative-copy", args=[self.creative.pk]), {"caption": " New caption ", "hashtags": "#a, b #A c-d"}
-        )
+        data = self.client.post(
+            reverse("api-draft-copy", args=[self.creative.pk]), {"caption": " New caption ", "hashtags": "#a, b #A c-d"}
+        ).json()
+        self.assertEqual((data["caption"], data["hashtags"], data["message"]), ("New caption", "#a #b #cd", "Draft saved."))
         self.creative.refresh_from_db()
         self.assertEqual((self.creative.caption, self.creative.hashtags), ("New caption", "#a #b #cd"))
 
     def test_too_long_caption_is_refused(self):
         response = self.client.post(
-            reverse("creative-copy", args=[self.creative.pk]), {"caption": "x" * 2195, "hashtags": "#longtag"}, follow=True
+            reverse("api-draft-copy", args=[self.creative.pk]), {"caption": "x" * 2195, "hashtags": "#longtag"}
         )
-        self.assertContains(response, "under 2200 characters")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("under 2200 characters", response.json()["error"])
+
+    def test_api_needs_login_and_csrf(self):
+        url = reverse("api-draft-copy", args=[self.creative.pk])
+        strict = Client(enforce_csrf_checks=True)
+        strict.force_login(self.user)
+        self.assertEqual(strict.post(url, {"caption": "x"}).status_code, 403)
+        self.client.logout()
+        self.assertEqual(self.client.post(url, {"caption": "x"}).status_code, 401)
 
     def test_delete_removes_draft_and_files(self):
-        name = self.creative.slides.first().image.name
-        storage = self.creative.slides.first().image.storage
+        slide = self.creative.slides.first()
+        self.redo(slide)
+        names = [CreativeSlideVersion.objects.get().image.name, slide.image.name, self.creative.sources.get().file.name]
+        storage = slide.image.storage
         self.client.post(reverse("creative-delete", args=[self.creative.pk]))
         self.assertFalse(Creative.objects.exists())
-        self.assertFalse(storage.exists(name))
+        self.assertFalse(any(storage.exists(name) for name in names))
 
     def test_other_user_gets_404(self):
         slide = self.creative.slides.first()
         self.client.force_login(create_user(email="other@example.com", password="a-strong-pass-123"))
         self.assertEqual(self.client.get(reverse("creative-detail", args=[self.creative.pk])).status_code, 404)
         self.assertEqual(self.client.get(reverse("creative-file", args=["slide", slide.pk])).status_code, 404)
-        self.assertEqual(self.client.post(reverse("creative-slide-redo", args=[slide.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("api-slide-redo", args=[slide.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("api-draft-progress", args=[self.creative.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("api-draft-copy", args=[self.creative.pk])).status_code, 404)
         self.assertEqual(self.client.post(reverse("creative-delete", args=[self.creative.pk])).status_code, 404)
+
+    def test_other_user_cannot_see_or_use_versions(self):
+        self.redo(self.creative.slides.first())
+        version = CreativeSlideVersion.objects.get()
+        self.client.force_login(create_user(email="other@example.com", password="a-strong-pass-123"))
+        self.assertEqual(self.client.get(reverse("creative-file", args=["version", version.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("api-version-use", args=[version.pk])).status_code, 404)
 
     def test_owner_gets_images(self):
         slide = self.creative.slides.first()
@@ -335,7 +467,7 @@ class BrainQuestionTests(PublishCase):
         self.create()
         creative = Creative.objects.get()
         self.client.post(
-            reverse("creative-copy", args=[creative.pk]),
+            reverse("api-draft-copy", args=[creative.pk]),
             {"caption": "c", "hashtags": "", "answer_0": " Rs 799 ", "answer_2": "3 to 5 days"},
         )
         creative.refresh_from_db()
@@ -388,3 +520,39 @@ class PromptTests(CreativeTestCase):
 
     def test_format_hashtags_caps_at_thirty(self):
         self.assertEqual(len(services.format_hashtags([f"tag{i}" for i in range(40)]).split()), 30)
+
+
+class UsageTests(CreativeTestCase):
+    def test_every_ai_call_is_recorded_with_its_cost(self):
+        self.create()
+        creative = Creative.objects.get()
+        calls = list(creative.ai_calls.order_by("pk"))
+        self.assertEqual([call.kind for call in calls], ["plan", "render", "render", "render"])
+        plan = calls[0]
+        self.assertEqual((plan.model, plan.input_tokens, plan.output_tokens), ("copy-model", 2000, 800))
+        self.assertEqual(plan.cost_usd, Decimal("0.001700"))  # 2000 * 0.25 + 800 * 1.5 per million
+        self.assertEqual(calls[1].cost_usd, Decimal("0.077700"))  # 600 * 0.5 + 1290 * 60 per million
+        self.assertEqual({call.slide_id for call in calls[1:]}, set(creative.slides.values_list("pk", flat=True)))
+
+        self.client.post(reverse("api-draft-rewrite", args=[creative.pk]), {"instruction": "shorter"})
+        self.assertEqual(creative.ai_calls.filter(kind="rewrite").count(), 1)
+
+    def test_failed_render_with_usage_is_recorded(self):
+        FakeImageEngine.fail_on = {"Shot 1"}
+        self.create()
+        failed = CreativeAiCall.objects.get(slide__position=1)
+        self.assertEqual((failed.input_tokens, failed.output_tokens, failed.cost_usd), (600, 0, Decimal("0.000300")))
+
+    @override_settings(AI_MODEL_PRICES={})
+    def test_unknown_model_costs_zero(self):
+        self.create()
+        self.assertEqual(CreativeAiCall.objects.filter(cost_usd__gt=0).count(), 0)
+        self.assertEqual(CreativeAiCall.objects.count(), 4)
+
+    def test_admin_shows_usage_totals(self):
+        self.create()
+        self.client.force_login(get_user_model().objects.create_superuser(email="admin@example.com", password="a-strong-pass-123"))
+        listing = self.client.get(reverse("admin:creatives_creative_changelist"))
+        self.assertContains(listing, "0.2348")  # 0.0017 + 3 * 0.0777
+        calls = self.client.get(reverse("admin:creatives_creativeaicall_changelist"))
+        self.assertContains(calls, "Filtered calls: 3800 input tokens, 4670 output tokens, 0.2348 USD")

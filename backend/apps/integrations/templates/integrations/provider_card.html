@@ -1,6 +1,6 @@
-{% load integrations_ui %}{# Arguments: item (services.ProviderOverview). #}
+{% load integrations_ui %}{# Arguments: item (services.ProviderOverview). Redrawn by the account actions in api.py. #}
 {% with provider=item.provider accounts=item.accounts %}
-  <section class="card card--padded">
+  <section id="provider-{{ provider.platform }}" class="card card--padded">
     <div class="provider">
       {% include "integrations/platform_icon.html" with platform=provider.platform size=48 %}
       <div class="provider__info">

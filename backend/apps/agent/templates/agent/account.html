@@ -40,9 +40,8 @@
         <div class="alert__body">Sending is paused until {{ profile.paused_until|date:"j M, H:i" }} because {{ account.get_platform_display }} asked Hookd to slow down: {{ profile.pause_reason }}</div>
       </div>
     {% endif %}
-    {% include "components/form_errors.html" %}
 
-    <form method="post" class="story" data-busy-scope>
+    <form method="post" action="{% url 'api-agent-settings' account.pk %}" class="story" data-api data-busy-scope>
       {% csrf_token %}
 
       <section class="card card--padded story-step" aria-labelledby="step-on-title">

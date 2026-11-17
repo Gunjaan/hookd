@@ -25,7 +25,7 @@
             href="{% url 'agent-inbox' %}"
             class="shell__nav-link{% if nav_section == 'inbox' %} shell__nav-link--active{% endif %}"
             {% if nav_section == 'inbox' %}aria-current="page"{% endif %}
-          >Replies{% if agent_pending_count %} <span class="badge badge--warning">{{ agent_pending_count }}</span>{% endif %}</a>
+          >Replies{% include "components/replies_badge.html" %}</a>
           <a
             href="{% url 'connections' %}"
             class="shell__nav-link{% if current == 'connections' %} shell__nav-link--active{% endif %}"
@@ -45,6 +45,8 @@
         </form>
       </aside>
       <main class="shell__content">
+        {# Messages from fetch calls (showMessage in app.js). Page loads use components/messages.html. #}
+        <div id="page-messages" class="messages" aria-live="polite" hidden></div>
         {% block content %}{% endblock %}
       </main>
     </div>

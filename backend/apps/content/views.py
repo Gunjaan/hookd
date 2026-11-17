@@ -4,7 +4,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_POST
 
 from apps.agent import services as agent_services
 from apps.agent.forms import PostBrainForm
@@ -41,37 +40,23 @@ def studio(request):
 @login_required
 def account_dashboard(request, account_id: int):
     account = _user_account(request, account_id)
-    after = request.GET.get("after", "")
     context = {
         "nav_section": "studio",
         "account": account,
         "accounts": services.studio_accounts(request.user),
-        "after": after,
         "can_publish": services.can_publish(account),
         "insights": [],
     }
     try:
-        context["page"] = services.older_posts(account, after=after) if after else services.recent_posts(account)
+        context["page"] = services.recent_posts(account)
     except HookdError as exc:
         context["page"] = services.PostPage(posts=[])
         context["posts_error"] = exc.message
-    if not after:
-        try:
-            context["insights"] = services.account_insights(account)
-        except HookdError as exc:
-            context["insights_error"] = exc.message
-    return render(request, "content/dashboard.html", context)
-
-
-@login_required
-@require_POST
-def account_refresh(request, account_id: int):
-    account = _user_account(request, account_id)
     try:
-        services.recent_posts(account, force=True)
+        context["insights"] = services.account_insights(account)
     except HookdError as exc:
-        messages.error(request, exc.message)
-    return redirect("studio-account", account_id=account.pk)
+        context["insights_error"] = exc.message
+    return render(request, "content/dashboard.html", context)
 
 
 @login_required
@@ -97,29 +82,6 @@ def post_detail(request, post_id: int):
             "brain_form": brain_form,
         },
     )
-
-
-@login_required
-@require_POST
-def post_insights_refresh(request, post_id: int):
-    post = _user_post(request, post_id)
-    try:
-        services.post_insights(post, force=True)
-    except HookdError as exc:
-        messages.error(request, exc.message)
-    return redirect("post-detail", post_id=post.pk)
-
-
-@login_required
-def post_comments(request, post_id: int):
-    post = _user_post(request, post_id)
-    context = {"nav_section": "studio", "post": post, "account": post.account}
-    try:
-        context["comment_list"] = services.post_comments(post, after=request.GET.get("after", ""))
-    except HookdError as exc:
-        context["comment_list"] = services.CommentList(comments=[])
-        context["comments_error"] = exc.message
-    return render(request, "content/post_comments.html", context)
 
 
 @login_required
@@ -168,24 +130,18 @@ def publishing(request):
     )
 
 
-@login_required
-@require_POST
-def publish_check(request, job_id: int):
-    try:
-        job = services.get_user_publish_job(user=request.user, job_id=job_id)
-    except HookdError as exc:
-        raise Http404(exc.message) from exc
-    announce_publish_job(request, services.advance_publish_job(job))
-    return redirect("publishing")
+def publish_job_message(job) -> tuple[str, str]:
+    """(alert tone, text) telling the creator where a publish job stands."""
+    if job.status == job.Status.PUBLISHED:
+        return "success", "Published."
+    if job.status == job.Status.FAILED:
+        return "danger", f"Publishing failed: {job.error}"
+    return "info", "Uploaded. The platform is still processing it; Hookd publishes it as soon as it is ready."
 
 
 def announce_publish_job(request, job) -> None:
-    if job.status == job.Status.PUBLISHED:
-        messages.success(request, "Published.")
-    elif job.status == job.Status.FAILED:
-        messages.error(request, f"Publishing failed: {job.error}")
-    else:
-        messages.info(request, "Uploaded. The platform is still processing it; Hookd publishes it as soon as it is ready.")
+    tone, text = publish_job_message(job)
+    {"success": messages.success, "danger": messages.error, "info": messages.info}[tone](request, text)
 
 
 def publish_asset(request, token):

@@ -101,6 +101,10 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `GEMINI_IMAGE_MODEL` | | `gemini-nano-banana-2.1` | Image model that renders post photos |
 | `GEMINI_REPLY_MODEL` | | `gemini-3.5-flash-lite` | Text model that writes comment replies (`DEV-agent.md`). The reply agent uses Gemini only when `GEMINI_API_KEY` is set |
 
+Not an env var: `AI_MODEL_PRICES` in `config/settings.py` holds USD per million input and output tokens per model, used
+to record the cost of every post studio AI call (`DEV-creatives.md`). Add an entry when changing `GEMINI_COPY_MODEL` or
+`GEMINI_IMAGE_MODEL`; a model without one is recorded at cost 0 with a warning in the log.
+
 ### Email (GoDaddy Workspace Email)
 
 `hookd.world` mail is hosted on GoDaddy Workspace Email (secureserver.net): MX `smtp.secureserver.net` and

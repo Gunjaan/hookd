@@ -1,0 +1,19 @@
+{# Arguments: account, page, posts_error, can_publish. Also returned by api.account_posts_refresh into #recent-posts. #}
+{% if posts_error %}
+  <div class="alert alert--danger"><div class="alert__body">{{ posts_error }}</div></div>
+{% elif not page.posts %}
+  <div class="empty-state">
+    <p>No posts yet.</p>
+    {% if can_publish %}<a href="{% url 'compose' account.pk %}" class="btn btn--primary btn--md">Create your first post</a>{% endif %}
+  </div>
+{% endif %}
+<ul id="post-grid" class="post-grid">
+  {% for post in page.posts %}
+    {% include "content/post_card.html" %}
+  {% endfor %}
+</ul>
+{% if page.next_cursor %}
+  <div class="load-more">
+    <button type="button" class="btn btn--secondary btn--md" data-load-more="{% url 'api-account-posts' account.pk %}?after={{ page.next_cursor|urlencode }}" data-target="post-grid">Load older posts</button>
+  </div>
+{% endif %}

@@ -12,9 +12,7 @@
       </div>
     </header>
 
-    {% include "components/messages.html" %}
-
-    <form method="post" class="card card--padded compose" data-busy-scope>
+    <form method="post" action="{% url 'api-agent-preview' account.pk %}" class="card card--padded compose" data-api data-target="preview-result" data-busy-scope>
       {% csrf_token %}
       {% include "components/textarea_field.html" with field=form.text %}
       {% include "components/select_field.html" with field=form.post %}
@@ -23,25 +21,6 @@
       </div>
     </form>
 
-    {% if result %}
-      <section class="card card--padded agent-preview" aria-labelledby="preview-result-title">
-        <h2 id="preview-result-title" class="section-title">Result</h2>
-        <dl class="agent-facts">
-          <dt>What happens</dt>
-          <dd>
-            {% if result.outcome == 'queued' %}<span class="badge badge--success">Replies automatically</span>
-            {% elif result.outcome == 'pending_review' %}<span class="badge badge--info">Waits for your review</span>
-            {% else %}<span class="badge badge--neutral">Ignored</span>{% endif %}
-            {{ result.reason }}
-          </dd>
-          <dt>Confidence</dt>
-          <dd>{{ result.decision.confidence|floatformat:2 }} ({{ result.decision.reason }})</dd>
-        </dl>
-        {% if result.outcome != 'skipped' %}
-          <p class="field__label">Reply</p>
-          <p class="agent-reply-text">{{ result.decision.reply_text }}</p>
-        {% endif %}
-      </section>
-    {% endif %}
+    <section id="preview-result" class="card card--padded agent-preview" aria-labelledby="preview-result-title" aria-live="polite" hidden></section>
   </div>
 {% endblock %}

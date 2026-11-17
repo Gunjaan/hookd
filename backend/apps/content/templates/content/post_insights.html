@@ -1,0 +1,9 @@
+{# Arguments: post, insights_error. Also returned by api.post_insights_refresh into #post-insights. #}
+{% if insights_error %}
+  <div class="alert alert--warning"><div class="alert__body">Insights unavailable: {{ insights_error }}</div></div>
+{% elif post.insights %}
+  {% include "content/metric_tiles.html" with metrics=post.insights %}
+  <p class="hint">Updated {{ post.insights_fetched_at|timesince }} ago.</p>
+{% else %}
+  <p class="hint">No insights for this post.</p>
+{% endif %}
