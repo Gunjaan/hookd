@@ -1,7 +1,5 @@
 """All database access for the integrations app lives here."""
 
-from datetime import datetime
-
 from django.db import connection
 from django.db.models import QuerySet
 from django.utils import timezone
@@ -97,14 +95,3 @@ def active_accounts(platform: str | None = None) -> QuerySet[SocialAccount]:
     if platform:
         queryset = queryset.filter(platform=platform)
     return queryset.order_by("pk")
-
-
-def active_accounts_expiring_before(moment: datetime, platform: str | None = None) -> QuerySet[SocialAccount]:
-    queryset = SocialAccount.objects.filter(
-        status=SocialAccount.Status.ACTIVE,
-        token_expires_at__isnull=False,
-        token_expires_at__lte=moment,
-    )
-    if platform:
-        queryset = queryset.filter(platform=platform)
-    return queryset.order_by("token_expires_at")

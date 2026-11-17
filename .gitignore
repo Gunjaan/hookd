@@ -13,6 +13,5 @@ backend/staticfiles/
 
 # Local data
 logs/
-backups/
 backend/media/
 hookd-plan.md

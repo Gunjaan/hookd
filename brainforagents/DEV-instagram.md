@@ -45,8 +45,8 @@ and connect returns 503.
    - `GET /{version}/{ig_id}?fields=id,username,name,profile_picture_url,followers_count,media_count`.
    `external_id` = Instagram professional account id. Metadata: `client_business_id`, `system_user_id`,
    `login_config_id`, `assigned_account_ids`, `followers_count`, `media_count`.
-4. `refresh_access_token`: not supported by this flow. It raises `TokenExpiredError`, so the cron marks an
-   expiring account `expired` and the creator reconnects. Pick a configuration whose token never expires
+4. `refresh_access_token`: not supported by this flow. It raises `TokenExpiredError`; an expired token is noticed
+   on the next API call, which marks the account `expired`, and the creator reconnects. Pick a configuration whose token never expires
    (shown in the configuration preview) so this never triggers. The token also dies if the creator removes
    the app from their business portfolio.
 

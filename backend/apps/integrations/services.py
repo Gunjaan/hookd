@@ -7,9 +7,6 @@ provider or the ORM directly.
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
-
-from django.utils import timezone
 
 from apps.comments.services import record_incoming_comments
 from apps.messaging.services import record_incoming_messages
@@ -28,8 +25,6 @@ from apps.integrations.providers.base import BaseProvider
 from apps.integrations.providers.registry import all_providers, get_provider
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_REFRESH_WINDOW = timedelta(days=10)
 
 
 def build_connect_url(*, user, platform: str) -> str:
@@ -127,25 +122,6 @@ def refresh_account_token(account: SocialAccount) -> SocialAccount:
         queries.set_account_status(account, SocialAccount.Status.ERROR, exc.message)
         raise
     return queries.save_refreshed_token(account, tokens)
-
-
-@dataclass
-class RefreshSummary:
-    refreshed: list[int] = field(default_factory=list)
-    failed: dict[int, str] = field(default_factory=dict)
-
-
-def refresh_expiring_tokens(*, window: timedelta = DEFAULT_REFRESH_WINDOW, platform: str | None = None) -> RefreshSummary:
-    summary = RefreshSummary()
-    for account in queries.active_accounts_expiring_before(timezone.now() + window, platform):
-        try:
-            refresh_account_token(account)
-        except ProviderAPIError as exc:
-            summary.failed[account.pk] = exc.message
-            logger.warning("Token refresh failed for account %s: %s", account.pk, exc.message)
-        else:
-            summary.refreshed.append(account.pk)
-    return summary
 
 
 def answer_webhook_challenge(*, platform: str, params) -> str:

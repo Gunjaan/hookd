@@ -108,12 +108,11 @@ No server storage; the platform's single use code prevents replay.
 | `subscribe_all_webhooks(platform)` | Runs the above for every active account with webhooks; returns `SubscribeSummary(subscribed, failed)` |
 | `answer_webhook_challenge(platform, params)` | Provider handshake, returns the challenge |
 | `process_webhook(platform, body, headers)` | Checks the signature, parses JSON (`WebhookVerificationError` on failure), passes comments to `apps.comments.services.record_incoming_comments`, returns the number stored |
-| `refresh_expiring_tokens(window, platform)` | Refreshes active accounts expiring within `window`; returns `RefreshSummary(refreshed, failed)` |
 
 ## model_querysets.py
 
 `list_accounts_for_user`, `get_account_for_user`, `find_account`, `upsert_account`, `save_refreshed_token`,
-`set_account_status`, `delete_account`, `active_accounts`, `active_accounts_expiring_before`,
+`set_account_status`, `delete_account`, `active_accounts`,
 `stored_access_token_ciphertext` (raw SQL read of the encrypted column, for auditing and tests).
 
 ## Errors (`exceptions.py`, all `HookdError`)
@@ -135,7 +134,6 @@ a 400 `{"error"}`. Routes and templates are in `DEV-web.md`.
 
 | Command | Options | Purpose |
 |---|---|---|
-| `refresh_social_tokens` | `--within-days 10`, `--platform` | Cron job, daily |
 | `subscribe_webhooks` | `--platform` | Manual: re-subscribe all active accounts after changing webhook fields |
 
 ## Tests (`tests.py`)

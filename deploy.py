@@ -5,8 +5,7 @@
     python3 deploy.py services       Start the Postgres and Redis containers (--recreate to apply config changes)
     python3 deploy.py run            Open a shell in the development app container
     python3 deploy.py deploy         Same as run, with the production mount and DJANGO_DEBUG=false
-    python3 deploy.py backup-db      Dump the database to backups/ and delete dumps older than 14 days
-    python3 deploy.py install-cron   Install host cron entries for scheduled jobs
+    python3 deploy.py install-cron   Install host cron entries that run manage.py jobs in the app container
 
 Three containers share the hookd_net network: Postgres and Redis run detached with a restart policy and
 keep their data in named volumes, so they stay up while the app container is replaced. Inside the app
@@ -19,7 +18,6 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).parent.resolve()
@@ -50,9 +48,6 @@ REDIS_IMAGE = "redis:8-alpine"
 REDIS_CONTAINER_NAME = "hookd_redis"
 REDIS_VOLUME = "hookd_redis"
 
-BACKUP_DIR = ROOT / "backups"
-BACKUP_KEEP_DAYS = 14
-
 # Repository mount point inside the app container, per mode.
 MODE_HOMES = {
     "development": "/home/development",
@@ -61,16 +56,12 @@ MODE_HOMES = {
 
 # Host cron jobs that call manage.py inside the app container. Each line carries a
 # marker comment so install-cron can replace it in place instead of duplicating it.
-MANAGE_CRON_JOBS = [
-    # Daily: refresh platform access tokens that expire within 10 days.
-    ("refresh_social_tokens", "0 3 * * *", ["refresh_social_tokens"]),
+CRON_JOBS = [
     # Daily: delete Celery task results older than CELERY_RESULT_EXPIRES (7 days).
     ("cleanup_task_results", "30 3 * * *", ["cleanup_task_results"]),
     # Every 10 minutes: send queued comment replies whose Celery task was lost (never sends twice).
     ("send_due_replies", "*/10 * * * *", ["send_due_replies"]),
 ]
-# Daily database dump on the host (`deploy.py backup-db`).
-BACKUP_CRON_SCHEDULE = "0 2 * * *"
 
 
 def execute(command, check=True, quiet=False, hide=()):
@@ -228,31 +219,6 @@ def deploy(_args):
     start_app("production")
 
 
-def backup_db(_args):
-    env = read_env()
-    require_env(env, "POSTGRES_DB", "POSTGRES_USER")
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    target = BACKUP_DIR / f"hookd-{datetime.now():%Y%m%d-%H%M}.dump"
-    partial = target.with_suffix(".partial")
-    command = [
-        "docker", "exec", POSTGRES_CONTAINER_NAME,
-        "pg_dump", "-U", env["POSTGRES_USER"], "-d", env["POSTGRES_DB"], "--format=custom",
-    ]
-    with partial.open("wb") as out:
-        result = subprocess.run(command, stdout=out)
-    if result.returncode != 0:
-        partial.unlink(missing_ok=True)
-        sys.exit("pg_dump failed")
-    partial.rename(target)
-    print(f"Wrote {target}")
-
-    cutoff = datetime.now() - timedelta(days=BACKUP_KEEP_DAYS)
-    for old in BACKUP_DIR.glob("hookd-*.dump"):
-        if datetime.fromtimestamp(old.stat().st_mtime) < cutoff:
-            old.unlink()
-            print(f"Deleted {old}")
-
-
 CRON_MARKER_PREFIX = "# hookd:"
 
 
@@ -266,21 +232,10 @@ def read_crontab():
     return result.stdout.splitlines() if result.returncode == 0 else []
 
 
-def cron_line(name, schedule, command):
+def cron_line(name, schedule, manage_args, docker_bin):
+    command = " ".join([docker_bin, "exec", APP_CONTAINER_NAME, "python", "manage.py", *manage_args])
     log_file = HOST_LOG_DIR / f"cron_{name}.log"
     return f"{schedule} {command} >> {log_file} 2>&1 {cron_marker(name)}"
-
-
-def cron_jobs(docker_bin):
-    """(name, schedule, command) for every host cron job."""
-    jobs = [
-        (name, schedule, " ".join([docker_bin, "exec", APP_CONTAINER_NAME, "python", "manage.py", *manage_args]))
-        for name, schedule, manage_args in MANAGE_CRON_JOBS
-    ]
-    # cron's PATH is minimal, so the dump job also gets docker's directory.
-    path = f"PATH={Path(docker_bin).parent}:/usr/bin:/bin"
-    jobs.append(("backup_db", BACKUP_CRON_SCHEDULE, f"{path} {sys.executable} {ROOT / 'deploy.py'} backup-db"))
-    return jobs
 
 
 def install_cron(args):
@@ -288,16 +243,15 @@ def install_cron(args):
     if not docker_bin and not args.remove:
         sys.exit("docker not found on PATH; cron needs its absolute path.")
 
-    # Drop every hookd entry, including jobs no longer listed, then add the current ones.
-    jobs = cron_jobs(docker_bin or "docker")
+    # Drop every hookd entry, including jobs no longer in CRON_JOBS, then add the current ones.
     lines = [line for line in read_crontab() if CRON_MARKER_PREFIX not in line]
     if not args.remove:
         HOST_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        lines += [cron_line(name, schedule, command) for name, schedule, command in jobs]
+        lines += [cron_line(name, schedule, manage_args, docker_bin) for name, schedule, manage_args in CRON_JOBS]
 
     content = "\n".join(lines) + "\n" if lines else ""
     subprocess.run(["crontab", "-"], input=content, text=True, check=True)
-    for name, schedule, _ in jobs:
+    for name, schedule, _ in CRON_JOBS:
         print(f"{'Removed' if args.remove else 'Installed'} {name} ({schedule})")
 
 
@@ -310,8 +264,7 @@ def main():
     services_parser.set_defaults(handler=services)
     commands.add_parser("run", help="Open a shell in the development app container").set_defaults(handler=run)
     commands.add_parser("deploy", help="Open a shell in the production app container").set_defaults(handler=deploy)
-    commands.add_parser("backup-db", help="Dump the database to backups/").set_defaults(handler=backup_db)
-    cron = commands.add_parser("install-cron", help="Install host cron entries for scheduled jobs")
+    cron = commands.add_parser("install-cron", help="Install host cron entries for scheduled manage.py jobs")
     cron.add_argument("--remove", action="store_true", help="Remove the hookd cron entries instead")
     cron.set_defaults(handler=install_cron)
 

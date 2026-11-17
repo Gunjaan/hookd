@@ -41,13 +41,11 @@ Or `runbg` to start it in a detached screen session. Open http://localhost:8000.
 http://localhost:8000/admin (create a user with `python manage.py createsuperuser`).
 Another shell in the same container: `docker exec -it hookd_app_dev bash`.
 
-## Scheduled jobs and backups
+## Scheduled jobs
 
 ```bash
 python3 deploy.py install-cron
 ```
-
-This also installs a nightly database dump to `backups/` (`python3 deploy.py backup-db` runs one now).
 
 ## Connecting Instagram
 

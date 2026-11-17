@@ -28,8 +28,7 @@ The container opens a bash shell and you start the app yourself.
 | `python3 deploy.py services [--recreate]` | Creates `hookd_net` if missing, starts `hookd_postgres` and `hookd_redis` if they are not running, waits for `pg_isready`. `--recreate` replaces both to apply changed settings or passwords |
 | `python3 deploy.py run` | Runs `services`, removes any old `hookd_app_dev`, then `docker run -it --rm` with the repo at `/home/development`, workdir `/home/development/backend` |
 | `python3 deploy.py deploy` | Same, mounted at `/home/production`, plus `DJANGO_DEBUG=false` |
-| `python3 deploy.py backup-db` | `pg_dump --format=custom` into `backups/hookd-YYYYMMDD-HHMM.dump`, deletes dumps older than 14 days (see Backups) |
-| `python3 deploy.py install-cron [--remove]` | Writes the host crontab lines (see Cron) |
+| `python3 deploy.py install-cron [--remove]` | Writes host crontab lines that `docker exec hookd_app_dev python manage.py ...` (see Cron) |
 
 `run` and `deploy` pass:
 
@@ -166,34 +165,17 @@ admin and log timestamps show IST. Host cron schedules use the host's clock, so 
 ## Cron (scheduled jobs)
 
 No celery beat. Jobs are Django management commands run by the **host** crontab through `docker exec`,
-listed in `MANAGE_CRON_JOBS` in `deploy.py`, plus the database dump (`BACKUP_CRON_SCHEDULE`, runs
-`deploy.py backup-db` with the host's Python). Each crontab line ends with a `# hookd:<name>` marker so
-`install-cron` replaces entries in place. Output goes to `logs/cron_<name>.log`. The app container must be running
-for the manage.py jobs, `hookd_postgres` for the dump.
+listed in `CRON_JOBS` in `deploy.py`. Each crontab line ends with a `# hookd:<name>` marker so
+`install-cron` replaces entries in place. Output goes to `logs/cron_<name>.log`. The app container must be running.
 
 | Schedule | Command | Purpose |
 |---|---|---|
-| `0 2 * * *` | `deploy.py backup-db` | Nightly database dump (see Backups) |
-| `0 3 * * *` | `refresh_social_tokens` | Refresh tokens expiring within 10 days (`--within-days`, `--platform`) |
 | `30 3 * * *` | `cleanup_task_results` | Delete stored Celery task results older than 7 days |
 | `*/10 * * * *` | `send_due_replies` | Send queued comment replies more than 5 minutes past their slot (lost Celery tasks). A reply is never sent twice |
 
-Adding a job: write the management command, add a tuple to `MANAGE_CRON_JOBS`, document it here, run
-`python3 deploy.py install-cron`. `install-cron` first removes every line carrying a `# hookd:` marker, so dropped jobs
-disappear too.
-
-## Backups
-
-`python3 deploy.py backup-db` (nightly from cron) writes `backups/hookd-YYYYMMDD-HHMM.dump` (gitignored) with
-`pg_dump --format=custom`, writing to a `.partial` file first so a failed dump never looks complete, and deletes
-dumps older than 14 days (`BACKUP_KEEP_DAYS`). Copy `backups/` off the server too; a dump on the same disk does not
-survive losing the VPS.
-
-Restore into the running container (replaces the current data):
-
-```bash
-docker exec -i hookd_postgres pg_restore -U hookd -d hookd --clean --if-exists < backups/hookd-YYYYMMDD-HHMM.dump
-```
+Adding a job: write the management command, add a tuple to `CRON_JOBS`, document it here, run
+`python3 deploy.py install-cron`. `install-cron` first removes every line carrying a `# hookd:` marker, so jobs
+dropped from `CRON_JOBS` disappear too.
 
 ## Celery
 

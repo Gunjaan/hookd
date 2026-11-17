@@ -19,7 +19,7 @@ Not built yet: YouTube, sending DMs, private replies and auto replies to DMs and
 
 | File | Covers |
 |---|---|
-| `DEV-infrastructure.md` | deploy.py and Docker, Postgres, Redis, cache, backups, env vars, cron, Celery, running and testing |
+| `DEV-infrastructure.md` | deploy.py and Docker, Postgres, Redis, cache, env vars, cron, Celery, running and testing |
 | `DEV-auth.md` | `apps.accounts`: custom User, session login, signup, logout |
 | `DEV-core.md` | `apps.core`: base model, encrypted field, `HookdError`, health check |
 | `DEV-integrations.md` | `apps.integrations`: provider interface, SocialAccount, connect flow, token refresh |

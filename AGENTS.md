@@ -26,7 +26,7 @@ what exists, where it lives, how data flows, every endpoint, every env var and e
   broker (database 0) and Django's cache (database 1).
 - **Background work:** Celery tasks live in `apps/<name>/tasks.py` and only call a service function. Queue them with
   `transaction.on_commit` when they depend on rows written in the same request.
-- **Scheduled work:** host cron runs Django management commands via `docker exec` (`MANAGE_CRON_JOBS` in `deploy.py`,
+- **Scheduled work:** host cron runs Django management commands via `docker exec` (`CRON_JOBS` in `deploy.py`,
   installed with `python3 deploy.py install-cron`). No celery beat.
 
 ### Django conventions
