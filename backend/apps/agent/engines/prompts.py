@@ -66,11 +66,13 @@ def reply_request(context: AgentContext) -> str:
 
 
 LEARN_RULES = """FACT RULES
-- Only facts a buyer could ask about: price, sizes, colors, material, stock, offer and its dates, delivery time and \
-area, shipping cost, cash on delivery, returns, how to order, contact, location, opening hours.
+- Only facts a buyer could ask about: price, sizes, colors, material, stock, availability (including what is not for \
+sale, such as other items seen in the post), offer and its dates, delivery time and area, shipping cost, cash on \
+delivery, returns, how to order, contact, location, opening hours.
 - Only what the text states. Never guess or round numbers. No opinions, hype, hashtags, emojis or greetings.
 - label: 1 to 3 words naming the topic, for example Price, Sizes, Delivery, How to order. Use the same label for the \
-same topic every time.
+same topic every time. A fact about another item than the product (seen in the post) is labelled with that item's \
+name, for example Laptop.
 - text: the fact in one short sentence, under 200 characters, in the text's language.
 - scope "post" for facts about this product or post (its price, sizes, colors, stock). Scope "account" for facts \
 about the whole shop (shipping, cash on delivery, returns, how to order, location).
@@ -85,8 +87,9 @@ of one of their Instagram posts. List the facts in it the agent can use to answe
 
 LEARN_REPLY_SYSTEM = """You build the memory of a small online seller's comment reply agent. A buyer asked a \
 question the agent could not answer, and the seller wrote the reply themselves. List the facts the seller's reply \
-states, so the agent can answer the next buyer who asks the same thing. At most 3 facts. A reply that only promises \
-to get back, thanks the buyer or asks them to DM states no fact.
+states, so the agent can answer the next buyer who asks the same thing. At most 3 facts. A direct answer to the \
+buyer's question is always a fact, even when its topic is not in the list below. A reply that only promises to get \
+back, thanks the buyer or asks them to DM states no fact.
 
 """ + LEARN_RULES
 

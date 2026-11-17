@@ -124,10 +124,12 @@ creator writes it in the inbox. The preview page shows the error as a message.
   reply_text, confidence, reason). `reply_request(context)`: compact JSON with empty fields dropped and the caption
   cut to `CAPTION_MAX_LENGTH` (2200, Instagram's limit). The caption rule: its prices, sizes, offers and dates are
   facts, post facts win on a conflict. Learner prompts (constants): `LEARN_RULES` (buyer facts only: price, sizes,
-  colors, material, stock, offer, delivery, shipping, COD, returns, how to order, contact, location, hours; only what
-  the text states; 1 to 3 word labels reused per topic; text under 200 characters in the text's language; scope
-  `post` for the product, `account` for the shop), `LEARN_CAPTION_SYSTEM` (at most 12 facts), `LEARN_REPLY_SYSTEM`
-  (at most 3, holding replies, thanks and "DM us" state none), `LEARN_SCHEMA` (`facts[]` of scope, label, text),
+  colors, material, stock, availability (also what is not for sale), offer, delivery, shipping, COD, returns, how to
+  order, contact, location, hours; only what the text states; 1 to 3 word labels reused per topic, another item seen
+  in the post is labelled with its name (so it never replaces the product's facts); text under 200 characters in the
+  text's language; scope `post` for the product, `account` for the shop), `LEARN_CAPTION_SYSTEM` (at most 12 facts),
+  `LEARN_REPLY_SYSTEM` (at most 3; a direct answer to the buyer's question is always a fact even off the topic list;
+  holding replies, thanks and "DM us" state none), `LEARN_SCHEMA` (`facts[]` of scope, label, text),
   `learn_reply_request(question, answer, post_caption)`.
 - `gemini.py`: `GeminiReplyEngine` (`name = "gemini"`): one `core.gemini.generate_json` call, max 400 output tokens.
   Confidence is clamped to 0..1 (unreadable is 0). `GeminiBrainLearner` (`name = "gemini"`): one `generate_json`
