@@ -231,8 +231,9 @@ python manage.py test
 
 ## Production (GoDaddy VPS, Caddy)
 
-One Ubuntu VPS. The repository is cloned to **`/opt/hookd`** (the `Caddyfile` points there, and Caddy runs as the
-`caddy` user, which cannot read inside `/root`). Request path: internet, Caddy on the host (ports 80 and 443), gunicorn
+One Ubuntu VPS. The repository is cloned to **`/home/gunjan/hookd`** by the `gunjan` user (in the `docker` group). The
+`Caddyfile` points there; Caddy runs as the `caddy` user, which gets traverse only access to the home folder with
+`setfacl -m u:caddy:x /home/gunjan` (static files are written world readable by the container). Request path: internet, Caddy on the host (ports 80 and 443), gunicorn
 in `hookd_app_dev` on `127.0.0.1:8000`.
 
 **Static files.** With `DJANGO_DEBUG=false` (and not testing), `STORAGES['staticfiles']` is
@@ -250,18 +251,19 @@ port). With `DJANGO_DEBUG=false` session and CSRF cookies are secure.
 First setup on the server:
 
 ```bash
-apt update && apt install -y git python3 caddy
+apt update && apt install -y git python3 acl caddy   # as root (Caddy from its apt repository)
 curl -fsSL https://get.docker.com | sh
 timedatectl set-timezone Asia/Kolkata
 ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable
-cd /opt && git clone https://github.com/Gunjaan/hookd.git && cd hookd
+usermod -aG docker gunjan && setfacl -m u:caddy:x /home/gunjan   # then, as gunjan:
+cd ~ && git clone https://github.com/Gunjaan/hookd.git && cd hookd
 cp .env.example .env        # production values, see below
 python3 deploy.py build
 python3 deploy.py deploy
 docker exec hookd_app_dev python manage.py migrate
 docker exec -it hookd_app_dev python manage.py createsuperuser
 python3 deploy.py install-cron
-ln -sf /opt/hookd/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy
+sudo ln -sf /home/gunjan/hookd/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
 GoDaddy DNS: `A` records for `hookd.world` and `www` pointing at the VPS IP, before Caddy can get certificates.
