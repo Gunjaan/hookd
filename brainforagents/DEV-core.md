@@ -15,7 +15,7 @@ Shared building blocks. Owns no database tables.
 | `templatetags/hookd_ui.py` | `initials` filter (avatar fallback, see `DEV-web.md`) |
 | `management/commands/generate_encryption_key.py` | Prints a new Fernet key |
 | `management/commands/cleanup_task_results.py` | Deletes Celery task results older than `CELERY_RESULT_EXPIRES` via the result backend. Daily cron (`DEV-infrastructure.md`) |
-| `tests.py` | Health endpoint, landing page (guest and signed in), encrypt/decrypt round trip, key rotation, unknown key error, Gemini missing key, non JSON answer and token usage on a JSON answer |
+| `tests.py` | Health endpoint, landing page (guest and signed in), link preview tags, noindex on signed in pages, encrypt/decrypt round trip, key rotation, unknown key error, Gemini missing key, non JSON answer and token usage on a JSON answer |
 
 ## Endpoints
 

@@ -17,7 +17,8 @@ an `html` snippet rendered from the same partial the page uses; simple values co
 ```
 backend/
   templates/
-    base.html                   <head> (Inter and Urbanist fonts, CSS, app.js), blocks: title, head (extra stylesheets), body
+    base.html                   <head> (Inter and Urbanist fonts, CSS, app.js, SEO and link preview tags, see below),
+                                blocks: title, robots (default "index, follow"), head (extra stylesheets), body
     layouts/auth.html           Brand panel (logo links to the landing page) + form panel (login, signup). Block: panel
     layouts/app.html            Shell for signed in pages: a sticky white side panel (`.app-side`) with icon links Profile,
                                 Create, Replies (pending review count), Agent (Hooky as its icon), Connections at the
@@ -38,6 +39,8 @@ backend/
     js/app.js                   Page behaviour: api() and showMessage(), data-api forms, confirm dialogs, busy buttons, load more,
                                 photo thumbnails, character counter, post studio draft page
     img/favicon.svg             Brand icon: white geometric "h" plus rose dot on an ink rounded square (same art as brand/icon.svg)
+    img/og-image.png            1200x630 link preview card (logo, hero headline, three hero flow pills on cream)
+    img/apple-touch-icon.png    180x180 PNG of the favicon art for iOS home screens
     img/hero-reels.jpg          Hero phone: an earring seller's Instagram reels grid, cropped to the phone frame (corners via `--radius-phone`)
   apps/accounts/
     forms.py                    SignupForm, LoginForm (plus the admin forms)
@@ -70,6 +73,18 @@ Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [B
 `STATIC_ROOT = BASE_DIR / 'staticfiles'` (hashed manifest storage in production, see `DEV-infrastructure.md`),
 `LOGIN_URL = 'login'`, `LOGIN_REDIRECT_URL = 'studio'`, `MESSAGE_TAGS = {ERROR: 'danger'}`,
 `django.contrib.humanize` installed (for `intcomma`).
+
+## SEO and link previews
+
+`base.html` gives every page a meta description, `robots`, a canonical URL, the SVG favicon plus `apple-touch-icon`,
+Open Graph tags (`og:type`, `og:site_name`, `og:locale` en_IN, `og:url`, `og:title`, `og:description`, `og:image` with
+type, size and alt) and Twitter `summary_large_image` tags. These are what WhatsApp, Instagram, Facebook, LinkedIn,
+Slack, X and iMessage read when someone shares a hookd.world link. Copy is site wide (only the landing page is public).
+Absolute URLs come from `request.scheme` and `request.get_host`, so they are `https://hookd.world/...` in production
+(Caddy sends `X-Forwarded-Proto`, read through `SECURE_PROXY_SSL_HEADER`). `og:image` points at the hashed static file,
+so changing `og-image.png` gives a new URL and previews pick it up. Check with https://metatags.io or the Facebook
+Sharing Debugger (which also clears Meta's cache). `layouts/app.html` and `integrations/oauth_callback.html` set
+`robots` to "noindex, nofollow".
 
 ## Design system
 

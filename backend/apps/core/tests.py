@@ -15,6 +15,21 @@ class HealthViewTests(TestCase):
 
 
 class LandingViewTests(TestCase):
+    def test_landing_has_link_preview_tags(self):
+        response = self.client.get(reverse("home"), HTTP_HOST="localhost")
+        self.assertContains(response, '<meta property="og:title" content="Hookd: your very own agent to get the world hookd" />')
+        self.assertContains(response, '<meta property="og:url" content="http://localhost/" />')
+        self.assertContains(response, '<meta property="og:image" content="http://localhost/static/img/og-image.png" />')
+        self.assertContains(response, '<meta name="twitter:card" content="summary_large_image" />')
+        self.assertContains(response, '<link rel="canonical" href="http://localhost/" />')
+        self.assertContains(response, '<meta name="robots" content="index, follow" />')
+
+    def test_signed_in_pages_are_not_indexed(self):
+        user = create_user(email="meta@example.com", password="pass-12345")
+        self.client.force_login(user)
+        response = self.client.get(reverse("connections"))
+        self.assertContains(response, '<meta name="robots" content="noindex, nofollow" />')
+
     def test_guest_sees_landing(self):
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
