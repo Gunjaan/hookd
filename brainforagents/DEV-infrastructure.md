@@ -2,29 +2,59 @@
 
 ## Docker (`deploy.py` + `Dockerfile`)
 
-One app container holds the Python 3.13 venv at `/home/venv` (no Node: the UI is Django templates). The repository is
-**mounted, not copied**, so code edits on the host show up immediately. The container opens a bash shell and
-you start everything yourself. There are no other containers: the database is SQLite, the cache is in memory and
-Redis (the Celery broker) runs inside the same container.
+Three containers on the `hookd_net` Docker network, sized for one 4 CPU, 8 GB VPS:
 
-`deploy.py` uses only the Python standard library.
+| Container | Image | Lifetime | Data | Reached at |
+|---|---|---|---|---|
+| `hookd_postgres` | `postgres:18-alpine` | detached, `--restart unless-stopped`, `--memory 2g` | volume `hookd_pgdata` at `/var/lib/postgresql` | `hookd_postgres:5432` |
+| `hookd_redis` | `redis:8-alpine` | detached, `--restart unless-stopped`, `--memory 512m` | volume `hookd_redis` at `/data` (append only file) | `hookd_redis:6379` |
+| `hookd_app_dev` | `localhost/hookd:latest` | interactive, `--rm`, replaced on every `run` | repo mount | host port `8000` |
+
+Postgres and Redis publish **no ports**: only containers on `hookd_net` reach them. Do not add `-p` for them, Docker's
+published ports bypass `ufw` and would expose them to the internet. Replacing either container keeps its data (named
+volume). From the host: `docker exec -it hookd_postgres psql -U hookd hookd`, `docker exec -it hookd_redis redis-cli`
+(then `AUTH <REDIS_PASSWORD>`), `docker logs hookd_postgres`.
+
+The app container holds the Python 3.13 venv at `/home/venv` (no Node: the UI is Django templates) plus `psql`
+for `manage.py dbshell`. The repository is **mounted, not copied**, so code edits on the host show up immediately.
+The container opens a bash shell and you start the app yourself.
+
+`deploy.py` uses only the Python standard library. It reads `.env` itself (same rules as `docker --env-file`) for the
+`POSTGRES_*` and `REDIS_PASSWORD` values it passes to the service containers.
 
 | Command | Does |
 |---|---|
 | `python3 deploy.py build` | Builds `localhost/hookd:latest` from `Dockerfile` (build context only sends `backend/requirements.txt`, see `.dockerignore`) |
-| `python3 deploy.py run` | Removes any old `hookd_app_dev`, then `docker run -it --rm` with the repo at `/home/development`, workdir `/home/development/backend` |
+| `python3 deploy.py services [--recreate]` | Creates `hookd_net` if missing, starts `hookd_postgres` and `hookd_redis` if they are not running, waits for `pg_isready`. `--recreate` replaces both to apply changed settings or passwords |
+| `python3 deploy.py run` | Runs `services`, removes any old `hookd_app_dev`, then `docker run -it --rm` with the repo at `/home/development`, workdir `/home/development/backend` |
 | `python3 deploy.py deploy` | Same, mounted at `/home/production`, plus `DJANGO_DEBUG=false` |
-| `python3 deploy.py install-cron [--remove]` | Writes host crontab lines that `docker exec hookd_app_dev python manage.py ...` (see Cron) |
+| `python3 deploy.py backup-db` | `pg_dump --format=custom` into `backups/hookd-YYYYMMDD-HHMM.dump`, deletes dumps older than 14 days (see Backups) |
+| `python3 deploy.py install-cron [--remove]` | Writes the host crontab lines (see Cron) |
 
 `run` and `deploy` pass:
 
 | Flag | Value |
 |---|---|
+| network | `hookd_net` |
 | ports | `8000` (Django) |
 | mounts | repo at `$APP_HOME`; `./logs` at `/home/logs` |
 | env | `--env-file .env`, `APP_HOME=/home/development` or `/home/production`, `TZ=Asia/Kolkata` |
 
 Rebuild the image after changing `requirements.txt` or the `Dockerfile`.
+
+### Service settings (in `deploy.py`)
+
+| Service | Settings | Why |
+|---|---|---|
+| Postgres (`POSTGRES_SETTINGS`) | `shared_buffers=1GB`, `effective_cache_size=3GB`, `work_mem=16MB`, `maintenance_work_mem=256MB`, `max_connections=50`, `random_page_cost=1.1`, `--shm-size 256m` | Leaves room for the app on 8 GB; SSD storage |
+| Redis | `--appendonly yes`, `--maxmemory 256mb`, `--maxmemory-policy noeviction`, `--requirepass $REDIS_PASSWORD` | A broker must never evict queued tasks, so Redis refuses writes when full instead |
+
+The database and user are created from `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD` only when the volume is
+empty (first start). The user is a superuser, so `manage.py test` can create its test database. Changing them later
+means changing them inside Postgres (`ALTER USER ...`) too.
+
+Memory budget on the VPS: Postgres about 2 GB, Redis 300 MB, gunicorn about 1.5 GB, Celery about 1 GB, the rest for
+nginx, the OS and page cache. Add a 2 GB swap file on the server.
 
 ### Inside the container
 
@@ -33,22 +63,19 @@ changing it needs no rebuild:
 
 | Alias | Does |
 |---|---|
-| `run` | Stops any running dev server, Celery worker and Redis, starts Redis, starts the worker in the `celery` screen session, then runs `python manage.py runserver 0.0.0.0:8000` in the foreground. Running it again (or `runbg`) always leaves exactly one of each |
+| `run` | Stops any running dev server and Celery worker, starts the worker in the `celery` screen session, then runs `python manage.py runserver 0.0.0.0:8000` in the foreground. Running it again (or `runbg`) always leaves exactly one of each |
 | `runbg` | Starts `run` in a detached `screen` session named `backend` (replacing the previous one) |
-| `restart-celery` | Restarts only the Celery worker (starts Redis first if needed) |
-| `stopall` | Stops the dev server, the worker and Redis |
+| `restart-celery` | Restarts only the Celery worker |
+| `stopall` | Stops the dev server and the worker (Postgres and Redis keep running in their containers) |
 
 Stopping works by command line pattern (`pkill`/`pgrep` from `procps`): TERM, wait up to 10 s, then KILL. It
-matches `manage.py runserver`, `celery -A config worker` (screen session, watchfiles and worker processes) and
-`redis-server`, so it also cleans up copies started by hand.
+matches `manage.py runserver` and `celery -A config worker` (screen session, watchfiles and worker processes), so it
+also cleans up copies started by hand.
 
-- **Redis:** `redis-server` bound to `127.0.0.1:6379` inside the container, append only file in `data/redis/`
-  (gitignored), so queued tasks survive container restarts. Log: `logs/redis.log`.
 - **Celery worker:** `celery -A config worker --loglevel=INFO --concurrency=2`. With `DJANGO_DEBUG=true` it runs
   under `watchfiles`, which restarts it when a Python file under `backend/` changes (like runserver). Output goes to
   the screen session and `logs/celery.log`.
-- Stopping `run` with `Ctrl-c` stops only the dev server; Redis and the worker keep running until the next `run`
-  or `stopall`.
+- Stopping `run` with `Ctrl-c` stops only the dev server; the worker keeps running until the next `run` or `stopall`.
 - `python3 deploy.py run` force removes any existing `hookd_app_dev` container before starting, so there is never
   more than one app container.
 
@@ -66,11 +93,14 @@ A second shell into the running container: `docker exec -it hookd_app_dev bash`.
 
 ## Database and cache
 
-- **SQLite** at `backend/db.sqlite3` (gitignored). Planned switch to Postgres later: change `DATABASES` in
-  `config/settings.py`, add the driver to `requirements.txt` and env vars here.
-- **Redis:** Celery broker only (see above). Not used as a cache.
-- **Cache:** `LocMemCache` (`CACHES` in settings). Per process, cleared on restart. Holds the studio's recent posts
-  and account insights (`DEV-content.md`).
+- **Postgres** (`hookd_postgres`) through `psycopg` 3. `DATABASES` reads the `POSTGRES_*` env vars, with
+  `CONN_MAX_AGE = 60` and `CONN_HEALTH_CHECKS = True` (connections are reused and checked, so a Postgres restart
+  does not break running processes).
+- **Redis** (`hookd_redis`): database 0 is the Celery broker, database 1 the cache. Settings build `REDIS_URL` from
+  `REDIS_HOST` and `REDIS_PASSWORD` (URL quoted).
+- **Cache:** Django's `RedisCache` on database 1, key prefix `hookd`, shared by every server and worker process.
+  Holds the studio's recent posts and account insights (`DEV-content.md`). `manage.py test` uses `LocMemCache`
+  instead, so tests need no Redis and never clear the real cache.
 - **Uploads:** `MEDIA_ROOT = backend/media/` (gitignored). Publish uploads (`publish/`, deleted once published or
   failed, served to platforms by the `publish-asset` view) and post studio photos (`creatives/sources/` and
   `creatives/slides/`, deleted with their draft, served to the owner by `creative-file`). No web server config needed.
@@ -87,7 +117,13 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `DJANGO_ALLOWED_HOSTS` | | `localhost,127.0.0.1` | Comma list |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | | | Comma list of HTTPS origins the site is opened from (tunnel, production). Every form post needs it |
 | `LOG_LEVEL` | | `INFO` | Root log level |
-| `CELERY_BROKER_URL` | | `redis://localhost:6379/0` | Celery broker (the Redis inside the container) |
+| `POSTGRES_DB` | yes | `hookd` | Database name. Read by `deploy.py` (creates it on first start) and the app |
+| `POSTGRES_USER` | yes | `hookd` | Database user, same |
+| `POSTGRES_PASSWORD` | yes | | Database password, same |
+| `POSTGRES_HOST` | | `hookd_postgres` | Database host on `hookd_net` |
+| `POSTGRES_PORT` | | `5432` | Database port |
+| `REDIS_PASSWORD` | yes | | Redis `requirepass`. Read by `deploy.py` and the app (broker and cache URLs). After changing it run `deploy.py services --recreate` |
+| `REDIS_HOST` | | `hookd_redis` | Redis host on `hookd_net` |
 | `APP_URL` | | `http://localhost:8000` | Public base URL, used for default OAuth redirect URIs and publish media URLs. Must be HTTPS (tunnel or domain) for publishing |
 | `FIELD_ENCRYPTION_KEYS` | yes for tokens | | Comma list of Fernet keys, newest first. `manage.py generate_encryption_key` |
 | `PROVIDER_HTTP_TIMEOUT_SECONDS` | | `15` | Timeout for platform API calls |
@@ -123,29 +159,46 @@ vars; see `DEV-agent.md`. The post studio engines and daily cap are too (`HOOKD_
 ## Time zone
 
 India time everywhere it is shown: `TIME_ZONE = 'Asia/Kolkata'` and `CELERY_TIMEZONE = TIME_ZONE` in settings,
-`TZ=Asia/Kolkata` on the container (shell, Redis log). `USE_TZ = True`, so the database stores UTC and templates,
+`TZ=Asia/Kolkata` on all three containers (shell, Postgres and Redis logs). `USE_TZ = True`, so the database stores UTC and templates,
 admin and log timestamps show IST. Host cron schedules use the host's clock, so set the server to IST as well
-(`timedatectl set-timezone Asia/Kolkata`) or the `CRON_JOBS` times are read in its zone.
+(`timedatectl set-timezone Asia/Kolkata`) or the cron schedules are read in its zone.
 
 ## Cron (scheduled jobs)
 
 No celery beat. Jobs are Django management commands run by the **host** crontab through `docker exec`,
-listed in `CRON_JOBS` in `deploy.py`. Each crontab line ends with a `# hookd:<name>` marker so
-`install-cron` replaces entries in place. Output goes to `logs/cron_<name>.log`. The app container must be running.
+listed in `MANAGE_CRON_JOBS` in `deploy.py`, plus the database dump (`BACKUP_CRON_SCHEDULE`, runs
+`deploy.py backup-db` with the host's Python). Each crontab line ends with a `# hookd:<name>` marker so
+`install-cron` replaces entries in place. Output goes to `logs/cron_<name>.log`. The app container must be running
+for the manage.py jobs, `hookd_postgres` for the dump.
 
 | Schedule | Command | Purpose |
 |---|---|---|
+| `0 2 * * *` | `deploy.py backup-db` | Nightly database dump (see Backups) |
 | `0 3 * * *` | `refresh_social_tokens` | Refresh tokens expiring within 10 days (`--within-days`, `--platform`) |
 | `30 3 * * *` | `cleanup_task_results` | Delete stored Celery task results older than 7 days |
 | `*/10 * * * *` | `send_due_replies` | Send queued comment replies more than 5 minutes past their slot (lost Celery tasks). A reply is never sent twice |
 
-Adding a job: write the management command, add a tuple to `CRON_JOBS`, document it here, run `python3 deploy.py install-cron`.
-`install-cron` first removes every line carrying a `# hookd:` marker, so jobs dropped from `CRON_JOBS` disappear too.
+Adding a job: write the management command, add a tuple to `MANAGE_CRON_JOBS`, document it here, run
+`python3 deploy.py install-cron`. `install-cron` first removes every line carrying a `# hookd:` marker, so dropped jobs
+disappear too.
+
+## Backups
+
+`python3 deploy.py backup-db` (nightly from cron) writes `backups/hookd-YYYYMMDD-HHMM.dump` (gitignored) with
+`pg_dump --format=custom`, writing to a `.partial` file first so a failed dump never looks complete, and deletes
+dumps older than 14 days (`BACKUP_KEEP_DAYS`). Copy `backups/` off the server too; a dump on the same disk does not
+survive losing the VPS.
+
+Restore into the running container (replaces the current data):
+
+```bash
+docker exec -i hookd_postgres pg_restore -U hookd -d hookd --clean --if-exists < backups/hookd-YYYYMMDD-HHMM.dump
+```
 
 ## Celery
 
 `backend/config/celery.py` creates the app (`hookd`), settings use the `CELERY_` prefix, tasks are autodiscovered
-from `apps/*/tasks.py`. Broker: `CELERY_BROKER_URL` (Redis in the container). `CELERY_TASK_ACKS_LATE` with prefetch 1, so a task is re-delivered if the worker dies
+from `apps/*/tasks.py`. Broker: `CELERY_BROKER_URL`, built from `REDIS_URL` (Redis database 0). `CELERY_TASK_ACKS_LATE` with prefetch 1, so a task is re-delivered if the worker dies
 mid task. `manage.py test` sets `TESTING`, which turns on `CELERY_TASK_ALWAYS_EAGER` so tests need no broker.
 
 Conventions: a task only calls one service function (`apps/content/tasks.py` is the example). Queue it with
@@ -191,8 +244,11 @@ python manage.py test
 ## Production notes (GoDaddy)
 
 - `python3 deploy.py deploy`, then inside the container serve Django with
-  `gunicorn config.wsgi:application --bind 0.0.0.0:8000` (in a screen session).
+  `gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2` (in a screen session). Three
+  workers, not `2 x CPU + 1`, because Celery and Postgres share the 4 cores.
 - Run `python manage.py collectstatic` (writes `backend/static` and admin assets to `backend/staticfiles`) and serve
   that folder at `/static/` from the web server; gunicorn does not serve static files. Everything else goes to Django.
 - Set real `DJANGO_ALLOWED_HOSTS` and HTTPS origins in `.env`.
-- Start Redis and the worker with `restart-celery` (with `DJANGO_DEBUG=false` the worker runs without auto reload).
+- Start the worker with `restart-celery` (with `DJANGO_DEBUG=false` the worker runs without auto reload).
+- Firewall: allow only SSH, 80 and 443 with `ufw`. Postgres and Redis publish no ports, so they are not reachable
+  from outside.

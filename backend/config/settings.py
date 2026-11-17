@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import sys
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from django.contrib.messages import constants as messages
 
@@ -90,22 +91,44 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Postgres runs in its own container (hookd_postgres, see deploy.py). Connections are reused for a minute and
+# checked before reuse, so a Postgres restart does not break running processes.
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env_str('POSTGRES_DB', 'hookd'),
+        'USER': env_str('POSTGRES_USER', 'hookd'),
+        'PASSWORD': env_str('POSTGRES_PASSWORD', required=True),
+        'HOST': env_str('POSTGRES_HOST', 'hookd_postgres'),
+        'PORT': env_int('POSTGRES_PORT', 5432),
+        'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
 
-# Cache. In process memory for now; each server process has its own cache.
+# Redis runs in its own container (hookd_redis). Database 0 is the Celery broker, database 1 the cache.
+
+TESTING = sys.argv[1:2] == ['test']
+
+REDIS_HOST = env_str('REDIS_HOST', 'hookd_redis')
+REDIS_PASSWORD = env_str('REDIS_PASSWORD', required=True)
+REDIS_URL = f'redis://:{quote(REDIS_PASSWORD, safe="")}@{REDIS_HOST}:6379'
+
+
+# Cache, shared by every server and worker process. Tests use process memory so they need no Redis and never
+# clear the real cache.
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'hookd-default',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': f'{REDIS_URL}/1',
+        'KEY_PREFIX': 'hookd',
     }
 }
+if TESTING:
+    CACHES['default'] = {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'hookd-tests'}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -199,13 +222,10 @@ APP_URL = env_str('APP_URL', 'http://localhost:8000').rstrip('/')
 FIELD_ENCRYPTION_KEYS = env_list('FIELD_ENCRYPTION_KEYS')
 
 
-# Celery. Redis runs inside the app container (scripts/hookd.sh) and is the broker. Task states and results are
-# stored in the database by django-celery-results (admin > Celery Results). `manage.py test` runs tasks inline so
-# tests need no broker.
+# Celery. Redis database 0 is the broker. Task states and results are stored in the database by
+# django-celery-results (admin > Celery Results). `manage.py test` runs tasks inline so tests need no broker.
 
-TESTING = sys.argv[1:2] == ['test']
-
-CELERY_BROKER_URL = env_str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = f'{REDIS_URL}/0'
 CELERY_RESULT_BACKEND = 'django-db'
 # Store the task name, arguments and worker with each result, and record STARTED so running tasks show up.
 CELERY_RESULT_EXTENDED = True

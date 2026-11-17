@@ -22,11 +22,11 @@ what exists, where it lives, how data flows, every endpoint, every env var and e
   Delete code, settings, dependencies and docs that nothing uses any more, unless the user says to keep them.
 - **Secrets only in env vars.** Never commit `.env`, keys, or tokens. Add every new variable to `.env.example`
   and to `brainforagents/DEV-infrastructure.md`.
-- **Data:** SQLite (`backend/db.sqlite3`) and Django's in-memory cache for now. No Postgres yet. Redis runs inside the
-  app container only as the Celery broker.
+- **Data:** Postgres in its own container (`hookd_postgres`). Redis in its own container (`hookd_redis`) is the Celery
+  broker (database 0) and Django's cache (database 1).
 - **Background work:** Celery tasks live in `apps/<name>/tasks.py` and only call a service function. Queue them with
   `transaction.on_commit` when they depend on rows written in the same request.
-- **Scheduled work:** host cron runs Django management commands via `docker exec` (`CRON_JOBS` in `deploy.py`,
+- **Scheduled work:** host cron runs Django management commands via `docker exec` (`MANAGE_CRON_JOBS` in `deploy.py`,
   installed with `python3 deploy.py install-cron`). No celery beat.
 
 ### Django conventions
@@ -56,9 +56,10 @@ what exists, where it lives, how data flows, every endpoint, every env var and e
 
 ## 3. Running things
 
-Everything runs inside one app container (`hookd_app_dev`) started by `python3 deploy.py run`, which opens a
-shell where the user starts everything with `run` (or `runbg` in a detached screen): Redis, the Celery worker, then
-the Django dev server. Running `run` again stops the old processes first, so there is always one of each.
+Three containers share the `hookd_net` network: `hookd_postgres` and `hookd_redis` run detached and stay up, and the
+app container (`hookd_app_dev`) is started by `python3 deploy.py run` (which starts the other two first if needed). It
+opens a shell where the user starts the app with `run` (or `runbg` in a detached screen): the Celery worker, then the
+Django dev server. Running `run` again stops the old processes first, so there is always one of each.
 `restart-celery` restarts the worker, `stopall` stops everything. Full details in `brainforagents/DEV-infrastructure.md`.
 
 - Run commands in the already running container: `docker exec hookd_app_dev python manage.py test`

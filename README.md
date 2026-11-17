@@ -2,7 +2,7 @@
 
 Every video gets its own AI manager, in your language.
 
-Django with server rendered templates, SQLite, all in one Docker container that you start and work inside.
+Django with server rendered templates. Three Docker containers: the app (you start and work inside it), Postgres and Redis.
 Current scope: creator signup/login and Instagram account connection.
 Detailed docs for every feature: [`brainforagents/`](brainforagents/DEV-overview.md). Rules for contributors and agents: [`AGENTS.md`](AGENTS.md).
 
@@ -12,7 +12,7 @@ Detailed docs for every feature: [`brainforagents/`](brainforagents/DEV-overview
 cp .env.example .env
 ```
 
-Fill `DJANGO_SECRET_KEY` and `FIELD_ENCRYPTION_KEYS` (generate a key with `python manage.py generate_encryption_key` inside the container, then restart it).
+Fill `DJANGO_SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` and `FIELD_ENCRYPTION_KEYS` (generate a key with `python manage.py generate_encryption_key` inside the container, then restart it).
 
 ```bash
 python3 deploy.py build
@@ -21,6 +21,9 @@ python3 deploy.py build
 ```bash
 python3 deploy.py run
 ```
+
+`run` first starts the Postgres and Redis containers if they are not running; they keep running in the
+background with their data in Docker volumes.
 
 You are now in a bash shell inside the container, in `backend/`. First time only:
 
@@ -38,11 +41,13 @@ Or `runbg` to start it in a detached screen session. Open http://localhost:8000.
 http://localhost:8000/admin (create a user with `python manage.py createsuperuser`).
 Another shell in the same container: `docker exec -it hookd_app_dev bash`.
 
-## Scheduled jobs
+## Scheduled jobs and backups
 
 ```bash
 python3 deploy.py install-cron
 ```
+
+This also installs a nightly database dump to `backups/` (`python3 deploy.py backup-db` runs one now).
 
 ## Connecting Instagram
 

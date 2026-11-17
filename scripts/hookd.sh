@@ -2,16 +2,16 @@
 # Starts the app's processes inside the container. The Dockerfile aliases call this script; it lives in the
 # mounted repository, so edits apply without rebuilding the image.
 #
-#   hookd.sh run       Stop everything, then start Redis and the Celery worker in the background and the
-#                      Django dev server in the foreground. Running it again always gives one fresh copy of each.
+#   hookd.sh run       Stop everything, then start the Celery worker in the background and the Django dev
+#                      server in the foreground. Running it again always gives one fresh copy of each.
 #   hookd.sh celery    Restart only the Celery worker (screen session "celery")
-#   hookd.sh stop      Stop the dev server, the worker and Redis
+#   hookd.sh stop      Stop the dev server and the worker
 #
+# Postgres and Redis run in their own containers (deploy.py services), so they are not started here.
 # With DJANGO_DEBUG=true the worker restarts by itself when a Python file under backend/ changes.
 set -euo pipefail
 
 BACKEND="$APP_HOME/backend"
-REDIS_DIR="$APP_HOME/data/redis"
 LOG_DIR=/home/logs
 
 SERVER_PATTERN="manage.py runserver"
@@ -38,26 +38,6 @@ stop_celery() {
   screen -wipe >/dev/null 2>&1 || true
 }
 
-stop_redis() {
-  if redis-cli ping >/dev/null 2>&1; then
-    redis-cli shutdown >/dev/null 2>&1 || true
-  fi
-  stop_matching "redis-server"
-}
-
-start_redis() {
-  if redis-cli ping >/dev/null 2>&1; then
-    return
-  fi
-  mkdir -p "$REDIS_DIR"
-  redis-server --daemonize yes --bind 127.0.0.1 --port 6379 \
-    --dir "$REDIS_DIR" --appendonly yes --logfile "$LOG_DIR/redis.log"
-  until redis-cli ping >/dev/null 2>&1; do
-    sleep 0.2
-  done
-  echo "Redis running on 127.0.0.1:6379"
-}
-
 start_celery() {
   stop_celery
   local worker="$CELERY_PATTERN --loglevel=INFO --concurrency=2"
@@ -71,22 +51,17 @@ start_celery() {
 case "${1:-}" in
   run)
     stop_server
-    stop_celery
-    stop_redis
-    start_redis
     start_celery
     cd "$BACKEND"
     exec python manage.py runserver 0.0.0.0:8000
     ;;
   celery)
-    start_redis
     start_celery
     ;;
   stop)
     stop_server
     stop_celery
-    stop_redis
-    echo "Stopped the dev server, the Celery worker and Redis"
+    echo "Stopped the dev server and the Celery worker"
     ;;
   *)
     echo "Usage: hookd.sh run|celery|stop" >&2

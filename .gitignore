@@ -12,8 +12,7 @@ backend/staticfiles/
 .idea/
 
 # Local data
-data/
-backend/db.sqlite3
 logs/
+backups/
 backend/media/
 hookd-plan.md

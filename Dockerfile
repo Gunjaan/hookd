@@ -13,10 +13,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         nano \
+        postgresql-client \
         procps \
-        redis-server \
         screen \
-        sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /home/venv
