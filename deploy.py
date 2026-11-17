@@ -4,13 +4,15 @@
     python3 deploy.py build          Build the app image
     python3 deploy.py services       Start the Postgres and Redis containers (--recreate to apply config changes)
     python3 deploy.py run            Open a shell in the development app container
-    python3 deploy.py deploy         Same as run, with the production mount and DJANGO_DEBUG=false
+    python3 deploy.py deploy         Start the production app container detached (gunicorn and Celery, DJANGO_DEBUG=false)
     python3 deploy.py install-cron   Install host cron entries that run manage.py jobs in the app container
 
 Three containers share the hookd_net network: Postgres and Redis run detached with a restart policy and
 keep their data in named volumes, so they stay up while the app container is replaced. Inside the app
 container you start everything yourself: `run` (or `runbg` for a detached screen) starts the Celery
-worker in the background, then the Django dev server. Uses only the standard library.
+worker in the background, then the Django dev server. In production `deploy` starts the container detached with a
+restart policy and it runs gunicorn and Celery itself; Caddy on the host serves HTTPS and static files. Uses only the
+standard library.
 """
 
 import argparse
@@ -183,12 +185,10 @@ def start_app(mode):
 
     home = MODE_HOMES[mode]
     execute(["docker", "rm", "-f", APP_CONTAINER_NAME], check=False, quiet=True)
-    command = [
-        "docker", "run", "-it", "--rm",
+    common = [
         "--name", APP_CONTAINER_NAME,
         "--network", NETWORK,
         "--workdir", f"{home}/backend",
-        "-p", "8000:8000",
         "-v", f"{ROOT}:{home}",
         "-v", f"{HOST_LOG_DIR}:{CONTAINER_LOG_DIR}",
         "--env-file", str(ENV_FILE),
@@ -197,9 +197,21 @@ def start_app(mode):
         "--env", f"TZ={TIMEZONE}",
     ]
     if mode == "production":
-        command += ["--env", "DJANGO_DEBUG=false"]
+        # Detached and restarted with the server. Gunicorn is published on the loopback only: Caddy on the host
+        # is the public entry point, and a public published port would bypass ufw.
+        execute([
+            "docker", "run", "-d", "--restart", "unless-stopped",
+            "-p", "127.0.0.1:8000:8000",
+            *common,
+            "--env", "DJANGO_DEBUG=false",
+            # No tty when detached; screen (the Celery session) refuses to start without a terminal type.
+            "--env", "TERM=xterm",
+            APP_IMAGE, f"{home}/scripts/hookd.sh", "serve",
+        ])
+        print(f"Started. Logs: docker logs -f {APP_CONTAINER_NAME}. Shell: docker exec -it {APP_CONTAINER_NAME} bash")
+        return
     # The exit code of the interactive shell is not an error for this script.
-    execute([*command, APP_IMAGE], check=False)
+    execute(["docker", "run", "-it", "--rm", "-p", "8000:8000", *common, APP_IMAGE], check=False)
 
 
 def build(_args):
@@ -263,7 +275,7 @@ def main():
     services_parser.add_argument("--recreate", action="store_true", help="Replace them to apply config changes")
     services_parser.set_defaults(handler=services)
     commands.add_parser("run", help="Open a shell in the development app container").set_defaults(handler=run)
-    commands.add_parser("deploy", help="Open a shell in the production app container").set_defaults(handler=deploy)
+    commands.add_parser("deploy", help="Start the production app container (detached)").set_defaults(handler=deploy)
     cron = commands.add_parser("install-cron", help="Install host cron entries for scheduled manage.py jobs")
     cron.add_argument("--remove", action="store_true", help="Remove the hookd cron entries instead")
     cron.set_defaults(handler=install_cron)

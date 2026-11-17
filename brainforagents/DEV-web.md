@@ -67,6 +67,7 @@ backend/
 ```
 
 Settings: `TEMPLATES['DIRS'] = [BASE_DIR / 'templates']`, `STATICFILES_DIRS = [BASE_DIR / 'static']`,
+`STATIC_ROOT = BASE_DIR / 'staticfiles'` (hashed manifest storage in production, see `DEV-infrastructure.md`),
 `LOGIN_URL = 'login'`, `LOGIN_REDIRECT_URL = 'studio'`, `MESSAGE_TAGS = {ERROR: 'danger'}`,
 `django.contrib.humanize` installed (for `intcomma`).
 

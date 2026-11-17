@@ -8,7 +8,7 @@ Three containers on the `hookd_net` Docker network, sized for one 4 CPU, 8 GB VP
 |---|---|---|---|---|
 | `hookd_postgres` | `postgres:18-alpine` | detached, `--restart unless-stopped`, `--memory 2g` | volume `hookd_pgdata` at `/var/lib/postgresql` | `hookd_postgres:5432` |
 | `hookd_redis` | `redis:8-alpine` | detached, `--restart unless-stopped`, `--memory 512m` | volume `hookd_redis` at `/data` (append only file) | `hookd_redis:6379` |
-| `hookd_app_dev` | `localhost/hookd:latest` | interactive, `--rm`, replaced on every `run` | repo mount | host port `8000` |
+| `hookd_app_dev` | `localhost/hookd:latest` | `run`: interactive, `--rm`. `deploy`: detached, `--restart unless-stopped`. Replaced on every `run` or `deploy` | repo mount | `run`: host port `8000`. `deploy`: `127.0.0.1:8000` only |
 
 Postgres and Redis publish **no ports**: only containers on `hookd_net` reach them. Do not add `-p` for them, Docker's
 published ports bypass `ufw` and would expose them to the internet. Replacing either container keeps its data (named
@@ -17,7 +17,8 @@ volume). From the host: `docker exec -it hookd_postgres psql -U hookd hookd`, `d
 
 The app container holds the Python 3.13 venv at `/home/venv` (no Node: the UI is Django templates) plus `psql`
 for `manage.py dbshell`. The repository is **mounted, not copied**, so code edits on the host show up immediately.
-The container opens a bash shell and you start the app yourself.
+In development the container opens a bash shell and you start the app yourself; in production it runs
+`scripts/hookd.sh serve` (gunicorn and Celery) as its command.
 
 `deploy.py` uses only the Python standard library. It reads `.env` itself (same rules as `docker --env-file`) for the
 `POSTGRES_*` and `REDIS_PASSWORD` values it passes to the service containers.
@@ -27,7 +28,7 @@ The container opens a bash shell and you start the app yourself.
 | `python3 deploy.py build` | Builds `localhost/hookd:latest` from `Dockerfile` (build context only sends `backend/requirements.txt`, see `.dockerignore`) |
 | `python3 deploy.py services [--recreate]` | Creates `hookd_net` if missing, starts `hookd_postgres` and `hookd_redis` if they are not running, waits for `pg_isready`. `--recreate` replaces both to apply changed settings or passwords |
 | `python3 deploy.py run` | Runs `services`, removes any old `hookd_app_dev`, then `docker run -it --rm` with the repo at `/home/development`, workdir `/home/development/backend` |
-| `python3 deploy.py deploy` | Same, mounted at `/home/production`, plus `DJANGO_DEBUG=false` |
+| `python3 deploy.py deploy` | Runs `services`, removes any old `hookd_app_dev`, then starts it detached with `--restart unless-stopped`, the repo at `/home/production`, `DJANGO_DEBUG=false`, `TERM=xterm` (for screen) and port `127.0.0.1:8000`, running `hookd.sh serve`. See Production |
 | `python3 deploy.py install-cron [--remove]` | Writes host crontab lines that `docker exec hookd_app_dev python manage.py ...` (see Cron) |
 
 `run` and `deploy` pass:
@@ -35,7 +36,7 @@ The container opens a bash shell and you start the app yourself.
 | Flag | Value |
 |---|---|
 | network | `hookd_net` |
-| ports | `8000` (Django) |
+| ports | `run`: `8000`. `deploy`: `127.0.0.1:8000` (only Caddy on the host reaches it; a public published port would bypass `ufw`) |
 | mounts | repo at `$APP_HOME`; `./logs` at `/home/logs` |
 | env | `--env-file .env`, `APP_HOME=/home/development` or `/home/production`, `TZ=Asia/Kolkata` |
 
@@ -53,7 +54,7 @@ empty (first start). The user is a superuser, so `manage.py test` can create its
 means changing them inside Postgres (`ALTER USER ...`) too.
 
 Memory budget on the VPS: Postgres about 2 GB, Redis 300 MB, gunicorn about 1.5 GB, Celery about 1 GB, the rest for
-nginx, the OS and page cache. Add a 2 GB swap file on the server.
+Caddy, the OS and page cache. Add a 2 GB swap file on the server.
 
 ### Inside the container
 
@@ -65,10 +66,15 @@ changing it needs no rebuild:
 | `run` | Stops any running dev server and Celery worker, starts the worker in the `celery` screen session, then runs `python manage.py runserver 0.0.0.0:8000` in the foreground. Running it again (or `runbg`) always leaves exactly one of each |
 | `runbg` | Starts `run` in a detached `screen` session named `backend` (replacing the previous one) |
 | `restart-celery` | Restarts only the Celery worker |
-| `stopall` | Stops the dev server and the worker (Postgres and Redis keep running in their containers) |
+| `stopall` | Stops the web server (dev server or gunicorn) and the worker (Postgres and Redis keep running in their containers) |
+
+`scripts/hookd.sh serve` (no alias, the production container command) stops any web server, runs
+`collectstatic --noinput`, starts the worker, then `exec`s gunicorn
+(`config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2 --timeout 60 --access-logfile -`), so gunicorn is
+the container's main process and its access log is `docker logs hookd_app_dev`.
 
 Stopping works by command line pattern (`pkill`/`pgrep` from `procps`): TERM, wait up to 10 s, then KILL. It
-matches `manage.py runserver` and `celery -A config worker` (screen session, watchfiles and worker processes), so it
+matches `manage.py runserver`, `gunicorn config.wsgi` and `celery -A config worker` (screen session, watchfiles and worker processes), so it
 also cleans up copies started by hand.
 
 - **Celery worker:** `celery -A config worker --loglevel=INFO --concurrency=2`. With `DJANGO_DEBUG=true` it runs
@@ -223,14 +229,48 @@ Check the worker from a container shell: `celery -A config inspect ping`.
 python manage.py test
 ```
 
-## Production notes (GoDaddy)
+## Production (GoDaddy VPS, Caddy)
 
-- `python3 deploy.py deploy`, then inside the container serve Django with
-  `gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2` (in a screen session). Three
-  workers, not `2 x CPU + 1`, because Celery and Postgres share the 4 cores.
-- Run `python manage.py collectstatic` (writes `backend/static` and admin assets to `backend/staticfiles`) and serve
-  that folder at `/static/` from the web server; gunicorn does not serve static files. Everything else goes to Django.
-- Set real `DJANGO_ALLOWED_HOSTS` and HTTPS origins in `.env`.
-- Start the worker with `restart-celery` (with `DJANGO_DEBUG=false` the worker runs without auto reload).
-- Firewall: allow only SSH, 80 and 443 with `ufw`. Postgres and Redis publish no ports, so they are not reachable
-  from outside.
+One Ubuntu VPS. The repository is cloned to **`/opt/hookd`** (the `Caddyfile` points there, and Caddy runs as the
+`caddy` user, which cannot read inside `/root`). Request path: internet, Caddy on the host (ports 80 and 443), gunicorn
+in `hookd_app_dev` on `127.0.0.1:8000`.
+
+**Static files.** With `DJANGO_DEBUG=false` (and not testing), `STORAGES['staticfiles']` is
+`ManifestStaticFilesStorage`: `collectstatic` (run by `hookd.sh serve` on every start) writes content hashed copies of
+`backend/static` and the admin assets to `backend/staticfiles`, and `{% static %}` renders the hashed names. Caddy
+serves `/static/*` straight from that folder with a one year immutable cache; gunicorn never serves static files. A
+`{% static %}` path that does not exist raises an error in production, so reference static files only through the tag.
+The dev server and tests use plain `StaticFilesStorage`. Uploads (`backend/media`) are served by Django views, not Caddy.
+
+**Caddy** (`Caddyfile` at the repo root): automatic Let's Encrypt certificates for `hookd.world`, HTTP to HTTPS redirect,
+HSTS, gzip/zstd, `www.hookd.world` redirects to `hookd.world`, everything other than `/static/` is reverse proxied to
+`127.0.0.1:8000`. Caddy sends `X-Forwarded-Proto`, which `SECURE_PROXY_SSL_HEADER` trusts (only Caddy can reach the
+port). With `DJANGO_DEBUG=false` session and CSRF cookies are secure.
+
+First setup on the server:
+
+```bash
+apt update && apt install -y git python3 caddy
+curl -fsSL https://get.docker.com | sh
+timedatectl set-timezone Asia/Kolkata
+ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable
+cd /opt && git clone https://github.com/Gunjaan/hookd.git && cd hookd
+cp .env.example .env        # production values, see below
+python3 deploy.py build
+python3 deploy.py deploy
+docker exec hookd_app_dev python manage.py migrate
+docker exec -it hookd_app_dev python manage.py createsuperuser
+python3 deploy.py install-cron
+ln -sf /opt/hookd/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy
+```
+
+GoDaddy DNS: `A` records for `hookd.world` and `www` pointing at the VPS IP, before Caddy can get certificates.
+Production `.env`: `DJANGO_DEBUG=false`, `DJANGO_ALLOWED_HOSTS=hookd.world,www.hookd.world`,
+`DJANGO_CSRF_TRUSTED_ORIGINS=https://hookd.world`, `APP_URL=https://hookd.world`, and a fresh `DJANGO_SECRET_KEY`,
+database, Redis and encryption values. Add a 2 GB swap file.
+
+Updating: `git pull`, then `python3 deploy.py build` only if `requirements.txt` or the `Dockerfile` changed,
+`python3 deploy.py deploy` (restarts gunicorn and Celery, collects static files),
+`docker exec hookd_app_dev python manage.py migrate`. A code change without a restart: `docker restart hookd_app_dev`.
+Do not use `run` or `stopall` inside the production container: stopping gunicorn stops the container (Docker then
+restarts it).

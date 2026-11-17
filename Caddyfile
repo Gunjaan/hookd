@@ -1,0 +1,28 @@
+# Caddy on the production host: HTTPS (automatic Let's Encrypt certificates), static files, and a reverse proxy to
+# gunicorn in hookd_app_dev (published on 127.0.0.1:8000 by `deploy.py deploy`).
+# Install: sudo ln -sf /opt/hookd/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# Needs the repository at /opt/hookd (Caddy runs as the caddy user and must be able to read backend/staticfiles).
+
+hookd.world {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# collectstatic writes content hashed names, so files can be cached for a year.
+	handle_path /static/* {
+		root * /opt/hookd/backend/staticfiles
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+}
+
+www.hookd.world {
+	redir https://hookd.world{uri} permanent
+}

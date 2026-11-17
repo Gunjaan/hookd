@@ -4,8 +4,10 @@
 #
 #   hookd.sh run       Stop everything, then start the Celery worker in the background and the Django dev
 #                      server in the foreground. Running it again always gives one fresh copy of each.
+#   hookd.sh serve     Production: collect static files, start the Celery worker, then run gunicorn in the
+#                      foreground. `deploy.py deploy` runs this as the container command.
 #   hookd.sh celery    Restart only the Celery worker (screen session "celery")
-#   hookd.sh stop      Stop the dev server and the worker
+#   hookd.sh stop      Stop the web server (dev server or gunicorn) and the worker
 #
 # Postgres and Redis run in their own containers (deploy.py services), so they are not started here.
 # With DJANGO_DEBUG=true the worker restarts by itself when a Python file under backend/ changes.
@@ -14,7 +16,7 @@ set -euo pipefail
 BACKEND="$APP_HOME/backend"
 LOG_DIR=/home/logs
 
-SERVER_PATTERN="manage.py runserver"
+SERVER_PATTERN="manage.py runserver|gunicorn config.wsgi"
 CELERY_PATTERN="celery -A config worker"
 
 # Sends TERM to every process matching the pattern, waits up to 10 s, then KILLs what is left.
@@ -55,16 +57,25 @@ case "${1:-}" in
     cd "$BACKEND"
     exec python manage.py runserver 0.0.0.0:8000
     ;;
+  serve)
+    stop_server
+    cd "$BACKEND"
+    python manage.py collectstatic --noinput
+    start_celery
+    # Three workers, not 2 x CPU + 1: Celery and Postgres share the 4 cores. Access log goes to docker logs.
+    exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2 --timeout 60 \
+      --access-logfile -
+    ;;
   celery)
     start_celery
     ;;
   stop)
     stop_server
     stop_celery
-    echo "Stopped the dev server and the Celery worker"
+    echo "Stopped the web server and the Celery worker"
     ;;
   *)
-    echo "Usage: hookd.sh run|celery|stop" >&2
+    echo "Usage: hookd.sh run|serve|celery|stop" >&2
     exit 2
     ;;
 esac

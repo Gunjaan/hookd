@@ -31,8 +31,6 @@ DEBUG = env_bool('DJANGO_DEBUG', default=False)
 
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1')
 
-ALLOWED_HOSTS += ["case-brewing-amicably.ngrok-free.dev"]
-
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
 
 
@@ -203,6 +201,19 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# In production `collectstatic` writes content hashed copies (app.3f2a9c.css) that Caddy serves from STATIC_ROOT
+# with a one year cache, so a deploy never serves stale CSS or JS. The dev server and tests use the plain names.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+            if DEBUG or TESTING
+            else 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+        ),
+    },
+}
+
 # Uploads for publishing. Served to the platform by the publish-asset view, never by URL.
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -337,7 +348,8 @@ LOGGING = {
 }
 
 
-# Production hardening when served over HTTPS behind GoDaddy's proxy.
+# Production hardening. Caddy terminates HTTPS, redirects HTTP to HTTPS, sends HSTS and passes
+# X-Forwarded-Proto to gunicorn (see Caddyfile).
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

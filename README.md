@@ -47,6 +47,11 @@ Another shell in the same container: `docker exec -it hookd_app_dev bash`.
 python3 deploy.py install-cron
 ```
 
+## Production
+
+`python3 deploy.py deploy` starts the app detached (gunicorn and Celery) behind Caddy (`Caddyfile`), which serves
+HTTPS and static files. Server setup and updates: [`brainforagents/DEV-infrastructure.md`](brainforagents/DEV-infrastructure.md#production-godaddy-vps-caddy).
+
 ## Connecting Instagram
 
 Set `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (Meta app), `INSTAGRAM_LOGIN_CONFIG_ID` and an HTTPS `INSTAGRAM_REDIRECT_URI` in `.env`.
