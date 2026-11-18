@@ -1,0 +1,10 @@
+{# Argument: run (AgentRun). What the buyer wrote that started the run: their comment, or that they wrote a DM. #}
+<div class="reply-row">
+  {% if run.comment %}
+    {% include "components/avatar.html" with name=run.comment.author_username|default:"?" size=36 %}
+    <p class="reply-row__text"><strong>{{ run.comment.author_username|default:"unknown" }}</strong> {{ run.comment.text }}</p>
+  {% else %}
+    {% include "components/avatar.html" with name=run.buyer_username|default:"?" size=36 %}
+    <p class="reply-row__text"><strong>{{ run.buyer_username|default:"A buyer" }}</strong> wrote you a DM on @{{ run.account.username }}</p>
+  {% endif %}
+</div>

@@ -137,12 +137,15 @@ never answers itself. Sending limits and pauses are in `DEV-agent.md`.
 | `messaging_handover`, `standby` | Only when another app (or Meta's inbox automation) shares the inbox through the handover protocol |
 | `live_comments` | Not needed (live videos) |
 
-Meta rules for the next steps: replies to a DM or story reply only within 24 hours of the person's last message
-(`Conversation.reply_window_ends_at`); no cold DMs; a private reply to a comment (`POST /{ig_id}/messages` with
-`recipient.comment_id`) is one message per comment within 7 days of it. Messaging needs `instagram_manage_messages`
-with Advanced Access, and the creator must allow message access under Instagram settings, Messages, Connected tools.
+Sending messages (reply agent, `DEV-agent.md`): `send_private_reply` and `send_direct_message` both `POST
+/{ig_id}/messages` with the system user token (`recipient` `{"comment_id"}` or `{"id"}`, `message` `{"text"}`, JSON
+encoded form fields) and return `SentMessage(message_id, recipient_id)`; the `recipient_id` of a private reply is the
+commenter's id, the same as `Comment.author_external_id`. `dm_text_problems`: empty text, over 1000 characters. Meta's
+rules: a DM only within 24 hours of the person's last message (`Conversation.reply_window_ends_at`); no cold DMs; one
+private reply per comment within 7 days of it. Messaging needs `instagram_manage_messages` (granted to the current login
+configuration; checked on 2026-11-18 with a private reply to a non tester's comment, which went through), Advanced
+Access for the public, and the creator must allow message access under Instagram settings, Messages, Connected tools.
 
 ## Not built yet
 
-Sending DMs and private replies, auto replies to DMs and story replies, `messaging_postbacks` and `story_insights`
-parsing, hiding comments, video carousels.
+`messaging_postbacks` and `story_insights` parsing, hiding comments, video carousels.

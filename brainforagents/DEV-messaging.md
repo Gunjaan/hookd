@@ -1,9 +1,9 @@
 # DEV: Messaging (`backend/apps/messaging`)
 
-Stores direct messages on connected accounts: DMs, replies to the account's stories and story mentions. This is the
-groundwork for auto DMs and story replies: messages are stored per conversation and every conversation knows when the
-person last wrote, which opens Meta's 24 hour reply window. **Nothing is answered or sent yet**, and there is no page:
-conversations are in the Django admin.
+Stores direct messages on connected accounts: DMs, replies to the account's stories and story mentions. Messages are
+stored per conversation and every conversation knows when the person last wrote, which opens Meta's 24 hour reply
+window. Every new message a person writes is handed to the reply agent (`DEV-agent.md`), which answers it and sends its
+own DMs; there is no messaging page, conversations are in the Django admin.
 
 ## Flow
 
@@ -14,7 +14,9 @@ conversations are in the Django admin.
 3. `services.record_incoming_messages(platform, messages)` finds the `SocialAccount` (unknown accounts are logged and
    skipped, still 200), gets or creates the `Conversation` for the other person, and creates each message once
    (unique per conversation and platform id, so Meta's retries are no-ops). A new message from the person (not an
-   echo) moves `last_customer_message_at` forward, never back, since deliveries can arrive out of order.
+   echo) moves `last_customer_message_at` forward, never back, since deliveries can arrive out of order, and sends
+   `signals.customer_message_received(conversation, message)`; the agent's receiver queues
+   `agent.tasks.handle_buyer_message` on commit. Echoes (including the agent's own DMs) are stored only.
 
 ## Models
 
@@ -27,15 +29,7 @@ Admin: conversations (with the reply window end and the messages inline) and mes
 
 ## Files
 
-`models.py`, `model_querysets.py` (`get_or_create_conversation`, `create_message_if_new`, `note_customer_message`),
-`services.py`, `admin.py`, `tests.py` (DM stored once and opens the window, story reply and mention and media kinds,
+`models.py`, `model_querysets.py` (`get_or_create_conversation`, `create_message_if_new`, `note_customer_message`,
+`get_conversation`, `get_message`), `signals.py` (`customer_message_received`), `services.py`, `admin.py`, `tests.py` (DM stored once and opens the window, story reply and mention and media kinds,
 echo flagged without moving the window, out of order delivery keeps the latest time, deleted messages, read events
 and unknown accounts skipped).
-
-## Next steps (not built)
-
-- Auto replies to DMs and story replies: hand new customer messages to the reply agent (a DM engine using the account
-  brain and, for story replies, the story), send only while `reply_window_ends_at` is in the future.
-- Comment to DM (private replies): one DM per comment within 7 days, triggered from the comments flow.
-- Sending needs a provider method (`POST /{ig_id}/messages`), `Capability.DIRECT_MESSAGE` / `PRIVATE_REPLY` on the
-  provider, and the same slow per account sending as comment replies.

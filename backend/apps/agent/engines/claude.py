@@ -1,44 +1,30 @@
-"""Reply engine and brain learner on a low cost Claude model (Haiku by default)."""
+"""Agent model and brain learner on a low cost Claude model (Haiku by default)."""
 
 from django.conf import settings
 
 from apps.agent.engines import prompts
 from apps.agent.constants import FactScope
-from apps.agent.engines.base import AgentContext, AgentDecision, BrainLearner, LearnedFactDraft, ReplyEngine
-from apps.ai.claude import generate_json
+from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep
+from apps.ai.claude import generate_json, run_step
 
-# Ceilings, not charges: they leave room for the short thinking that comes before the JSON answer.
-MAX_OUTPUT_TOKENS = 2000
+# Ceilings, not charges: they leave room for the short thinking that comes before the answer.
 LEARN_MAX_OUTPUT_TOKENS = 4000
 LABEL_MAX_LENGTH = 80
 FACT_MAX_LENGTH = 300
 
 
-def _confidence(value) -> float:
-    try:
-        return min(max(float(value), 0.0), 1.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-class ClaudeReplyEngine(ReplyEngine):
+class ClaudeAgentModel(AgentModel):
     name = "claude"
 
-    def decide(self, context: AgentContext) -> AgentDecision:
-        data = generate_json(
+    def step(self, *, system: str, tools: list[dict], messages: list[dict]) -> ModelStep:
+        content, stop_reason = run_step(
             settings.AGENT_REPLY_MODEL,
-            prompts.reply_request(context),
-            system=prompts.REPLY_SYSTEM,
-            schema=prompts.REPLY_SCHEMA,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
+            system=system,
+            tools=tools,
+            messages=messages,
+            max_output_tokens=settings.AGENT_LOOP_LIMITS["MAX_OUTPUT_TOKENS"],
         )
-        return AgentDecision(
-            intent=str(data.get("intent", "")) or "comment",
-            language=str(data.get("language", "")) or "unknown",
-            reply_text=str(data.get("reply_text", "")).strip(),
-            confidence=_confidence(data.get("confidence")),
-            reason=str(data.get("reason", "")),
-        )
+        return ModelStep(content=content, stop_reason=stop_reason)
 
 
 def _facts(data: dict) -> list[LearnedFactDraft]:

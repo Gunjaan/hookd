@@ -24,6 +24,7 @@ entry[].messaging[] and are parsed by `parse_webhook_messages`.
 
 import hashlib
 import hmac
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -45,6 +46,7 @@ from apps.integrations.providers.types import (
     Metric,
     PublishQuota,
     PublishStatus,
+    SentMessage,
     TokenBundle,
 )
 
@@ -130,6 +132,8 @@ CONTAINER_STATES = {
 REPLY_MAX_LENGTH = 300
 REPLY_MAX_HASHTAGS = 4
 REPLY_MAX_URLS = 1
+# Instagram limit for a text message.
+DM_MAX_LENGTH = 1000
 HASHTAG_PATTERN = re.compile(r"#\w+")
 URL_PATTERN = re.compile(r"(https?://|www\.)\S+", re.IGNORECASE)
 SIGNATURE_HEADER = "X-Hub-Signature-256"
@@ -539,6 +543,34 @@ class InstagramProvider(BaseProvider):
         if not body.get("id"):
             raise ProviderAPIError("Instagram did not accept the reply.")
         return str(body["id"])
+
+    def dm_text_problems(self, text: str) -> list[str]:
+        problems = []
+        if not text.strip():
+            problems.append("The message is empty.")
+        if len(text) > DM_MAX_LENGTH:
+            problems.append(f"Instagram messages are limited to {DM_MAX_LENGTH} characters.")
+        return problems
+
+    def _send_message(self, account, recipient: dict, text: str) -> SentMessage:
+        """`POST /{ig_id}/messages`, the Instagram Messaging send API (instagram_manage_messages)."""
+        body = self.client.post(
+            self.client.graph_url(f"{account.external_id}/messages"),
+            {
+                "recipient": json.dumps(recipient),
+                "message": json.dumps({"text": text}),
+                "access_token": account.access_token,
+            },
+        )
+        if not body.get("message_id"):
+            raise ProviderAPIError("Instagram did not accept the message.")
+        return SentMessage(message_id=str(body["message_id"]), recipient_id=str(body.get("recipient_id", "")))
+
+    def send_private_reply(self, account, comment_external_id: str, text: str) -> SentMessage:
+        return self._send_message(account, {"comment_id": comment_external_id}, text)
+
+    def send_direct_message(self, account, recipient_external_id: str, text: str) -> SentMessage:
+        return self._send_message(account, {"id": recipient_external_id}, text)
 
     def _create_container(self, account, fields: dict) -> str:
         body = self.client.post(

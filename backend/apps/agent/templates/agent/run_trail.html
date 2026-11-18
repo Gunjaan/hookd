@@ -1,0 +1,15 @@
+{# Arguments: actions (AgentAction rows or loop.TrailItem), open (optional). Every tool call Hooky made and what came back. #}
+{% if actions %}
+  <details class="run-trail"{% if open %} open{% endif %}>
+    <summary>What Hooky did ({{ actions|length }} step{{ actions|length|pluralize }})</summary>
+    <ol class="run-trail__steps">
+      {% for action in actions %}
+        <li class="run-trail__step{% if action.is_error %} run-trail__step--error{% endif %}">
+          <code>{{ action.tool }}</code>
+          {% for key, value in action.input.items %}{% if value or value == 0 %}<span class="run-trail__arg">{{ key }}: {{ value|truncatechars:160 }}</span>{% endif %}{% endfor %}
+          <p class="run-trail__result">{{ action.result|truncatechars:400|linebreaksbr }}</p>
+        </li>
+      {% endfor %}
+    </ol>
+  </details>
+{% endif %}

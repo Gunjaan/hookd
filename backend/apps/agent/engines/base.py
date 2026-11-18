@@ -1,7 +1,8 @@
-"""Contract every reply engine implements.
+"""Contracts for the AI behind the reply agent.
 
-Services build an AgentContext from the comment and the account and video brains, ask the engine for an
-AgentDecision, then send it when the engine is confident or hold it for review. The engine never sends anything.
+An AgentModel takes one turn of the agent loop (`apps.agent.loop`): it gets the constant system prompt and tools plus
+the run's transcript, and answers with content blocks (text, thinking, tool_use) in the Claude Messages format. The
+loop runs the tools; the model never touches the database or the platform.
 
 A BrainLearner fills the brains on its own: it turns a post caption, or a reply the creator wrote in the inbox, into
 short labelled facts that services store as LearnedFact rows.
@@ -12,31 +13,17 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class AgentContext:
-    comment_text: str
-    author_username: str
-    account_username: str
-    voice: str
-    account_knowledge: str
-    post_caption: str = ""
-    post_knowledge: str = ""
+class ModelStep:
+    content: list[dict]  # assistant content blocks, sent back unchanged on the next turn
+    stop_reason: str
 
 
-@dataclass(frozen=True)
-class AgentDecision:
-    intent: str
-    language: str
-    reply_text: str
-    confidence: float
-    reason: str
-
-
-class ReplyEngine(ABC):
+class AgentModel(ABC):
     name: str
 
     @abstractmethod
-    def decide(self, context: AgentContext) -> AgentDecision:
-        """Write the reply and say how sure it is that the given facts fully answer the comment."""
+    def step(self, *, system: str, tools: list[dict], messages: list[dict]) -> ModelStep:
+        """One assistant turn for the transcript `messages` (alternating user and assistant turns)."""
 
 
 @dataclass(frozen=True)

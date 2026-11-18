@@ -1,15 +1,18 @@
-{# Argument: result (services.preview_reply). Returned by api.preview into #preview-result. #}
+{# Argument: result (loop.Preview from services.preview_run). Returned by api.preview into #preview-result. #}
 <h2 id="preview-result-title" class="section-title">What Hooky would do</h2>
 <p class="agent-preview__outcome">
-  {% if result.outcome == 'queued' %}<span class="badge badge--success">Replies automatically</span>
-  {% elif result.outcome == 'pending_review' %}<span class="badge badge--info">Waits for your review</span>
-  {% else %}<span class="badge badge--neutral">Ignored</span>{% endif %}
-  {{ result.reason }}
+  {% if result.asked_seller %}<span class="badge badge--info">Asks you first</span>
+  {% elif result.trail %}<span class="badge badge--success">Handles it</span>
+  {% else %}<span class="badge badge--neutral">Does nothing</span>{% endif %}
+  {{ result.outcome }}
 </p>
-{% if result.outcome != 'skipped' %}
-  <div class="bubble bubble--agent agent-preview__reply">
-    <span class="bubble__who">you, via Hookd</span>
-    <p>{{ result.decision.reply_text }}</p>
-  </div>
-{% endif %}
-<p class="hint">Confidence {{ result.decision.confidence|floatformat:2 }} · {{ result.decision.reason }}</p>
+{% for step in result.trail %}
+  {% if step.tool == 'reply_to_comment' and not step.is_error %}
+    <div class="bubble bubble--agent agent-preview__reply">
+      <span class="bubble__who">you, via Hookd</span>
+      <p>{{ step.input.text }}</p>
+    </div>
+  {% endif %}
+{% endfor %}
+{% include "agent/run_trail.html" with actions=result.trail open=True %}
+<p class="hint">A dry run: nothing was saved or sent.</p>

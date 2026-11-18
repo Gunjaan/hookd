@@ -108,3 +108,11 @@ class PublishQuota:
     @property
     def remaining(self) -> int:
         return max(self.limit - self.used, 0)
+
+
+@dataclass(frozen=True)
+class SentMessage:
+    """A direct message the platform accepted. `recipient_id` is the person's platform scoped id (the conversation)."""
+
+    message_id: str
+    recipient_id: str

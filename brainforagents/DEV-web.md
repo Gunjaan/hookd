@@ -111,7 +111,7 @@ CSS uses tokens only (exception: platform brand colors in `.platform-icon--*`).
 | `components/select_field.html` | `field=` | `ChoiceField` as a `<select>` styled with `.field__input` |
 | `.checkbox` | | Inline checkbox and label |
 | `components/messages.html` | | Django messages as `.alert--<level_tag>` |
-| `components/replies_badge.html` | `agent_pending_count` | `#nav-replies-count`: the side panel "Replies" badge, also redrawn by the inbox actions |
+| `components/replies_badge.html` | `agent_pending_count` | `#nav-replies-count`: the side panel "Replies" badge (replies and DMs to review plus Hooky's open questions), also redrawn by the inbox actions |
 | `components/icon.html` | `name`, `size` | Inline SVG line icon (`.icon`), `currentColor` |
 | `core/mascot.html` | `uid`, `size` | Hooky (`.mascot`, styles in `components.css`), used by the app too: nav, profile avatar badge, highlights, panels, empty states |
 | `.bubble` | `--fan`, `--agent`, `__who` | Chat bubbles: commenter (white) and agent reply (ink). Landing thread, reply inbox, preview |
@@ -154,7 +154,8 @@ on hover), `__status`, `__working`), the post page (`.post-view`: `__media`, `__
 stacked under 560px. Reply agent: `.agent-status` (`--on`, `__mascot`, `__text`, `__title`, `__account`, `__meta`, `__paused`,
 `__pending`, `__switch`), `.agent-layout`, `.agent-settings`, `.agent-card` (`__lede`), `.save-bar` (`__text`), `.agent-try`
 (`__form`, `__result`), `.agent-safety` (`__more`), `.agent-form`, `.agent-limits`, `.agent-preview` (`__outcome`, `__reply`), `.reply-list`, `.reply-card` (`__post`, `__thumb`, `__why`, `__why-icon`,
-`__note`, `__retry`), `.reply-row` (`--you` indented, `__text`, `__meta`), `.reply-composer` (`__label`, `__input`, `__actions`). Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
+`__note`, `__retry`), `.reply-row` (`--you` indented, `__text`, `__meta`), `.reply-composer` (`__label`, `__input`, `__actions`),
+`.run-trail` (a `<details>` of the agent's tool calls: `__steps`, `__step`, `--error`, `__arg`, `__result`), `.ticket-form`. Post studio: `.dropzone` (`--error`, `__title`, `__hint`,
 `__input`), `.photo-preview`, `.tips`, `.look-grid` (`--three`), `.look-choice` (`__title`, `__hint`; card radios), `.progress`,
 `.progress-steps` (`__item--active`), `.creative` (`__side`, `__panel`, `__form`, `__actions`, `__inline`), `.ig-preview` (`__head`, `__name`,
 `__caption`), `.slide` (`__media`, `__state--error`, `__count`, `__redo`, `__download`), `.draft-story` (`__step`, `__step--done/active/todo`, `__marker`, `__marker--photo`, `__title`, `__detail`, `__view`), `.slide-versions`
@@ -275,7 +276,7 @@ Landing tokens: `--font-display`, `--text-3xl`, `--text-display`, `--leading-dis
 | GET/POST | `/studio/publishing/new/`, `/studio/publishing/drafts/...`, `/studio/publishing/files/...`, `/api/drafts/...`, `/api/slides/...`, `/api/versions/...` | `creative-*`, `api-draft-*`, `api-slide-redo`, `api-version-use` | login | Post studio pages and JSON endpoints, listed in `DEV-creatives.md` |
 | POST | `/api/publishing/<id>/check/` | `api-publish-check` | login (JSON) | Advances a processing job: `{html, message, message_kind}` with its row |
 | GET | `/publish-media/<token>/` | `publish-asset` | none | Upload file for the platform, only while its job is processing |
-| GET, POST | `/agent/...`, `/api/agent/...` | `agent`, `agent-account`, `agent-inbox`, `api-agent-settings`, `api-agent-enabled`, `api-agent-preview`, `api-agent-post-brain`, `api-reply-approve`, `api-reply-reject`, `api-reply-retry` | login | Reply agent pages and JSON actions, listed in `DEV-agent.md` |
+| GET, POST | `/agent/...`, `/api/agent/...` | `agent`, `agent-account`, `agent-inbox`, `agent-tickets`, `api-agent-settings`, `api-agent-enabled`, `api-agent-preview`, `api-agent-post-brain`, `api-agent-fact-forget`, `api-reply-approve`, `api-reply-reject`, `api-reply-retry`, `api-dm-approve`, `api-dm-reject`, `api-question-answer`, `api-question-dismiss`, `api-ticket-update` | login | Reply agent pages and JSON actions, listed in `DEV-agent.md` |
 | GET, POST | `/webhooks/<platform>/` | `webhook` | none, CSRF exempt | Platform webhooks: GET handshake echoes the challenge, POST verifies the signature and stores comments. 403 on bad token or signature, 404 unknown platform. See `DEV-comments.md` |
 
 The callback path has no trailing slash because it must match `INSTAGRAM_REDIRECT_URI`. If the session was lost,

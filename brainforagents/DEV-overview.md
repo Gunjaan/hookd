@@ -7,11 +7,11 @@ commenter's language. Product plan: `hookd-plan.md` at the repo root.
 
 Working today: **public landing page at `/`, login (self serve signup is closed: `/signup/` emails an access request
 to support, see `DEV-auth.md`), connect an Instagram professional account, receive its new comments by webhook,
-store its DMs, story replies and story mentions when the `messages` webhook is on (no auto DMs yet),
+store its DMs, story replies and story mentions when the `messages` webhook is on,
 the creator studio (recent posts, post and account insights, paged comments), publishing images, reels, carousels and stories, the post studio (product photos in, AI made post photos with an editable
 caption and hashtags out, plus questions that teach the reply agent about the product; Claude writes, Gemini renders the photos), and
-the comment reply agent (account and video brains that also fill themselves from captions and the replies the creator writes, sends on its own when they hold the answer, review inbox for the rest, rate limited sending) writing replies with Claude Haiku.**
-Not built yet: YouTube, sending DMs, private replies and auto replies to DMs and story replies, workflows, scheduled posts.
+the reply agent Hooky (an agent loop on Claude Haiku for every new comment and buyer DM: looks facts up in brains that also fill themselves, replies publicly, sends private replies and DMs within Meta's windows, asks the seller and learns the answer, opens support tickets and reports their status, schedules follow-ups; a number guard and an optional approval mode, rate limited sending).**
+Not built yet: YouTube, workflows, scheduled posts.
 
 ## Feature index
 
@@ -24,8 +24,8 @@ Not built yet: YouTube, sending DMs, private replies and auto replies to DMs and
 | `DEV-integrations.md` | `apps.integrations`: provider interface, SocialAccount, connect flow, token refresh |
 | `DEV-instagram.md` | Instagram provider: Unified Login (Facebook Login for Business), token lifecycle, Meta app setup |
 | `DEV-comments.md` | `apps.comments`: Comment model, webhook endpoint, how comments arrive |
-| `DEV-messaging.md` | `apps.messaging`: DMs, story replies and story mentions from the `messages` webhook, 24 hour reply window (groundwork for auto DMs) |
-| `DEV-agent.md` | `apps.agent`: account and video brains, learned brain (captions and inbox replies), confidence based auto send, engine interface (Claude, simulated fallback), review inbox, Meta safe sending |
+| `DEV-messaging.md` | `apps.messaging`: DMs, story replies and story mentions from the `messages` webhook, 24 hour reply window, hand off to the reply agent |
+| `DEV-agent.md` | `apps.agent`: the agent loop and its tools, runs from comments and DMs, number guard, approval mode, seller questions, support tickets, follow-ups, brains and learned brain, model interface (Claude, simulated fallback), inbox and Tickets page, Meta safe sending of replies and DMs |
 | `DEV-content.md` | `apps.content`: studio dashboard, lazy loading, Post, insights, comments paging, publishing |
 | `DEV-creatives.md` | `apps.creatives`: post studio, product photos to ready to post drafts (Claude copy engine, Gemini image engine, prompts, token rules) |
 | `DEV-web.md` | Server rendered UI: Django templates, design system CSS, page routes, session auth |

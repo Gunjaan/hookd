@@ -1,17 +1,20 @@
-"""Stand-in reply engine and brain learner, used without an Anthropic key and in tests.
+"""Stand-in agent model and brain learner, used without an Anthropic key and in tests.
 
-Deliberately naive: the reply is the brain line sharing the most words with the comment (video brain first). A
-question no brain line answers gets a holding reply with low confidence, so it waits for the creator; anything
-else gets a thank you.
+Deliberately naive. The agent model looks the brain up, then replies publicly with the brain line sharing the most
+words with the comment. A question no line answers goes to the seller (ask_seller) and their answer becomes the reply;
+anything else gets a thank you. It never DMs, saves facts, opens tickets or schedules follow-ups.
 """
 
 import re
 
 from apps.agent.constants import FactScope
-from apps.agent.engines.base import AgentContext, AgentDecision, BrainLearner, LearnedFactDraft, ReplyEngine
+from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep
 
 WORD_PATTERN = re.compile(r"\w+")
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
+COMMENTER_PATTERN = re.compile(r"^Commenter: @(\S*)$", re.MULTILINE)
+COMMENT_PATTERN = re.compile(r"^Comment: (.*)$", re.MULTILINE)
+ANSWER_PREFIX = "The seller answered: "
 # Words too common to tell brain lines apart.
 STOP_WORDS = frozenset(
     {
@@ -22,7 +25,6 @@ STOP_WORDS = frozenset(
     }
 )
 THANKS_REPLY = "Thank you so much!"
-HOLDING_REPLY = "Great question, we will get back to you soon!"
 
 
 def _stem(word: str) -> str:
@@ -34,38 +36,65 @@ def _words(text: str) -> set[str]:
     return {_stem(word) for word in WORD_PATTERN.findall(text.lower()) if len(word) > 1 and word not in STOP_WORDS}
 
 
-def _best_fact(context: AgentContext) -> str:
-    comment_words = _words(context.comment_text)
+def _best_line(comment: str, brain: str) -> str:
+    comment_words = _words(comment)
     best, best_score = "", 0
-    for line in context.post_knowledge.splitlines() + context.account_knowledge.splitlines():
+    for line in brain.splitlines():
         line = line.strip()
         score = len(comment_words & _words(line))
-        if line and score > best_score:
+        if line and not line.endswith(":") and score > best_score:
             best, best_score = line, score
     return best
 
 
-class SimulatedReplyEngine(ReplyEngine):
+def _first_text(messages: list[dict]) -> str:
+    content = messages[0]["content"]
+    return next((block["text"] for block in content if block.get("type") == "text"), "")
+
+
+def _tool_calls(message: dict) -> dict[str, str]:
+    """tool_use id to tool name in an assistant turn."""
+    return {block["id"]: block["name"] for block in message["content"] if block.get("type") == "tool_use"}
+
+
+def _call(name: str, **arguments) -> ModelStep:
+    return ModelStep(content=[{"type": "tool_use", "id": f"sim_{name}", "name": name, "input": arguments}], stop_reason="tool_use")
+
+
+def _done(text: str) -> ModelStep:
+    return ModelStep(content=[{"type": "text", "text": text}], stop_reason="end_turn")
+
+
+class SimulatedAgentModel(AgentModel):
     name = "simulated"
 
-    def decide(self, context: AgentContext) -> AgentDecision:
-        fact = _best_fact(context)
-        is_question = "?" in context.comment_text
-        if fact:
-            body, confidence, reason = fact, 0.9, "Found a brain fact."
-        elif is_question:
-            body, confidence, reason = HOLDING_REPLY, 0.3, "No fact in the brains answers this."
-        else:
-            body, confidence, reason = THANKS_REPLY, 0.8, "Not a question, thanked them."
+    def step(self, *, system: str, tools: list[dict], messages: list[dict]) -> ModelStep:
+        first = _first_text(messages)
+        author = (COMMENTER_PATTERN.search(first) or [None, ""])[1]
+        comment = (COMMENT_PATTERN.search(first) or [None, ""])[1]
+        mention = f"@{author} " if author else ""
+        last = messages[-1]["content"]
+        results = [block for block in last if block.get("type") == "tool_result"]
+        if not results:
+            if len(messages) == 1:
+                return _call("search_brain", topic=comment)
+            return _done("Nothing to do.")
 
-        mention = f"@{context.author_username} " if context.author_username else ""
-        return AgentDecision(
-            intent="question" if is_question else "comment",
-            language="unknown",
-            reply_text=f"{mention}{body}",
-            confidence=confidence,
-            reason=reason,
-        )
+        names = _tool_calls(messages[-2])
+        result = results[-1]
+        name, text = names.get(result["tool_use_id"], ""), str(result.get("content", ""))
+        if name == "search_brain":
+            line = _best_line(comment, text)
+            if line:
+                return _call("reply_to_comment", text=f"{mention}{line}")
+            if "?" in comment:
+                return _call("ask_seller", question=f"A buyer asked: {comment}")
+            return _call("reply_to_comment", text=f"{mention}{THANKS_REPLY}")
+        if name == "ask_seller" and text.startswith(ANSWER_PREFIX):
+            return _call("reply_to_comment", text=f"{mention}{text.removeprefix(ANSWER_PREFIX)}")
+        if name == "reply_to_comment":
+            return _done(f"Could not reply: {text}" if result.get("is_error") else "Replied publicly.")
+        return _done("Nothing to do.")
 
 
 SENTENCE_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")

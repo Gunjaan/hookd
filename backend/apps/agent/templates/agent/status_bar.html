@@ -4,7 +4,7 @@
   <div class="agent-status__text">
     <p class="agent-status__title">Hooky is {% if profile.enabled %}on{% else %}off{% endif %} <span class="agent-status__account">for @{{ account.username }}</span></p>
     <p class="agent-status__meta">
-      {% if profile.enabled %}Replies on its own when it knows the answer, drafts the rest for you{% else %}New comments are not answered. Turn it on to start{% endif %}
+      {% if profile.enabled %}{% if profile.approve_before_sending %}Answers comments and DMs, and you check everything before it goes out{% else %}Answers comments and DMs on its own, and asks you when it does not know{% endif %}{% else %}New comments and DMs are not answered. Turn it on to start{% endif %}
       · {{ sent_this_week }} sent this week
     </p>
     {% if is_paused %}
@@ -12,7 +12,7 @@
     {% endif %}
   </div>
   {% if agent_pending_count %}
-    <a href="{% url 'agent-inbox' %}" class="agent-status__pending"><strong>{{ agent_pending_count }}</strong> repl{{ agent_pending_count|pluralize:"y,ies" }} waiting for you</a>
+    <a href="{% url 'agent-inbox' %}" class="agent-status__pending"><strong>{{ agent_pending_count }}</strong> thing{{ agent_pending_count|pluralize }} waiting for you</a>
   {% endif %}
   <form method="post" action="{% url 'api-agent-enabled' account.pk %}" class="agent-status__switch" data-api>
     {% csrf_token %}

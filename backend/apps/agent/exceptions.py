@@ -15,3 +15,15 @@ class ReplyTextRejected(HookdError):
 
 class LearnedFactNotFound(HookdError):
     default_message = "Fact not found."
+
+
+class QuestionNotFound(HookdError):
+    default_message = "Question not found."
+
+
+class QuestionNotOpen(HookdError):
+    default_message = "This question was already answered."
+
+
+class TicketNotFound(HookdError):
+    default_message = "Ticket not found."

@@ -285,13 +285,13 @@ AI_MODEL_PRICES = {
     'gemini-nano-banana-2.1': {'input': 0.50, 'output': 60.00},
 }
 
-# Comment reply agent (see brainforagents/DEV-agent.md). A low cost Claude model writes replies. Without a key, and
-# in tests, the keyword based simulated engine stands in.
+# Comment reply agent (see brainforagents/DEV-agent.md). A low cost Claude model runs the agent loop. Without a key,
+# and in tests, the keyword based simulated model stands in.
 
-HOOKD_REPLY_ENGINE = (
-    'apps.agent.engines.claude.ClaudeReplyEngine'
+HOOKD_AGENT_MODEL = (
+    'apps.agent.engines.claude.ClaudeAgentModel'
     if ANTHROPIC_API_KEY and not TESTING
-    else 'apps.agent.engines.simulated.SimulatedReplyEngine'
+    else 'apps.agent.engines.simulated.SimulatedAgentModel'
 )
 AGENT_REPLY_MODEL = env_str('CLAUDE_REPLY_MODEL', 'claude-haiku-5-5')
 # Fills the brains on its own from post captions and the replies the creator writes in the inbox (same model).
@@ -309,8 +309,25 @@ AGENT_REPLY_LIMITS = {
     'MAX_PER_DAY': 150,
     'MAX_SAME_TEXT_PER_HOUR': 3,
     'MAX_COMMENT_AGE_HOURS': 24,
-    'AUTO_REPLY_MIN_CONFIDENCE': 0.75,
     'RATE_LIMIT_PAUSE_MINUTES': 60,
+}
+
+# The agent loop. Every run is bounded: MAX_STEPS model calls per wake up and MAX_RUN_STEPS in its whole life (then
+# the buyer is handed to the seller), MAX_QUESTIONS to the seller (each expires after QUESTION_EXPIRES_HOURS),
+# MAX_FOLLOWUPS that may not chain, MAX_RUNS_PER_BUYER_PER_DAY comment runs per person. FOLLOWUP_MAX_HOURS and
+# PRIVATE_REPLY_MAX_HOURS follow Meta (one private reply within 7 days of a comment; 1 hour of margin). A run stuck in
+# "running" longer than STALE_RUN_MINUTES (its worker died) can be taken over. MAX_OUTPUT_TOKENS is per model call.
+AGENT_LOOP_LIMITS = {
+    'MAX_STEPS': 8,
+    'MAX_RUN_STEPS': 40,
+    'MAX_QUESTIONS': 3,
+    'QUESTION_EXPIRES_HOURS': 24,
+    'MAX_FOLLOWUPS': 2,
+    'FOLLOWUP_MAX_HOURS': 167,
+    'PRIVATE_REPLY_MAX_HOURS': 167,
+    'MAX_RUNS_PER_BUYER_PER_DAY': 10,
+    'STALE_RUN_MINUTES': 10,
+    'MAX_OUTPUT_TOKENS': 4000,
 }
 
 INSTAGRAM = {

@@ -1,0 +1,51 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Tickets{% endblock %}
+
+{% block content %}
+  <div class="studio studio--medium">
+    <header class="page-header">
+      <div>
+        <h1 class="page-header__title">Support <em>tickets</em></h1>
+        <p class="page-header__description">Problems buyers told Hooky about. Each one was emailed to support. Set the status and a note: Hooky tells the buyer when they ask.</p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{% url 'agent-inbox' %}" class="btn btn--secondary btn--md">Inbox</a>
+      </div>
+    </header>
+
+    {% include "agent/inbox_tabs.html" %}
+
+    {% include "components/messages.html" %}
+
+    {% if not tickets %}
+      <div class="empty-state">
+        <span class="empty-state__mascot">{% include "core/mascot.html" with uid="tickets-empty" %}</span>
+        <p class="empty-state__title">Nothing here</p>
+      </div>
+    {% else %}
+      <ul class="reply-list">
+        {% for ticket in tickets %}
+          <li class="reply-card" data-busy-scope>
+            <div class="reply-card__post">
+              <p><strong>#{{ ticket.pk }}</strong> {{ ticket.product|default:"Product not given" }} · @{{ ticket.account.username }}</p>
+              <time datetime="{{ ticket.created_at|date:'c' }}">{{ ticket.created_at|timesince }} ago</time>
+            </div>
+            <div class="reply-row">
+              {% include "components/avatar.html" with name=ticket.buyer_username|default:"?" size=36 %}
+              <p class="reply-row__text"><strong>{{ ticket.buyer_username|default:"A buyer" }}</strong> {{ ticket.summary }}</p>
+            </div>
+            <form method="post" action="{% url 'api-ticket-update' ticket.pk %}" class="ticket-form" data-api>
+              {% csrf_token %}
+              {% include "components/select_field.html" with field=ticket.form.status %}
+              {% include "components/textarea_field.html" with field=ticket.form.seller_note %}
+              <div class="reply-composer__actions">
+                <button type="submit" class="btn btn--primary btn--sm">Save</button>
+              </div>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endblock %}

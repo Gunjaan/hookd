@@ -63,6 +63,8 @@ CRON_JOBS = [
     ("cleanup_task_results", "30 3 * * *", ["cleanup_task_results"]),
     # Every 10 minutes: send queued comment replies whose Celery task was lost (never sends twice).
     ("send_due_replies", "*/10 * * * *", ["send_due_replies"]),
+    # Every 10 minutes: send queued DMs and wake agent follow-ups whose Celery task was lost.
+    ("wake_agent_runs", "*/10 * * * *", ["wake_agent_runs"]),
 ]
 
 

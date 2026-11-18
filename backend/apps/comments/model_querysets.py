@@ -30,3 +30,12 @@ def list_comments_for_account(account: SocialAccount) -> QuerySet[Comment]:
 
 def get_comment(comment_id: int) -> Comment | None:
     return Comment.objects.select_related("account").filter(pk=comment_id).first()
+
+
+def latest_comment_by_author(account: SocialAccount, author_external_id: str) -> Comment | None:
+    """The newest comment a person wrote on the account's posts (tells the agent a DM sender's username)."""
+    return (
+        Comment.objects.filter(account=account, author_external_id=author_external_id)
+        .order_by("-commented_at", "-pk")
+        .first()
+    )

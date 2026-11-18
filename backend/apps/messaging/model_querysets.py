@@ -36,3 +36,11 @@ def note_customer_message(conversation: Conversation, sent_at: datetime) -> None
     Conversation.objects.filter(
         Q(last_customer_message_at__isnull=True) | Q(last_customer_message_at__lt=sent_at), pk=conversation.pk
     ).update(last_customer_message_at=sent_at)
+
+
+def get_conversation(conversation_id: int) -> Conversation | None:
+    return Conversation.objects.select_related("account").filter(pk=conversation_id).first()
+
+
+def get_message(message_id: int) -> DirectMessage | None:
+    return DirectMessage.objects.filter(pk=message_id).first()

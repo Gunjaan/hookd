@@ -137,7 +137,7 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `EMAIL_HOST_USER` | | `support@hookd.world` | Mailbox to log in with. Also the sender: `DEFAULT_FROM_EMAIL = SERVER_EMAIL = Hookd <EMAIL_HOST_USER>`, so mail passes SPF and DMARC |
 | `EMAIL_HOST_PASSWORD` | for real mail | | That mailbox's password |
 | `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` (includes `INSTAGRAM_WEBHOOK_FIELDS`, default `comments`) |
-| `ANTHROPIC_API_KEY` | for AI | | Claude API key for all AI text: post studio plans and captions, comment replies, brain facts (`apps/ai/claude.py`). The reply agent uses Claude only when it is set |
+| `ANTHROPIC_API_KEY` | for AI | | Claude API key for all AI text: post studio plans and captions, the reply agent loop, brain facts (`apps/ai/claude.py`). The reply agent uses Claude only when it is set |
 | `CLAUDE_COPY_MODEL` | | `claude-haiku-5-5` | Model that reads product photos, plans shots and writes captions |
 | `CLAUDE_REPLY_MODEL` | | `claude-haiku-5-5` | Model that writes comment replies and learns brain facts from captions and inbox replies (`DEV-agent.md`) |
 | `GEMINI_API_KEY` | for AI photos | | Google AI Studio key for rendering post studio photos (`apps/ai/gemini.py`) |
@@ -158,8 +158,8 @@ fail authentication and SPF. Test from the container after changing `.env` and r
 `EMAIL_TIMEOUT = 60` because some SMTP servers delay their greeting by about 20 s; a timeout at 60 s means outbound SMTP
 is blocked, so try the other port.
 
-The reply agent's engine and sending limits are plain settings (`HOOKD_REPLY_ENGINE`, `AGENT_REPLY_LIMITS`), not env
-vars; see `DEV-agent.md`. The post studio engines and daily cap are too (`HOOKD_COPY_ENGINE`, `HOOKD_IMAGE_ENGINE`,
+The reply agent's model, sending limits and loop limits are plain settings (`HOOKD_AGENT_MODEL`, `AGENT_REPLY_LIMITS`,
+`AGENT_LOOP_LIMITS`), not env vars; see `DEV-agent.md`. The post studio engines and daily cap are too (`HOOKD_COPY_ENGINE`, `HOOKD_IMAGE_ENGINE`,
 `CREATIVE_DAILY_LIMIT`); see `DEV-creatives.md`.
 
 ## Time zone
@@ -179,6 +179,7 @@ listed in `CRON_JOBS` in `deploy.py`. Each crontab line ends with a `# hookd:<na
 |---|---|---|
 | `30 3 * * *` | `cleanup_task_results` | Delete stored Celery task results older than 7 days |
 | `*/10 * * * *` | `send_due_replies` | Send queued comment replies more than 5 minutes past their slot (lost Celery tasks). A reply is never sent twice |
+| `*/10 * * * *` | `wake_agent_runs` | Expire seller questions open for 24 hours (their runs wrap up), send queued DMs more than 5 minutes past their slot and wake agent runs whose follow-up is more than 5 minutes overdue (lost Celery tasks). A DM is never sent twice |
 
 Adding a job: write the management command, add a tuple to `CRON_JOBS`, document it here, run
 `python3 deploy.py install-cron`. `install-cron` first removes every line carrying a `# hookd:` marker, so jobs
@@ -197,8 +198,11 @@ Conventions: a task only calls one service function (`apps/content/tasks.py` is 
 | Task | Queued by | Does |
 |---|---|---|
 | `apps.accounts.tasks.send_access_request(details)` | `accounts.services.request_access` | Emails an access request to `SUPPORT_EMAIL`. Retries up to 5 times with backoff on SMTP or network errors. Returns `sent` |
-| `apps.agent.tasks.handle_comment(comment_id)` | `comments.services.record_incoming_comments` (on commit) | Runs the reply agent on a new webhook comment. Returns the outcome (`queued`, `pending_review`, `skipped`, `ignored`, `exists`, `missing`) |
-| `apps.agent.tasks.send_reply(reply_id)` | `agent.services.schedule_reply` (on commit, `eta` = the send slot) | Sends one reply within the limits; returns `sent`, `failed`, `capped`, `paused`, `rate_limited`, `not_due` or `not_queued`. Redis may redeliver long `eta` tasks after its visibility timeout; the claim and `not_due` checks make that harmless |
+| `apps.agent.tasks.handle_comment(comment_id)` | `comments.services.record_incoming_comments` (on commit) | Starts an agent run for a new webhook comment. Returns the outcome (`started`, `skipped`, `ignored`, `exists`, `missing`) |
+| `apps.agent.tasks.handle_buyer_message(conversation_id, message_id)` | `agent.receivers.answer_buyer_message` on `messaging.signals.customer_message_received` (on commit) | Starts or continues the buyer's agent run. Returns `queued`, `handed_off`, `ignored` or `missing` |
+| `apps.agent.tasks.advance_run(run_id)` | `agent.services` when a run gets an event (on commit); follow-ups with `eta` = when they are due | Runs the agent loop. Returns the run status or `busy` (another worker holds it). A long follow-up `eta` may be redelivered; the run claim makes that harmless, and `wake_agent_runs` catches lost ones |
+| `apps.agent.tasks.send_reply(reply_id)`, `send_dm(dm_id)` | `agent.services.schedule_reply` / `schedule_dm` (on commit, `eta` = the send slot) | Sends one public reply or DM within the limits; returns `sent`, `failed`, `capped`, `paused`, `rate_limited`, `not_due` or `not_queued`. Redis may redeliver long `eta` tasks after its visibility timeout; the claim and `not_due` checks make that harmless |
+| `apps.agent.tasks.email_ticket(ticket_id)` | `agent.services.create_ticket` (on commit) | Emails a support ticket to `SUPPORT_EMAIL` once, retrying up to 5 times with backoff on SMTP or network errors. Returns `sent`, `already_sent` or `missing` |
 | `apps.creatives.tasks.generate_creative(creative_id)` | `creatives.services.start_creative` (on commit) | One copy engine call plans the post, then queues a render per slide. Returns the draft status |
 | `apps.creatives.tasks.render_slide(slide_id)` | `generate_creative` and `regenerate_slide` (on commit) | One image engine call for one slide, then settles the draft. Returns the slide status |
 | `apps.content.tasks.poll_publish_job(job_id)` | `content.services.schedule_publish_poll` | Checks a processing upload, re-queues itself every 20 s until published, failed or timed out. Returns the job status (`processing`, `published`, `failed`, `missing`) |

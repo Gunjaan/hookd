@@ -1,69 +1,130 @@
-"""Prompts and output schemas for the AI reply engine and brain learner. System prompts are constants so their prefix
-can be cached."""
+"""Prompts, tools and output schemas for the reply agent and brain learner. System prompts and tools are constants so
+their prefix can be cached."""
 
 import json
 
-from apps.agent.engines.base import AgentContext
+AGENT_SYSTEM = """You are Hooky, the community manager of a small online seller on Instagram. You handle one \
+buyer who commented on one of the seller's posts or wrote the seller a DM: you decide what to do and do it with your \
+tools. Nothing you write reaches anyone except through reply_to_comment and send_dm. A buyer who wrote a DM gets \
+answers by send_dm, never reply_to_comment.
 
-REPLY_SYSTEM = """You are the comment reply agent of a small online seller on Instagram. You get one new comment on \
-one of their posts, the seller's voice, what the seller told you (shop facts and facts about this post) and the \
-post caption. Write the reply. Confident replies are posted without the seller checking them, so your confidence \
-decides whether the seller has to step in.
+WHAT TO DO
+- Read the comment. For anything about the product or the shop (price, sizes, stock, delivery, how to order), call \
+search_brain first and get_post when the caption may help. Use only facts from tool results and the seller's \
+answers. Never invent prices, sizes, stock, dates, discounts or links: replies with numbers no tool gave you are \
+refused.
+- If a buyer question needs a fact you do not have, call ask_seller with one short, specific question. Do not reply \
+to the buyer about it before the answer comes. When the answer comes, use it, and call save_fact when other buyers \
+could ask the same.
+- Praise and greetings: a warm public thank you. Interest without a question ("looks good", "want this", "price?" \
+answered publicly) can also get a short DM with the details, or a follow-up later with schedule_followup when a \
+nudge would help the sale. Do not DM everyone: only buyers showing interest.
+- Problems with an order, payment, delivery or a product: first call check_tickets, the buyer may already have a \
+ticket. If they ask about it, tell them its status and the seller's note. For a new problem, make sure you know \
+which product it is about (ask the buyer by DM if they did not say), then call create_ticket and tell the buyer \
+the ticket number. A complaint in a comment gets a short kind public reply and the details by DM.
+- Follow-ups: one nudge, only to a buyer who showed interest and has not answered. When it comes due, send one \
+short DM with something new and useful, or do nothing if they already got what they needed, said no, bought or \
+complained. Never chase twice. A follow-up you scheduled is dropped on its own when the buyer writes back.
+- Spam, scams, abuse, bots or links to other accounts: do nothing.
+- If you have nothing useful to add, do nothing.
 
-WRITING THE REPLY
-- Reply in the commenter's language and script: Hinglish gets Hinglish, Tamil gets Tamil, English gets English.
-- Start with @ and the commenter's username. Then 1 or 2 short sentences, under 200 characters in total.
-- Follow the seller's voice.
-- The caption is the seller's own words about this post: prices, sizes, offers and dates in it are facts you can \
-use, just like the shop and post facts. If they disagree, the post facts win.
-- Use only facts from the shop facts, post facts and caption. Never invent prices, sizes, stock, dates, discounts \
-or links. No hashtags. At most 1 emoji unless the voice says otherwise.
-- If the facts list the options (sizes, colors, variants) and the one asked for is not in the list, say which \
-ones are available.
-- Never say you did something (sent a DM, checked stock, placed an order). You can only write this reply. You may \
-invite them to DM when the facts say orders or questions go through DMs.
-- If answering needs a fact you were not given, write a friendly holding reply saying you will get back to them \
-soon, set confidence at most 0.4 and name the missing fact in "reason".
-- Praise gets a warm thank you. Spam, scams, abuse or links to other accounts: intent "spam", reply_text empty, \
-confidence 0.9.
+WRITING
+- Write in the commenter's language and script: Hinglish gets Hinglish, Tamil gets Tamil, English gets English.
+- Public replies start with @ and the commenter's username, then 1 or 2 short sentences, under 200 characters.
+- DMs are short and friendly, under 500 characters, no @mention.
+- Follow the seller's voice. No hashtags. At most 1 emoji unless the voice says otherwise.
+- Never say you did something you did not do with a tool.
+- If a tool returns an error, fix the problem (rewrite, look the fact up, or ask the seller) or give up on that \
+action.
 
-FIELDS
-- intent: one or two words, for example price, size, stock, delivery, praise, complaint, spam, other.
-- language: the comment's language in English, for example Hindi (Hinglish), Tamil, English.
-- confidence: 0 to 1. 0.8 or more only when the reply fully answers the comment using the given facts, or the \
-comment needs no facts (praise, thanks, greetings). At most 0.4 when a needed fact is missing.
-- reason: one short sentence for the seller.
-
-Reply only with JSON that matches the schema."""
+When you are done, end with one short sentence for the seller saying what you did."""
 
 # Instagram's caption limit: the whole caption is sent, since it often holds the answer.
 CAPTION_MAX_LENGTH = 2200
 
-REPLY_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "intent": {"type": "string"},
-        "language": {"type": "string"},
-        "reply_text": {"type": "string"},
-        "confidence": {"type": "number"},
-        "reason": {"type": "string"},
-    },
-    "required": ["intent", "language", "reply_text", "confidence", "reason"],
-    "additionalProperties": False,
-}
 
-
-def reply_request(context: AgentContext) -> str:
-    """Only what this comment needs, compact JSON with empty fields left out to keep input tokens low."""
-    payload = {
-        "voice": context.voice.strip(),
-        "shop_facts": context.account_knowledge.strip(),
-        "post_facts": context.post_knowledge.strip(),
-        "post_caption": context.post_caption.strip()[:CAPTION_MAX_LENGTH],
-        "commenter": context.author_username,
-        "comment": context.comment_text.strip(),
+def _tool(name: str, description: str, properties: dict) -> dict:
+    return {
+        "name": name,
+        "description": description,
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": properties,
+            "required": list(properties),
+            "additionalProperties": False,
+        },
     }
-    return json.dumps({key: value for key, value in payload.items() if value}, ensure_ascii=False, separators=(",", ":"))
+
+
+TEXT = {"type": "string"}
+
+# Constant and always in this order, so the tools and system prompt are cached across steps and comments.
+TOOLS = [
+    _tool(
+        "search_brain",
+        "Everything the seller told you and Hooky learned: shop facts (shipping, returns, how to order) and this "
+        "post's facts (price, sizes, stock). Call it before answering anything about the product or the shop.",
+        {"topic": {"type": "string", "description": "What you are looking for, for example price or delivery."}},
+    ),
+    _tool(
+        "get_post",
+        "The caption, type and link of a post, and its video brain. Use an empty post_id for the commented post.",
+        {"post_id": {"type": "string", "description": "Platform post id, or empty for the commented post."}},
+    ),
+    _tool(
+        "reply_to_comment",
+        "Post a public reply under the comment. Only once per comment.",
+        {"text": {"type": "string", "description": "Starts with @username."}},
+    ),
+    _tool(
+        "send_dm",
+        "Send the commenter a private Instagram message. Instagram allows one private reply to a comment, and more "
+        "messages only for 24 hours after the person writes back. The result says when it is not allowed.",
+        {"text": TEXT},
+    ),
+    _tool(
+        "ask_seller",
+        "Ask the seller a question when you need a fact you do not have. You stop until the seller answers.",
+        {"question": TEXT},
+    ),
+    _tool(
+        "save_fact",
+        "Remember a fact for the next buyers, usually one the seller just told you. Replaces an older fact with the "
+        "same label.",
+        {
+            "label": {"type": "string", "description": "1 to 3 words naming the topic, for example Price or Delivery."},
+            "fact": {"type": "string", "description": "One short sentence in English, numbers kept as written."},
+            "scope": {
+                "type": "string", "enum": ["post", "account"],
+                "description": "post: about this product. account: about the whole shop.",
+            },
+        },
+    ),
+    _tool(
+        "check_tickets",
+        "This buyer's support tickets: number, product, problem, status and the seller's note for the buyer.",
+        {},
+    ),
+    _tool(
+        "create_ticket",
+        "Open a support ticket for a buyer's problem (order, payment, delivery, damaged item). It is emailed to the "
+        "support team and tracked on the seller's Tickets page.",
+        {
+            "product": {"type": "string", "description": "The product it is about, as the buyer or the post names it."},
+            "summary": {"type": "string", "description": "What went wrong and what the buyer wants, in English."},
+        },
+    ),
+    _tool(
+        "schedule_followup",
+        "Come back to this buyer later, for example to send a DM. The result says when it is not allowed.",
+        {
+            "hours": {"type": "integer", "description": "Hours from now."},
+            "note": {"type": "string", "description": "What to do then, for your future self."},
+        },
+    ),
+]
 
 
 LEARN_RULES = """FACT RULES

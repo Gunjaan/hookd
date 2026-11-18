@@ -52,10 +52,11 @@
 
         <section class="agent-card" aria-labelledby="which-title">
           <div>
-            <h2 id="which-title" class="section-title">Which <em>comments</em></h2>
-            <p class="agent-card__lede">New comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours, never your own.</p>
+            <h2 id="which-title" class="section-title">What Hooky <em>handles</em></h2>
+            <p class="agent-card__lede">New comments from the last {{ limits.MAX_COMMENT_AGE_HOURS }} hours and buyer DMs, never your own.</p>
           </div>
           {% include "components/checkbox_field.html" with field=form.reply_to_threads switch=True %}
+          {% include "components/checkbox_field.html" with field=form.approve_before_sending switch=True %}
         </section>
 
         <div id="agent-unsaved" class="save-bar" hidden>

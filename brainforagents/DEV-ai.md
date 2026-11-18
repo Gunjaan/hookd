@@ -26,7 +26,8 @@ Call sites and their purposes:
 | `creative_plan` | `creatives.services.generate_creative` | draft owner / none / the `Creative` |
 | `creative_photo` | `creatives.services.render_slide` | draft owner / none / the `Creative` |
 | `caption_rewrite` | `creatives.services.rewrite_caption` | the user / none / the `Creative` |
-| `comment_reply` | `agent.services.handle_new_comment` | account owner / the account / the `Comment` |
+| `comment_agent` | `agent.loop.advance`, one record per model step | account owner / the run's account / the `Comment`, or the `AgentRun` for a DM started run |
+| `comment_reply` | Older calls only (the single call reply engine before the agent loop) | account owner / the account / the `Comment` |
 | `reply_preview` | `agent.services.preview_reply` | account owner / the account / the `Post` or none |
 | `learn_caption` | `agent.services.learn_from_post` | account owner / the post's account / the `Post` |
 | `learn_reply` | `agent.services.learn_from_reply` | account owner / the comment's account / the `CommentReply` |

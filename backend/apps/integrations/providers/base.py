@@ -22,6 +22,7 @@ from apps.integrations.providers.types import (
     Metric,
     PublishQuota,
     PublishStatus,
+    SentMessage,
     TokenBundle,
 )
 
@@ -118,6 +119,20 @@ class BaseProvider(ABC):
 
     def reply_to_comment(self, account: "SocialAccount", comment_external_id: str, message: str) -> str:
         """Post a public reply under a comment. Returns the new reply's platform id."""
+        raise FeatureNotSupported()
+
+    # Direct messages (Capability.PRIVATE_REPLY, Capability.DIRECT_MESSAGE)
+
+    def dm_text_problems(self, text: str) -> list[str]:
+        """Reasons the platform would reject `text` as a direct message. Empty when it is fine."""
+        return []
+
+    def send_private_reply(self, account: "SocialAccount", comment_external_id: str, text: str) -> SentMessage:
+        """Send the commenter a private message tied to their comment (the platform allows one per comment)."""
+        raise FeatureNotSupported()
+
+    def send_direct_message(self, account: "SocialAccount", recipient_external_id: str, text: str) -> SentMessage:
+        """Send a message in an open conversation."""
         raise FeatureNotSupported()
 
     # Insights (Capability.INSIGHTS)
