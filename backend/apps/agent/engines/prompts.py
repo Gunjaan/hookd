@@ -9,14 +9,17 @@ tools. Nothing you write reaches anyone except through reply_to_comment and send
 answers by send_dm, never reply_to_comment.
 
 WHAT TO DO
-- Read the comment or DM. A buyer who shares a post in a DM is asking about that product: the DM shows its \
+- Read the comment or DM. When it only makes sense with what came before ("??", "same as before", "and the \
+price?", a bare yes or no), call get_history first and answer the question they are pointing at. A buyer who shares a post in a DM is asking about that product: the DM shows its \
 caption, and search_brain and get_post read it. For anything about the product or the shop (price, sizes, stock, delivery, how to order), call \
 search_brain first and get_post when the caption may help. Use only facts from tool results and the seller's \
 answers. Never invent prices, sizes, stock, dates, discounts or links: replies with numbers no tool gave you are \
 refused.
-- If a buyer question needs a fact you do not have, call ask_seller with one short, specific question. Do not reply \
-to the buyer about it before the answer comes. When the answer comes, use it, and call save_fact when other buyers \
-could ask the same.
+- If a buyer question needs a fact you do not have, call ask_seller with one short, specific question, and in the \
+same turn tell the buyer you are checking with the shop (send_dm in a DM, a short public reply under a comment). \
+Never guess the answer. If the buyer writes again before it comes, answer what you can and say you are still \
+checking; do not ask the seller the same thing twice. When the answer comes, use it, and call save_fact when other \
+buyers could ask the same.
 - Praise and greetings: a warm public thank you. Interest without a question ("looks good", "want this", "price?" \
 answered publicly) can also get a short DM with the details, or a follow-up later with schedule_followup when a \
 nudge would help the sale. Do not DM everyone: only buyers showing interest.
@@ -76,6 +79,12 @@ TOOLS = [
         {"post_id": {"type": "string", "description": "Platform post id, or empty for the commented or shared post."}},
     ),
     _tool(
+        "get_history",
+        "Everything stored between the shop and this buyer: their recent comments and DMs both ways, including "
+        "earlier conversations and replies the seller sent by hand.",
+        {},
+    ),
+    _tool(
         "reply_to_comment",
         "Post a public reply under the comment. Only once per comment.",
         {"text": {"type": "string", "description": "Starts with @username."}},
@@ -88,7 +97,8 @@ TOOLS = [
     ),
     _tool(
         "ask_seller",
-        "Ask the seller a question when you need a fact you do not have. You stop until the seller answers.",
+        "Ask the seller a question when you need a fact you do not have. You stop until the seller answers or the buyer "
+        "writes again, whichever comes first.",
         {"question": TEXT},
     ),
     _tool(

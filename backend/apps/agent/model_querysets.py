@@ -342,6 +342,10 @@ def create_question(run: AgentRun, *, tool_use_id: str, question: str) -> Seller
     return SellerQuestion.objects.create(run=run, tool_use_id=tool_use_id, question=question)
 
 
+def has_open_question(run: AgentRun) -> bool:
+    return SellerQuestion.objects.filter(run=run, status=QuestionStatus.OPEN).exists()
+
+
 def get_question(question_id) -> SellerQuestion | None:
     return SellerQuestion.objects.filter(pk=question_id).first() if question_id else None
 

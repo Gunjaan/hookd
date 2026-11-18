@@ -226,6 +226,11 @@ def create_ticket(ctx: ToolContext, product: str, summary: str) -> ToolResult:
     return ToolResult(f"Ticket #{ticket.pk} opened and sent to the support team. Status: {ticket.get_status_display()}.")
 
 
+def get_history(ctx: ToolContext) -> ToolResult:
+    history = "" if ctx.dry_run else services.buyer_history(ctx.run)
+    return ToolResult(f"Oldest first, times in UTC.\n\n{history}" if history else "No earlier messages with this buyer.")
+
+
 def check_tickets(ctx: ToolContext) -> ToolResult:
     if ctx.dry_run:
         return ToolResult("\n".join(ctx.dry_tickets) or "This buyer has no tickets.")
@@ -267,6 +272,7 @@ def schedule_followup(ctx: ToolContext, hours: int, note: str) -> ToolResult:
 TOOLS = {
     "search_brain": search_brain,
     "get_post": get_post,
+    "get_history": get_history,
     "reply_to_comment": reply_to_comment,
     "send_dm": send_dm,
     "ask_seller": ask_seller,

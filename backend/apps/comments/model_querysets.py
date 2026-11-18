@@ -39,3 +39,9 @@ def latest_comment_by_author(account: SocialAccount, author_external_id: str) ->
         .order_by("-commented_at", "-pk")
         .first()
     )
+
+
+def recent_comments_by_author(account: SocialAccount, author_external_id: str, limit: int) -> list[Comment]:
+    """A person's newest comments on the account's posts, oldest first."""
+    newest = Comment.objects.filter(account=account, author_external_id=author_external_id).order_by("-commented_at", "-pk")
+    return list(reversed(newest[:limit]))

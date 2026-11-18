@@ -83,6 +83,9 @@ RUN_CONTINUES_FOR = timedelta(days=7)
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
 # Learned facts per brain (shop, post) handed to the agent, newest first.
 LEARNED_FACTS_LIMIT = 40
+# What get_history shows: the newest DMs with the buyer and their newest comments.
+HISTORY_MESSAGES = 20
+HISTORY_COMMENTS = 5
 # How much of a shared post's caption the DM shows; get_post reads the whole caption.
 SHARED_CAPTION_PREVIEW = 300
 
@@ -882,6 +885,29 @@ def forget_fact(*, user, fact_id: int) -> None:
     if fact is None:
         raise LearnedFactNotFound()
     queries.delete_learned_fact(fact)
+
+
+def buyer_history(run: AgentRun) -> str:
+    """Everything stored between the shop and this buyer, for the get_history tool: their newest comments and the
+    newest DMs both ways (Hooky's and the ones the seller sent by hand)."""
+    if not run.buyer_external_id:
+        return ""
+    sections = []
+    comments = comment_queries.recent_comments_by_author(run.account, run.buyer_external_id, HISTORY_COMMENTS)
+    if comments:
+        lines = [f"{comment.commented_at:%Y-%m-%d %H:%M} on post {comment.media_external_id}: {comment.text}" for comment in comments]
+        sections.append("Their comments:\n" + "\n".join(lines))
+    conversation = run.conversation or message_queries.find_conversation(run.account, run.buyer_external_id)
+    messages = message_queries.recent_messages(conversation, HISTORY_MESSAGES) if conversation else []
+    if messages:
+        lines = [
+            f"{message.sent_at or message.created_at:%Y-%m-%d %H:%M} "
+            f"{'Shop' if message.is_from_account else 'Buyer'}: "
+            f"{message.text if message.is_from_account else buyer_message_text(message)}"
+            for message in messages
+        ]
+        sections.append("DMs:\n" + "\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def buyer_message_text(message: DirectMessage) -> str:

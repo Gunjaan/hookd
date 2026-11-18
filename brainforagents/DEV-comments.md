@@ -37,6 +37,6 @@ Registered in the Django admin (`/admin/`, search by text, username, ids).
 
 ## Files
 
-`models.py`, `model_querysets.py` (`create_comment_if_new`, `list_comments_for_account`, `get_comment`), `services.py`, `admin.py`,
+`models.py`, `model_querysets.py` (`create_comment_if_new`, `list_comments_for_account`, `get_comment`, `latest_comment_by_author`, `recent_comments_by_author`: a person's newest comments for the agent's `get_history`), `services.py`, `admin.py`,
 `tests.py` (handshake ok, wrong token, unset token, signed comment stored once, own comment flagged, bad signature 403,
 unknown account skipped, unknown platform 404).

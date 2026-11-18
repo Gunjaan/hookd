@@ -58,3 +58,13 @@ def latest_shared_post_id(conversation: Conversation) -> str:
         .first()
         or ""
     )
+
+
+def find_conversation(account: SocialAccount, participant_external_id: str) -> Conversation | None:
+    return Conversation.objects.filter(account=account, participant_external_id=participant_external_id).first()
+
+
+def recent_messages(conversation: Conversation, limit: int) -> list[DirectMessage]:
+    """The newest messages of a conversation, oldest first."""
+    newest = DirectMessage.objects.filter(conversation=conversation).order_by("-sent_at", "-pk")[:limit]
+    return list(reversed(newest))

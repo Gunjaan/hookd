@@ -47,12 +47,17 @@ anti-spam rules.
    without tools (its last text is `run.outcome`), or when `ask_seller` was called. Events that arrived meanwhile are
    picked up in the same claim.
 4. **Waiting for the seller**: the transcript ends on the assistant turn with the unanswered `ask_seller` call; the
-   other results of that turn are kept in `held_results`. The run (`waiting_seller`) only moves on when a
-   `seller_answer` event comes: the held results plus `{"tool_result": "The seller answered: ..."}` (or "chose not to
-   answer, wrap up" when dismissed, or "did not answer in time, do not guess" when expired) form the next user turn.
-   Other events wait until then. A question left open for `QUESTION_EXPIRES_HOURS` (24) expires (`expire_questions`,
+   other results of that turn are kept in `held_results`. The prompt has Hooky tell the buyer it is checking in the
+   same turn. The run (`waiting_seller`) moves on when a `seller_answer` event comes: the held results plus
+   `{"tool_result": "The seller answered: ..."}` (or "chose not to answer, wrap up" when dismissed, or "did not answer
+   in time, do not guess" when expired) form the next user turn. A buyer DM that comes first does not wait: the held
+   results plus `SELLER_PENDING` ("no answer yet, search_brain again since the seller may have answered another buyer,
+   else do not guess and say you are still checking") close the call, the DM
+   follows, and Hooky answers the buyer. The run stays `waiting_seller` while it has an open question
+   (`has_open_question`); the answer then arrives as text (`LATE_ANSWER`: the question and the same answer content).
+   Follow-ups wait until the answer. A question left open for `QUESTION_EXPIRES_HOURS` (24) expires (`expire_questions`,
    run by `wake_agent_runs`), so no run waits forever.
-5. **Settling** (`_settle`): `waiting_seller`, else `waiting_followup` with `wake_at` when a follow-up event is pending,
+5. **Settling** (`_settle`): `waiting_seller` (paused on `ask_seller`, or an open question), else `waiting_followup` with `wake_at` when a follow-up event is pending,
    else `done`. A comment run that did not reply publicly gets a `skipped` CommentReply with the outcome as reason
    (`note_run_finished`), so the inbox stays complete. Due events found after release queue another `advance_run`.
 6. **Ending for good** (`_finish`): `RunTooLong` (the run reached `MAX_RUN_STEPS` in its life) hands the buyer to the
@@ -82,9 +87,10 @@ code says no, so the model corrects itself.
 |---|---|---|
 | `search_brain(topic)` | The whole brain: shop facts, then this post's facts (`brain_parts`) | |
 | `get_post(post_id)` | Caption (2200 cut), type, link and video brain; empty id = the run's post: the commented post, or in a DM run the post the buyer shared most recently in the conversation (`loop._context`, which also makes it the post `search_brain` and `save_fact` use) | not a stored post (someone else's shared post: the model is told to use the caption the DM gave) |
+| `get_history()` | `services.buyer_history`: the buyer's newest `HISTORY_COMMENTS` (5) comments and the newest `HISTORY_MESSAGES` (20) DMs both ways (`Shop:` for Hooky's and the seller's own, `Buyer:` read like `buyer_message_text`), from the run's conversation or the one with this buyer; the prompt has Hooky call it when a message only makes sense with what came before ("??", "same as before") | |
 | `reply_to_comment(text)` | Adds `@author` when missing, stores the `CommentReply` (`agent_reply`: draft = final = text, `decision.approval`), schedules it, or holds it in approval mode | DM started run (no comment), platform without public replies, already replied (a `skipped` row is reused), `reply_text_problems`, number guard, the same text `MAX_SAME_TEXT_PER_HOUR` times this hour |
 | `send_dm(text)` | `dm_route`: a normal `dm` while the buyer's 24 h window is open (5 min margin), else the comment's one `private_reply` while the comment is under `PRIVATE_REPLY_MAX_HOURS` (167 h) old. Taking the private reply sets `private_reply_used_at` at once. Stores an `OutgoingDM`, schedules it or holds it in approval mode | not allowed now (the reason is in the error), capability missing, `dm_text_problems`, number guard |
-| `ask_seller(question)` | `SellerQuestion` (open, with the `tool_use_id`); the run pauses | empty, a second question in the same turn, `MAX_QUESTIONS` (3) already asked in this run |
+| `ask_seller(question)` | `SellerQuestion` (open, with the `tool_use_id`); the run pauses until the answer or the buyer's next DM | empty, a second question in the same turn, `MAX_QUESTIONS` (3) already asked in this run |
 | `save_fact(label, fact, scope)` | One learned fact (scope `post` needs a post, else shop wide) | empty label or fact |
 | `check_tickets()` | This buyer's tickets on the account (`buyer_external_id`): number, date, product, summary, status, seller's note | |
 | `create_ticket(product, summary)` | `SupportTicket` (open) and `tasks.email_ticket` on commit; result has the ticket number | empty summary, empty product ("ask the buyer first"), the buyer already has an unresolved ticket for that product (case insensitive: "share its status instead") |
@@ -214,7 +220,7 @@ comment or, for a DM run, the run), `reply_preview`, `learn_caption`, `learn_rep
 | `inbox(user, status)` (each reply with `post` and `run`), `inbox_counts`, `open_questions`, `open_question_count`, `pending_dms`, `pending_dm_count`, `attention_count` (pending replies + pending DMs + open questions: sidebar badge, status bar) | Inbox |
 | `approve_reply`, `reject_reply`, `retry_reply`, `approve_dm`, `reject_dm` (a discarded private reply frees it), `answer_question`, `dismiss_question` (add a `seller_answer` event and queue the run) | Inbox actions. Wrong status raises `ReplyNotEditable` / `QuestionNotOpen`, refused text `ReplyTextRejected`, unknown ids `ReplyNotFound` / `QuestionNotFound` / `TicketNotFound` |
 | `tickets(user, status)`, `ticket_counts`, `get_user_ticket`, `update_ticket(ticket, status, seller_note)` | Tickets page |
-| `learn_from_post`, `learn_from_reply`, `account_learned_facts`, `post_learned_facts`, `post_learned_fact_count`, `forget_fact`, `buyer_message_text` | Learned brain; how a DM reads to the agent (a share reads `(shared a post, post_id X, caption: "...")`, caption cut at `SHARED_CAPTION_PREVIEW` 300, then the buyer's text) |
+| `learn_from_post`, `learn_from_reply`, `account_learned_facts`, `post_learned_facts`, `post_learned_fact_count`, `forget_fact`, `buyer_message_text`, `buyer_history` | Learned brain; how a DM reads to the agent (a share reads `(shared a post, post_id X, caption: "...")`, caption cut at `SHARED_CAPTION_PREVIEW` 300, then the buyer's text) |
 
 `model_querysets.py` holds every query: profile, brains, learned facts, replies (`sent_times_since` counts replies and
 DMs), runs (`create_run_if_new`, `create_dm_run`, `claim_run`, `update_run`, `latest_run_for_conversation`,
@@ -263,7 +269,8 @@ else's shared post still shows its caption and is not stored; a share and the te
 answer sent (Graph call checked); praise thanked; invented price refused by the number guard and corrected; numbers
 from the comment allowed, digits in handles ignored; missing fact -> `ask_seller`, run waits, the inbox answer resumes
 it with the exact tool_result, `save_fact` stored with the run, reply queued; held results returned with the answer;
-dismissed question; spam left alone shows as skipped; model failure and step limit go to review; one public reply per
+a buyer DM while Hooky waits is answered and the seller's later answer comes as text; `get_history` shows earlier
+DMs both ways and comments; dismissed question; spam left alone shows as skipped; model failure and step limit go to review; one public reply per
 comment and platform text rules; repeated text; approval mode holds reply and DM, DM approval schedules it; a discarded
 private reply is freed; a busy run leaves new events to the holder. DMs: one private reply per comment, sent with
 `recipient.comment_id`, links the conversation; 7 day window; the buyer's answer continues the run with a normal DM

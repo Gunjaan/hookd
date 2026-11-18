@@ -356,6 +356,37 @@ class LoopTests(AgentTestCase):
         self.assertEqual([block["tool_use_id"] for block in turn], ["tu_search_brain_0", "tu_ask_seller_1"])
         self.assertEqual(turn[1]["content"], "The seller answered: Silk")
 
+    def test_buyer_writing_while_hooky_waits_gets_an_answer_and_the_seller_answer_comes_later(self):
+        first = ScriptedModel(
+            calls(call("search_brain", topic="custom text"), call("ask_seller", question="Custom text on mugs?")),
+            done(),
+        )
+        self.buyer_dm("can you print aspire on it?", sender="buyer9", model=first)
+        run = AgentRun.objects.get()
+        self.assertEqual(run.status, RunStatus.WAITING_SELLER)
+
+        waiting = ScriptedModel(call("send_dm", text="Still checking with the shop!"), done())
+        self.buyer_dm("??", sender="buyer9", model=waiting)
+        turn = waiting.first_user_text()
+        self.assertIn("tu_search_brain_0", turn)
+        self.assertIn("No answer from the seller yet", turn)
+        self.assertIn("??", turn)
+        self.assertEqual(OutgoingDM.objects.count(), 1)
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.WAITING_SELLER)
+
+        answered = ScriptedModel(call("send_dm", text="Yes, Rs 250 with your text!"), done())
+        question = SellerQuestion.objects.get()
+        with self.scripted(answered), mock.patch("apps.agent.tasks.send_dm.apply_async"):
+            with self.captureOnCommitCallbacks(execute=True):
+                services.answer_question(question, "Yes, custom text is Rs 250")
+        self.assertIn(
+            'Answer to your earlier question to the seller (\\"Custom text on mugs?\\"): The seller answered: Yes, custom text is Rs 250',
+            answered.first_user_text(),
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.DONE)
+
     def test_dismissed_question_tells_the_agent_to_wrap_up(self):
         model = ScriptedModel(call("ask_seller", question="Fabric?"), done("Left it."))
         self.handle(self.comment("fabric?"), model)
@@ -612,6 +643,30 @@ class DirectMessageTests(AgentTestCase):
         self.assertIn("shared a post, post_id m1", turn)
         self.assertIn("same one with custom text?", turn)
         self.assertEqual(AgentRun.objects.get().wake_at, None)
+
+    def test_get_history_shows_earlier_dms_both_ways_and_comments(self):
+        self.comment("price?", author="buyer9")
+        self.buyer_dm("can you print aspire on it?", sender="buyer9", model=ScriptedModel(done()))
+        conversation = AgentRun.objects.get().conversation
+        record_incoming_messages(platform="instagram", messages=[IncomingMessage(
+            account_external_id=IG_ID, external_id="mid-seller", participant_external_id="buyer9", is_from_account=True,
+            text="Yes we can, Rs 250", sent_at=timezone.now(),
+        )])
+        model = ScriptedModel(call("get_history"), done())
+        self.buyer_dm("??", sender="buyer9", model=model)
+        history = AgentAction.objects.get(tool="get_history").result
+        self.assertIn("on post m1: price?", history)
+        self.assertIn("Buyer: can you print aspire on it?", history)
+        self.assertIn("Shop: Yes we can, Rs 250", history)
+        self.assertIn("Buyer: ??", history)
+        self.assertLess(history.index("aspire"), history.index("Rs 250"))
+        self.assertEqual(conversation.messages.count(), 3)
+
+    def test_get_history_without_earlier_messages(self):
+        comment = self.comment("first time here", author="newbie")
+        self.handle(comment, ScriptedModel(call("get_history"), done()))
+        self.assertIn("on post m1: first time here", AgentAction.objects.get().result)
+        self.assertNotIn("DMs:", AgentAction.objects.get().result)
 
     def test_dm_run_cannot_reply_publicly(self):
         self.buyer_dm("hi", sender="buyer9", model=ScriptedModel(call("reply_to_comment", text="@x hi"), done()))

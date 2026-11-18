@@ -26,7 +26,7 @@ from apps.agent.constants import EventKind, QuestionStatus, RunStatus
 from apps.agent.engines import prompts
 from apps.agent.engines.base import AgentModel
 from apps.agent.engines.registry import get_model
-from apps.agent.models import AgentEvent, AgentProfile, AgentRun
+from apps.agent.models import AgentEvent, AgentProfile, AgentRun, SellerQuestion
 from apps.ai.constants import Purpose
 from apps.ai.services import attributed
 from apps.comments.models import Comment
@@ -44,6 +44,12 @@ SELLER_SILENT = (
     "The seller did not answer in time. Do not guess. If the buyer is waiting for this, tell them kindly that the "
     "seller will get back to them, then wrap up."
 )
+SELLER_PENDING = (
+    "No answer from the seller yet; it comes in a later message. Call search_brain again first: the seller may have "
+    "answered the same thing for another buyer. If it is not there, do not guess; tell the buyer briefly that you are "
+    "still checking with the shop."
+)
+LATE_ANSWER = 'Answer to your earlier question to the seller ("{question}"): {content}'
 FOLLOWUP_RULES = (
     "This is a follow-up: send at most one short DM with something new and useful, or do nothing if the buyer already "
     "got what they needed, said no, bought, or complained. You cannot schedule another follow-up."
@@ -140,30 +146,47 @@ def _awaiting_seller(run: AgentRun) -> bool:
     return any(block.get("type") == "tool_use" for block in run.messages[-1]["content"])
 
 
-def _answer_result(run: AgentRun, event: AgentEvent) -> dict | None:
-    question = queries.get_question(event.payload.get("question_id"))
-    if question is None or question.run_id != run.pk:
-        return None
+def _unanswered_tool_use_ids(run: AgentRun) -> list[str]:
+    """The tool calls of the last assistant turn that have no result yet (the ask_seller call it paused on)."""
+    held = {result["tool_use_id"] for result in run.held_results}
+    return [
+        block["id"] for block in run.messages[-1]["content"] if block.get("type") == "tool_use" and block["id"] not in held
+    ]
+
+
+def _answer_content(question: SellerQuestion) -> str:
     if question.status == QuestionStatus.DISMISSED:
-        content = SELLER_DISMISSED
-    elif question.status == QuestionStatus.EXPIRED:
-        content = SELLER_SILENT
-    else:
-        content = f"{SELLER_ANSWER_PREFIX}{question.answer}"
-    return {"type": "tool_result", "tool_use_id": question.tool_use_id, "content": content}
+        return SELLER_DISMISSED
+    if question.status == QuestionStatus.EXPIRED:
+        return SELLER_SILENT
+    return f"{SELLER_ANSWER_PREFIX}{question.answer}"
 
 
 def _user_turn(run: AgentRun, events: list[AgentEvent], voice: str, now: datetime) -> list[dict] | None:
     """The next user turn built from due events, or None when there is nothing to do yet (no events, or the run
-    waits for the seller and the answer has not come)."""
-    answers = [event for event in events if event.kind == EventKind.SELLER_ANSWER]
+    waits for the seller and only the seller's answer can wake it).
+
+    While the run waits, the answer is the result of the paused ask_seller call. A buyer DM that comes first closes
+    that call with SELLER_PENDING so Hooky can answer the buyer; the answer then comes later as text."""
+    questions = [queries.get_question(event.payload.get("question_id")) for event in events if event.kind == EventKind.SELLER_ANSWER]
+    questions = [question for question in questions if question is not None and question.run_id == run.pk]
     others = [event for event in events if event.kind != EventKind.SELLER_ANSWER]
     blocks = []
     if _awaiting_seller(run):
-        result = next((result for result in map(lambda event: _answer_result(run, event), answers) if result), None)
-        if result is None:
+        pending = _unanswered_tool_use_ids(run)
+        answered = {question.tool_use_id: question for question in questions if question.tool_use_id in pending}
+        if not answered and not others:
             return None
-        blocks = [*run.held_results, result]
+        blocks = [*run.held_results]
+        for tool_use_id in pending:
+            question = answered.get(tool_use_id)
+            content = _answer_content(question) if question else SELLER_PENDING
+            blocks.append({"type": "tool_result", "tool_use_id": tool_use_id, "content": content})
+        questions = [question for question in questions if question.tool_use_id not in answered]
+    blocks += [
+        {"type": "text", "text": LATE_ANSWER.format(question=question.question, content=_answer_content(question))}
+        for question in questions
+    ]
     if not run.messages and run.comment is None and others:
         blocks.append({"type": "text", "text": _dm_start_text(run, voice, now)})
     blocks += [{"type": "text", "text": _event_text(run, event, voice, now)} for event in others]
@@ -304,7 +327,7 @@ def _settle(run: AgentRun) -> str:
     """Release the run with the status that says what it waits for, and catch events that came in meanwhile."""
     now = timezone.now()
     wake_at = queries.next_event_time(run, now)
-    if _awaiting_seller(run):
+    if _awaiting_seller(run) or queries.has_open_question(run):
         status = RunStatus.WAITING_SELLER
     else:
         status = RunStatus.WAITING_FOLLOWUP if wake_at else RunStatus.DONE
