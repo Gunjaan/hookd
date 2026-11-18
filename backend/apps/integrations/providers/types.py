@@ -89,6 +89,25 @@ class Metric:
 
 
 @dataclass(frozen=True)
+class PostComment:
+    """A comment read for the reply agent's brain, with the replies under it."""
+
+    text: str
+    author_username: str = ""
+    like_count: int = 0
+    from_account: bool = False
+    replies: list["PostComment"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PostMaterial:
+    """What a post shows besides its caption: image URLs (video covers for videos) and its top comments."""
+
+    image_urls: list[str] = field(default_factory=list)
+    comments: list[PostComment] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class CommentPage:
     comments: list[IncomingComment]
     next_cursor: str = ""

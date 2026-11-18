@@ -38,6 +38,23 @@ class InstagramClient:
     def post(self, url: str, data: dict) -> dict:
         return self._request("POST", url, data=data)
 
+    def download(self, url: str, *, max_bytes: int) -> tuple[bytes, str]:
+        """A CDN file as (bytes, content type), refused when it is larger than max_bytes."""
+        try:
+            with self.session.get(url, timeout=self.timeout, stream=True) as response:
+                if not response.ok:
+                    raise ProviderAPIError("Instagram did not return the file.")
+                content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+                data = b""
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    data += chunk
+                    if len(data) > max_bytes:
+                        raise ProviderAPIError("The file is too large.")
+        except requests.RequestException as exc:
+            logger.warning("Instagram download failed: %s", exc.__class__.__name__)
+            raise ProviderAPIError("Could not reach Instagram. Please try again.") from exc
+        return data, content_type
+
     def _request(self, method: str, url: str, *, params: dict | None = None, data: dict | None = None) -> dict:
         try:
             response = self.session.request(method, url, params=params, data=data, timeout=self.timeout)

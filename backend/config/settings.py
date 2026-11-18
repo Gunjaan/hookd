@@ -333,6 +333,13 @@ AGENT_LOOP_LIMITS = {
     'MAX_OUTPUT_TOKENS': 4000,
 }
 
+# How much of a post the reply agent's brain reads the first time (services.learn_from_post).
+POST_LEARN_LIMITS = {
+    'IMAGES': 5,
+    'COMMENTS': 15,
+    'IMAGE_MAX_BYTES': 5 * 1024 * 1024,
+}
+
 INSTAGRAM = {
     'APP_ID': env_str('INSTAGRAM_APP_ID'),
     'APP_SECRET': env_str('INSTAGRAM_APP_SECRET'),

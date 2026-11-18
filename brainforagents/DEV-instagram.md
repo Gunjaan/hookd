@@ -8,7 +8,7 @@ configuration). Works for Instagram professional accounts (Creator or Business).
 
 | File | Contents |
 |---|---|
-| `client.py` | `InstagramClient`: `requests.Session`, timeouts, `get`, `post` (form body), `graph_url(path)` (always versioned). `LOGIN_DIALOG_URL`. Translates errors: Graph code 190 becomes `TokenExpiredError`; codes 4, 17, 32, 613 (rate limits), 368 (temporarily blocked) and HTTP 429 become `RateLimitedError`; everything else `ProviderAPIError`. Network failures become `ProviderAPIError` |
+| `client.py` | `InstagramClient`: `requests.Session`, timeouts, `get`, `post` (form body), `download(url, max_bytes)` (CDN file as bytes and content type), `graph_url(path)` (always versioned). `LOGIN_DIALOG_URL`. Translates errors: Graph code 190 becomes `TokenExpiredError`; codes 4, 17, 32, 613 (rate limits), 368 (temporarily blocked) and HTTP 429 become `RateLimitedError`; everything else `ProviderAPIError`. Network failures become `ProviderAPIError` |
 | `provider.py` | `InstagramProvider(BaseProvider)` |
 
 ## Settings (`settings.INSTAGRAM`)
@@ -102,6 +102,8 @@ All calls use the stored account token. Field and metric lists are constants at 
 | `list_media` | `GET /{ig_id}/media?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit&after`. `media_type` IMAGE/VIDEO/CAROUSEL_ALBUM and `media_product_type` FEED/REELS/STORY map to `MediaType`/`ProductType`. The next cursor is `paging.cursors.after`, used only when `paging.next` exists |
 | `get_media` | `GET /{media_id}?fields=<same fields as list_media>`. Used for posts we learn about from a comment, and by `finish_publish` |
 | `list_comments` | `GET /{media_id}/comments?fields=id,text,timestamp,username,from,parent_id&limit&after`. Top level comments only |
+| `post_material` | `GET /{media_id}?fields=media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}`: the image, a video's `thumbnail_url` (cover), or each carousel child's (video child: its cover), first `image_limit`. Then `GET /{media_id}/comments?fields=text,username,from,like_count,replies{text,username,from,like_count}&limit=50` (`MATERIAL_COMMENT_PAGE`): the `comment_limit` most liked, `from_account` when `from.id` is the account's id |
+| `download_image` | `InstagramClient.download(url, max_bytes)`: streamed CDN `GET`, refused over `max_bytes`; not an `image/*` type is a `ProviderAPIError` |
 | `fetch_media_insights` | `GET /{media_id}/insights?metric=...`. Feed: views, reach, likes, comments, saved, shares, total_interactions. Reels add `ig_reels_avg_watch_time`, `ig_reels_video_view_total_time` (ms). Stories: views, reach, replies, shares, total_interactions. Values from `values[0].value` |
 | `fetch_account_insights` | `GET /{ig_id}/insights?metric=views,reach,accounts_engaged,total_interactions&period=day&metric_type=total_value&since&until`. Values from `total_value.value` |
 | `publishing_quota` | `GET /{ig_id}/content_publishing_limit?fields=config,quota_usage` (100 API posts per 24 hours) |

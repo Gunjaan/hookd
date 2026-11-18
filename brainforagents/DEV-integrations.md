@@ -54,6 +54,8 @@ class BaseProvider(ABC):
     list_media(account, limit, after="") -> MediaPage
     get_media(account, media_external_id) -> MediaItem
     list_comments(account, media_external_id, limit, after="") -> CommentPage
+    post_material(account, media_external_id, image_limit, comment_limit) -> PostMaterial   # read by the agent's brain
+    download_image(url, max_bytes) -> (bytes, mime type)   # ProviderAPIError when not an image or too big
     fetch_media_insights(account, media_external_id, product_type) -> list[Metric]
     fetch_account_insights(account, days) -> list[Metric]
     publishing_quota(account) -> PublishQuota
@@ -67,7 +69,8 @@ DTOs in `providers/types.py`: `TokenBundle(access_token, expires_at, refresh_tok
 `IncomingComment(account_external_id, external_id, text, author_external_id, author_username, media_external_id,
 parent_external_id, commented_at, payload)`, `MediaItem(external_id, media_type, product_type, caption, permalink,
 media_url, thumbnail_url, posted_at, like_count, comments_count)`, `MediaPage(items, next_cursor)`,
-`Metric(key, label, value, unit)`, `CommentPage(comments, next_cursor)`, `PublishStatus(state, detail)`,
+`Metric(key, label, value, unit)`, `CommentPage(comments, next_cursor)`,
+`PostComment(text, author_username, like_count, from_account, replies)`, `PostMaterial(image_urls, comments)`, `PublishStatus(state, detail)`,
 `PublishQuota(used, limit)` with `remaining`. An empty `next_cursor` means there is no next page.
 
 `Capability` (in `constants.py`): `public_reply`, `private_reply`, `direct_message`, `hide_comment`,

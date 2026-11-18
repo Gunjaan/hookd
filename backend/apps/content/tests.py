@@ -19,7 +19,8 @@ from apps.content.models import Post, PublishJob
 from apps.content.tasks import poll_publish_job
 from apps.content.templatetags.content_ui import metric_display
 from apps.integrations import model_querysets as account_queries
-from apps.integrations.providers.types import AccountProfile, TokenBundle
+from apps.integrations.providers.instagram.provider import InstagramProvider
+from apps.integrations.providers.types import AccountProfile, PostMaterial, TokenBundle
 
 GRAPH = "https://graph.facebook.com/v27.0/"
 IG_ID = "17841400000000"
@@ -345,6 +346,10 @@ class PublishingTests(StudioTestCase):
         self.graph.on("GET", "container1", {"status_code": "FINISHED"})
         self.graph.on("POST", f"{IG_ID}/media_publish", {"id": "m99"})
         self.graph.on("GET", "m99", media(99, caption="My caption"))
+        # The reply agent reads a published post once (apps.agent learn_from_post); it finds no images or comments here.
+        material = mock.patch.object(InstagramProvider, "post_material", return_value=PostMaterial())
+        material.start()
+        self.addCleanup(material.stop)
         self.containers = []
 
     def _create_container(self, data):

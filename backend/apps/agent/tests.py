@@ -19,8 +19,8 @@ from apps.accounts.model_querysets import create_user
 from apps.agent import model_querysets as queries
 from apps.agent import services, tools
 from apps.agent.constants import DMKind, EventKind, QuestionStatus, ReplyStatus, RunStatus, TicketStatus
-from apps.agent.engines.base import AgentModel, ModelStep
-from apps.agent.engines.simulated import SimulatedAgentModel
+from apps.agent.engines.base import AgentModel, ModelStep, PostReading
+from apps.agent.engines.simulated import SimulatedAgentModel, SimulatedBrainLearner
 from apps.agent.models import (
     AgentAction,
     AgentEvent,
@@ -38,9 +38,10 @@ from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
 from apps.integrations import model_querysets as account_queries
+from apps.integrations.exceptions import ProviderAPIError
 from apps.integrations.models import SocialAccount
 from apps.integrations.providers.instagram.provider import InstagramProvider
-from apps.integrations.providers.types import AccountProfile, IncomingMessage, TokenBundle
+from apps.integrations.providers.types import AccountProfile, IncomingMessage, PostComment, PostMaterial, TokenBundle
 from apps.messaging.models import Conversation
 from apps.messaging.services import record_incoming_messages
 
@@ -126,6 +127,10 @@ class AgentTestCase(TestCase):
         patcher = mock.patch.object(requests.Session, "request", side_effect=self.graph)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Posts show no images or comments unless a test gives some (the Graph parsing is tested in integrations).
+        material = mock.patch.object(InstagramProvider, "post_material", return_value=PostMaterial())
+        self.material = material.start()
+        self.addCleanup(material.stop)
         self.counter = 0
 
     def comment(self, text="Love this", *, author="fan1", media="m1", parent="", age=timedelta(0), account=None) -> Comment:
@@ -1021,19 +1026,57 @@ class LearningTests(AgentTestCase):
         self.assertEqual(
             [fact.text for fact in LearnedFact.objects.order_by("pk")], ["Kurta at Rs 799.", "Sizes 36 to 44"]
         )
-        self.assertTrue(all(fact.post == post and fact.source == "caption" for fact in LearnedFact.objects.all()))
+        self.assertTrue(all(fact.post == post and fact.source == "post" for fact in LearnedFact.objects.all()))
 
         Post.objects.filter(pk=post.pk).update(caption="Price drop: now Rs 699")
-        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption") as learner:
+        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_post") as learner:
             self.handle(self.comment("Nice", media="m2"))
         learner.assert_not_called()
         self.assertEqual(LearnedFact.objects.count(), 2)
+
+    def test_images_and_seller_comments_are_read_and_buyer_topics_noted(self):
+        self.material.return_value = PostMaterial(
+            image_urls=["https://cdn.test/1.jpg", "https://cdn.test/2.jpg"],
+            comments=[
+                PostComment(text="price?", like_count=5, replies=[PostComment(text="@fan Rs 799 only", from_account=True)]),
+                PostComment(text="Sizes 36 to 44 in stock", from_account=True),
+                PostComment(text="It is Rs 500 na", like_count=2),
+            ],
+        )
+        downloads = [(b"jpeg-bytes", "image/jpeg"), ProviderAPIError("gone")]
+        with mock.patch.object(InstagramProvider, "download_image", side_effect=downloads), mock.patch.object(
+            SimulatedBrainLearner, "from_post", autospec=True, side_effect=SimulatedBrainLearner.from_post
+        ) as learner:
+            self.assertEqual(services.learn_from_post(self.post.pk), "learned 2")
+        reading = learner.call_args.args[1]
+        self.assertEqual(reading.images, [(b"jpeg-bytes", "image/jpeg")])
+        self.assertEqual(reading.caption, "New kurta drop")
+        self.assertEqual(
+            sorted((fact.label, fact.text) for fact in LearnedFact.objects.all()),
+            [("Buyers ask about", "price?"), ("Seller reply", "Rs 799 only"), ("Seller reply", "Sizes 36 to 44 in stock")],
+        )
+        self.assertTrue(all(fact.post == self.post and fact.source == "post" for fact in LearnedFact.objects.all()))
+
+    def test_caption_is_still_read_when_the_platform_gives_no_images_or_comments(self):
+        self.post.caption = "Kurta at Rs 799"
+        self.post.save()
+        self.material.side_effect = ProviderAPIError("down")
+        self.assertEqual(services.learn_from_post(self.post.pk), "learned 1")
+        self.assertEqual(LearnedFact.objects.get().text, "Kurta at Rs 799")
+
+    def test_post_with_nothing_to_read_learns_nothing(self):
+        self.post.caption = ""
+        self.post.save()
+        with mock.patch.object(SimulatedBrainLearner, "from_post") as learner:
+            self.assertEqual(services.learn_from_post(self.post.pk), "learned 0")
+        learner.assert_not_called()
+        self.assertTrue(PostBrain.objects.get(post=self.post).learned_at)
 
     def test_caption_read_works_with_the_agent_off(self):
         self.profile.enabled = False
         self.profile.save()
         self.assertEqual(self.handle(self.comment("hi", media="m1")), "ignored")
-        self.assertTrue(PostBrain.objects.get(post=self.post).caption_learned_at)
+        self.assertTrue(PostBrain.objects.get(post=self.post).learned_at)
 
     def test_post_found_through_a_comment_is_read(self):
         self.graph.on("GET", "m7", {"id": "m7", "caption": "Saree at Rs 1200", "media_type": "IMAGE", "media_product_type": "FEED"})
@@ -1053,18 +1096,18 @@ class LearningTests(AgentTestCase):
     def test_learner_failure_is_retried_on_the_next_comment(self):
         from apps.ai.claude import ClaudeError
 
-        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption", side_effect=ClaudeError()):
+        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_post", side_effect=ClaudeError()):
             self.assertEqual(services.learn_from_post(self.post.pk), "failed")
-        self.assertIsNone(PostBrain.objects.get(post=self.post).caption_learned_at)
+        self.assertIsNone(PostBrain.objects.get(post=self.post).learned_at)
         self.post.caption = "Kurta at Rs 799"
         self.post.save()
         self.assertEqual(services.learn_from_post(self.post.pk), "learned 1")
         self.assertEqual(services.learn_from_post(self.post.pk), "already_learned")
 
     def test_learned_facts_answer_comments_and_typed_facts_win(self):
-        PostBrain.objects.create(post=self.post, caption_learned_at=timezone.now())
-        LearnedFact.objects.create(account=self.account, post=self.post, label="Sizes", text="Sizes S to XL", source="caption")
-        LearnedFact.objects.create(account=self.account, label="Delivery", text="Delivery in 9 days", source="caption")
+        PostBrain.objects.create(post=self.post, learned_at=timezone.now())
+        LearnedFact.objects.create(account=self.account, post=self.post, label="Sizes", text="Sizes S to XL", source="post")
+        LearnedFact.objects.create(account=self.account, label="Delivery", text="Delivery in 9 days", source="post")
         self.profile.knowledge = "Delivery: 3 to 5 days across India"
         self.profile.save()
         comment = self.comment("is size XL available?")
@@ -1111,13 +1154,13 @@ class LearningTests(AgentTestCase):
     def test_same_topic_replaces_the_older_fact(self):
         from apps.agent import model_querysets as queries
 
-        queries.save_learned_facts(self.account, [(None, "Delivery", "5 days")], source="caption", source_post=self.post)
+        queries.save_learned_facts(self.account, [(None, "Delivery", "5 days")], source="post", source_post=self.post)
         queries.save_learned_facts(self.account, [(None, "delivery", "3 days")], source="reply", source_post=None)
         self.assertEqual(list(LearnedFact.objects.values_list("text", flat=True)), ["3 days"])
 
     def test_pages_list_learned_facts_and_remove_them(self):
         shop = LearnedFact.objects.create(account=self.account, label="Returns", text="7 day returns", source="reply")
-        LearnedFact.objects.create(account=self.account, post=self.post, label="Price", text="Rs 799", source="caption")
+        LearnedFact.objects.create(account=self.account, post=self.post, label="Price", text="Rs 799", source="post")
         page = self.client.get(reverse("agent-account", args=[self.account.pk]))
         self.assertContains(page, "7 day returns")
         self.assertContains(page, "Plus 1 fact about single posts")
@@ -1201,24 +1244,37 @@ class ClaudeBrainLearnerTests(TestCase):
     @override_settings(AGENT_REPLY_MODEL="cheap-model")
     def test_facts_from_the_model_answer(self):
         from apps.agent.engines.claude import ClaudeBrainLearner
-        from apps.agent.engines.prompts import LEARN_CAPTION_SYSTEM
+        from apps.agent.engines.prompts import LEARN_POST_SCHEMA, LEARN_POST_SYSTEM
 
-        answer = {"facts": [
+        answer = {"buyer_questions": [" Size  chart ", "", "COD"], "facts": [
             {"scope": "post", "label": " Price ", "text": "Rs 799"},
             {"scope": "account", "label": "Delivery", "text": "3 to 5 days"},
             {"scope": "weird", "label": "Sizes", "text": "S to XL"},
             {"scope": "post", "label": "", "text": "no label"},
             "junk",
         ]}
+        reading = PostReading(
+            caption=" Kurta Rs 799 ",
+            images=[(b"jpeg-bytes", "image/jpeg")],
+            comments=[PostComment(text="price?", replies=[PostComment(text="Rs 799", from_account=True)])],
+        )
         with mock.patch("apps.agent.engines.claude.generate_json", return_value=answer) as call:
-            facts = ClaudeBrainLearner().from_caption("Kurta Rs 799")
+            learning = ClaudeBrainLearner().from_post(reading)
         self.assertEqual(
-            [(fact.scope, fact.label, fact.text) for fact in facts],
+            [(fact.scope, fact.label, fact.text) for fact in learning.facts],
             [("post", "Price", "Rs 799"), ("account", "Delivery", "3 to 5 days"), ("post", "Sizes", "S to XL")],
         )
-        self.assertEqual(call.call_args.args, ("cheap-model", "Kurta Rs 799"))
-        self.assertEqual(call.call_args.kwargs["system"], LEARN_CAPTION_SYSTEM)
-        self.assertNotIn("{", LEARN_CAPTION_SYSTEM)
+        self.assertEqual(learning.buyer_questions, ["Size chart", "COD"])
+        model, content = call.call_args.args
+        self.assertEqual(model, "cheap-model")
+        self.assertEqual([block["type"] for block in content], ["image", "text"])
+        self.assertEqual(
+            json.loads(content[1]["text"]),
+            {"caption": "Kurta Rs 799", "comments": [{"by": "buyer", "text": "price?", "replies": [{"by": "seller", "text": "Rs 799"}]}]},
+        )
+        self.assertEqual(call.call_args.kwargs["system"], LEARN_POST_SYSTEM)
+        self.assertEqual(call.call_args.kwargs["schema"], LEARN_POST_SCHEMA)
+        self.assertNotIn("{", LEARN_POST_SYSTEM)
 
 
 class RunLimitTests(AgentTestCase):

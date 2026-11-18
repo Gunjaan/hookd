@@ -322,3 +322,70 @@ class WebhookFieldsTests(TestCase):
         with mock.patch.object(InstagramClient, "post", return_value={"success": True}) as post:
             InstagramProvider().subscribe_webhooks(account)
         self.assertEqual(post.call_args.args[1]["subscribed_fields"], "comments,messages")
+
+
+@override_settings(INSTAGRAM=INSTAGRAM_TEST_SETTINGS)
+class PostMaterialTests(TestCase):
+    """What the reply agent's brain reads from a post besides its caption."""
+
+    def setUp(self):
+        from apps.integrations.providers.instagram.provider import InstagramProvider
+
+        user = create_user(email="c@example.com", password="a-strong-pass-123")
+        self.account = queries.upsert_account(
+            user=user, platform="instagram", profile=AccountProfile(external_id="1784"), tokens=TokenBundle(access_token="t")
+        )
+        self.provider = InstagramProvider()
+
+    def material(self, media: dict, comments: list[dict], **limits):
+        from apps.integrations.providers.instagram.client import InstagramClient
+
+        def graph(url, params):
+            return {"data": comments} if url.endswith("/comments") else media
+
+        with mock.patch.object(InstagramClient, "get", side_effect=graph):
+            return self.provider.post_material(
+                self.account, "m1", image_limit=limits.get("image_limit", 5), comment_limit=limits.get("comment_limit", 15)
+            )
+
+    def test_image_video_cover_and_carousel_slides(self):
+        self.assertEqual(self.material({"media_type": "IMAGE", "media_url": "img"}, []).image_urls, ["img"])
+        video = {"media_type": "VIDEO", "media_url": "mp4", "thumbnail_url": "cover"}
+        self.assertEqual(self.material(video, []).image_urls, ["cover"])
+        carousel = {"media_type": "CAROUSEL_ALBUM", "children": {"data": [
+            {"media_type": "IMAGE", "media_url": "a"},
+            {"media_type": "VIDEO", "media_url": "b.mp4", "thumbnail_url": "b"},
+            {"media_type": "IMAGE", "media_url": "c"},
+        ]}}
+        self.assertEqual(self.material(carousel, [], image_limit=2).image_urls, ["a", "b"])
+
+    def test_most_liked_comments_with_seller_replies(self):
+        comments = [
+            {"text": "nice", "from": {"id": "9", "username": "fan"}, "like_count": 1},
+            {"text": "price?", "from": {"id": "8", "username": "buyer"}, "like_count": 7, "replies": {"data": [
+                {"text": "Rs 799", "from": {"id": "1784", "username": "shop"}},
+            ]}},
+            {"text": "Sizes 36 to 44", "from": {"id": "1784", "username": "shop"}, "like_count": 3},
+        ]
+        material = self.material({"media_type": "IMAGE"}, comments, comment_limit=2)
+        self.assertEqual(material.image_urls, [])
+        self.assertEqual([comment.text for comment in material.comments], ["price?", "Sizes 36 to 44"])
+        self.assertEqual([comment.from_account for comment in material.comments], [False, True])
+        reply = material.comments[0].replies[0]
+        self.assertEqual((reply.text, reply.author_username, reply.from_account), ("Rs 799", "shop", True))
+
+    def download(self, content_type: str, chunks: list[bytes]):
+        response = mock.MagicMock(ok=True, headers={"Content-Type": content_type})
+        response.__enter__.return_value = response
+        response.iter_content.return_value = chunks
+        with mock.patch.object(requests.Session, "get", return_value=response):
+            return self.provider.download_image("https://cdn.test/a.jpg", max_bytes=10)
+
+    def test_download_image(self):
+        from apps.integrations.exceptions import ProviderAPIError
+
+        self.assertEqual(self.download("image/jpeg; charset=x", [b"abc", b"def"]), (b"abcdef", "image/jpeg"))
+        with self.assertRaises(ProviderAPIError):
+            self.download("image/jpeg", [b"123456", b"789012"])
+        with self.assertRaises(ProviderAPIError):
+            self.download("text/html", [b"<html>"])

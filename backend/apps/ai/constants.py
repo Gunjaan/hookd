@@ -16,7 +16,7 @@ class Purpose(models.TextChoices):
     COMMENT_AGENT = "comment_agent", "Agent: comment agent step"
     REPLY_PREVIEW = "reply_preview", "Agent: reply preview"
     DM_FILTER = "dm_filter", "Agent: is a new DM for the shop"
-    LEARN_CAPTION = "learn_caption", "Agent: learn from caption"
+    LEARN_POST = "learn_post", "Agent: learn from post"
     LEARN_REPLY = "learn_reply", "Agent: learn from reply"
     OTHER = "other", "Other"
 

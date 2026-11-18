@@ -4,14 +4,15 @@ from django.conf import settings
 
 from apps.agent.engines import prompts
 from apps.agent.constants import FactScope
-from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep
-from apps.ai.claude import generate_json, run_step
+from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep, PostLearning, PostReading
+from apps.ai.claude import generate_json, image_block, run_step
 
 # Ceilings, not charges: they leave room for the short thinking that comes before the answer.
 LEARN_MAX_OUTPUT_TOKENS = 4000
 FILTER_MAX_OUTPUT_TOKENS = 300
 LABEL_MAX_LENGTH = 80
 FACT_MAX_LENGTH = 300
+BUYER_QUESTION_LIMIT = 5
 
 
 class ClaudeAgentModel(AgentModel):
@@ -55,21 +56,23 @@ def _facts(data: dict) -> list[LearnedFactDraft]:
 class ClaudeBrainLearner(BrainLearner):
     name = "claude"
 
-    def _ask(self, system: str, request: str) -> list[LearnedFactDraft]:
-        data = generate_json(
-            settings.AGENT_REPLY_MODEL,
-            request,
-            system=system,
-            schema=prompts.LEARN_SCHEMA,
-            max_output_tokens=LEARN_MAX_OUTPUT_TOKENS,
+    def _ask(self, system: str, content: str | list, schema: dict) -> dict:
+        return generate_json(
+            settings.AGENT_REPLY_MODEL, content, system=system, schema=schema, max_output_tokens=LEARN_MAX_OUTPUT_TOKENS
         )
-        return _facts(data)
 
-    def from_caption(self, caption: str) -> list[LearnedFactDraft]:
-        return self._ask(prompts.LEARN_CAPTION_SYSTEM, caption.strip()[: prompts.CAPTION_MAX_LENGTH])
+    def from_post(self, post: PostReading) -> PostLearning:
+        request = prompts.learn_post_request(caption=post.caption, comments=post.comments)
+        content = [*(image_block(data, mime_type) for data, mime_type in post.images), {"type": "text", "text": request}]
+        data = self._ask(prompts.LEARN_POST_SYSTEM, content, prompts.LEARN_POST_SCHEMA)
+        questions = (" ".join(str(item).split())[:LABEL_MAX_LENGTH] for item in data.get("buyer_questions") or [])
+        return PostLearning(facts=_facts(data), buyer_questions=[item for item in questions if item][:BUYER_QUESTION_LIMIT])
 
     def from_reply(self, *, question: str, answer: str, post_caption: str) -> list[LearnedFactDraft]:
-        return self._ask(
-            prompts.LEARN_REPLY_SYSTEM,
-            prompts.learn_reply_request(question=question, answer=answer, post_caption=post_caption),
+        return _facts(
+            self._ask(
+                prompts.LEARN_REPLY_SYSTEM,
+                prompts.learn_reply_request(question=question, answer=answer, post_caption=post_caption),
+                prompts.LEARN_SCHEMA,
+            )
         )

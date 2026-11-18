@@ -31,7 +31,7 @@ from apps.agent.constants import (
     ReplyStatus,
     RunStatus,
 )
-from apps.agent.engines.base import LearnedFactDraft
+from apps.agent.engines.base import LearnedFactDraft, PostReading
 from apps.agent.engines.registry import get_learner, get_model
 from apps.agent.exceptions import (
     LearnedFactNotFound,
@@ -221,7 +221,7 @@ def handle_new_comment(comment_id: int) -> str:
     # Stores posts made outside Hookd even when the agent is off, so the studio knows about them.
     post = content_services.ensure_post(account, comment.media_external_id)
     if post is not None:
-        # Read the caption the first time someone comments on the post, before answering, so this run can use it.
+        # Read the post the first time someone comments on it, before answering, so this run can use it.
         learn_from_post(post.pk)
     profile = queries.get_profile(account)
     if profile is None or not profile.enabled or not supports_replies(account):
@@ -866,24 +866,53 @@ def _placed(facts: list[LearnedFactDraft], post: Post | None) -> list[tuple[Post
     return [(post if fact.scope == FactScope.POST else None, fact.label, fact.text) for fact in facts]
 
 
+BUYER_QUESTIONS_LABEL = "Buyers ask about"
+
+
+def _read_post(post: Post) -> PostReading:
+    """The post's caption plus what the platform shows besides it: images (a video's cover) and the most liked
+    comments with the replies under them. A part the platform cannot give is left out, so the caption is still read."""
+    limits = settings.POST_LEARN_LIMITS
+    provider = get_provider(post.account.platform)
+    try:
+        material = provider.post_material(
+            post.account, post.external_id, image_limit=limits["IMAGES"], comment_limit=limits["COMMENTS"]
+        )
+    except HookdError as exc:
+        logger.warning("Could not read the images and comments of post %s: %s", post.pk, exc.message)
+        return PostReading(caption=post.caption)
+    images = []
+    for url in material.image_urls:
+        try:
+            images.append(provider.download_image(url, max_bytes=limits["IMAGE_MAX_BYTES"]))
+        except HookdError as exc:
+            logger.warning("Skipped an image of post %s: %s", post.pk, exc.message)
+    return PostReading(caption=post.caption, images=images, comments=material.comments)
+
+
 def learn_from_post(post_id: int) -> str:
-    """Learn the facts in a post's caption, once per post. Returns the outcome (stored as task result)."""
+    """Learn the facts a post shows (caption, images, the seller's comments) and the topics buyers ask about, once per
+    post. Returns the outcome (stored as task result)."""
     post = post_queries.get_post(post_id)
     if post is None:
         return "missing"
-    if not queries.claim_caption_learning(post):
+    if not queries.claim_post_learning(post):
         return "already_learned"
-    if not post.caption.strip():
+    reading = _read_post(post)
+    if not (reading.caption.strip() or reading.images or reading.comments):
         return "learned 0"
     try:
-        with attributed(Purpose.LEARN_CAPTION, account=post.account, subject=post):
-            facts = get_learner().from_caption(post.caption)
+        with attributed(Purpose.LEARN_POST, account=post.account, subject=post):
+            learning = get_learner().from_post(reading)
     except HookdError as exc:
-        queries.release_caption_learning(post)
-        logger.warning("Could not learn from the caption of post %s: %s", post.pk, exc.message)
+        queries.release_post_learning(post)
+        logger.warning("Could not learn from post %s: %s", post.pk, exc.message)
         return "failed"
-    queries.save_learned_facts(post.account, _placed(facts, post), source=FactSource.CAPTION, source_post=post)
-    return f"learned {len(facts)}"
+    rows = _placed(learning.facts, post)
+    if learning.buyer_questions:
+        rows.append((post, BUYER_QUESTIONS_LABEL, ", ".join(learning.buyer_questions)))
+    queries.save_learned_facts(post.account, rows, source=FactSource.POST, source_post=post)
+    return f"learned {len(learning.facts)}"
 
 
 def learn_from_reply(reply_id: int) -> str:

@@ -44,6 +44,8 @@ from apps.integrations.providers.types import (
     MediaItem,
     MediaPage,
     Metric,
+    PostComment,
+    PostMaterial,
     PublishQuota,
     PublishStatus,
     SentMessage,
@@ -72,6 +74,11 @@ MEDIA_FIELDS = (
     "comments_count",
 )
 COMMENT_FIELDS = ("id", "text", "timestamp", "username", "from", "parent_id")
+# Read by post_material: the post's images and its comments with likes and the replies under them.
+MATERIAL_MEDIA_FIELDS = "media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}"
+MATERIAL_COMMENT_FIELDS = "text,username,from,like_count,replies{text,username,from,like_count}"
+# Comments fetched to pick the most liked ones from (one Graph page).
+MATERIAL_COMMENT_PAGE = 50
 
 MEDIA_TYPES = {
     "IMAGE": MediaType.IMAGE,
@@ -205,6 +212,24 @@ def _media_item(data: dict) -> MediaItem:
         posted_at=_iso_timestamp(data.get("timestamp")),
         like_count=data.get("like_count"),
         comments_count=data.get("comments_count"),
+    )
+
+
+def _image_url(item: dict) -> str:
+    """The still image of a media item: the cover for a video, otherwise the media itself."""
+    if item.get("media_type") == "VIDEO":
+        return item.get("thumbnail_url", "")
+    return item.get("media_url", "")
+
+
+def _post_comment(item: dict, account_external_id: str) -> PostComment:
+    author = item.get("from") or {}
+    return PostComment(
+        text=item.get("text", ""),
+        author_username=author.get("username") or item.get("username", ""),
+        like_count=int(item.get("like_count") or 0),
+        from_account=str(author.get("id", "")) == account_external_id,
+        replies=[_post_comment(reply, account_external_id) for reply in (item.get("replies") or {}).get("data") or []],
     )
 
 
@@ -465,6 +490,27 @@ class InstagramProvider(BaseProvider):
                 )
             )
         return CommentPage(comments=comments, next_cursor=_next_cursor(body))
+
+    def post_material(self, account, media_external_id: str, *, image_limit: int, comment_limit: int) -> PostMaterial:
+        media = self.client.get(
+            self.client.graph_url(media_external_id),
+            {"fields": MATERIAL_MEDIA_FIELDS, "access_token": account.access_token},
+        )
+        items = (media.get("children") or {}).get("data") or [media]
+        image_urls = [url for url in (_image_url(item) for item in items) if url][:image_limit]
+        body = self.client.get(
+            self.client.graph_url(f"{media_external_id}/comments"),
+            {"fields": MATERIAL_COMMENT_FIELDS, "limit": MATERIAL_COMMENT_PAGE, "access_token": account.access_token},
+        )
+        comments = [_post_comment(item, account.external_id) for item in body.get("data") or []]
+        top = sorted(comments, key=lambda comment: -comment.like_count)[:comment_limit]
+        return PostMaterial(image_urls=image_urls, comments=top)
+
+    def download_image(self, url: str, *, max_bytes: int) -> tuple[bytes, str]:
+        data, content_type = self.client.download(url, max_bytes=max_bytes)
+        if not content_type.startswith("image/"):
+            raise ProviderAPIError("Instagram did not return an image.")
+        return data, content_type
 
     # Insights
 

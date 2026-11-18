@@ -37,8 +37,9 @@ class PostBrain(TimeStampedModel):
     post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name="brain")
     knowledge = models.TextField(blank=True, help_text="Facts about this post, one per line.")
     agent_enabled = models.BooleanField(default=True)
-    caption_learned_at = models.DateTimeField(
-        null=True, blank=True, help_text="When the agent read this post's caption. Set once, so it reads it only once."
+    learned_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the agent read this post (caption, images, top comments). Set once, so it reads it only once.",
     )
 
     def __str__(self) -> str:

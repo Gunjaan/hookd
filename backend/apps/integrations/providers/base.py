@@ -20,6 +20,7 @@ from apps.integrations.providers.types import (
     MediaItem,
     MediaPage,
     Metric,
+    PostMaterial,
     PublishQuota,
     PublishStatus,
     SentMessage,
@@ -109,6 +110,16 @@ class BaseProvider(ABC):
 
     def list_comments(self, account: "SocialAccount", media_external_id: str, *, limit: int, after: str = "") -> CommentPage:
         """One page of top level comments on a post."""
+        raise FeatureNotSupported()
+
+    def post_material(
+        self, account: "SocialAccount", media_external_id: str, *, image_limit: int, comment_limit: int
+    ) -> PostMaterial:
+        """A post's images (a video's cover) and its most liked top level comments with the replies under them."""
+        raise FeatureNotSupported()
+
+    def download_image(self, url: str, *, max_bytes: int) -> tuple[bytes, str]:
+        """An image from the platform's CDN as (bytes, mime type). Raises ProviderAPIError when it is not one."""
         raise FeatureNotSupported()
 
     # Replies (Capability.PUBLIC_REPLY)

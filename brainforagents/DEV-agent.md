@@ -6,7 +6,7 @@ support ticket, come back later). There are no rules to set up. Hooky acts on it
 guessing; code, not the model, enforces the safety checks and Meta's limits. The model is pluggable: **Claude Haiku**
 (`ClaudeAgentModel`), with the word matching **simulated model** standing in when `ANTHROPIC_API_KEY` is empty and in
 tests. Brains are filled by the creator on the agent page and the post page, by the post studio's "Teach your reply
-agent" questions (`DEV-creatives.md`), and **on their own**: captions, inbox replies the creator rewrote, and facts the
+agent" questions (`DEV-creatives.md`), and **on their own**: posts (caption, images, top comments), inbox replies the creator rewrote, and facts the
 agent saves (see "Learned brain"). Sending is slow and capped on purpose so Hookd stays inside Meta's rate limits and
 anti-spam rules.
 
@@ -15,7 +15,7 @@ anti-spam rules.
 1. **A comment** stored by `comments.services.record_incoming_comments` queues `tasks.handle_comment(comment_id)` on
    commit (never for the account's own comments; studio history never queues the agent). `services.handle_new_comment`
    calls `content.services.ensure_post` (fetches posts made outside Hookd, even with the agent off) and
-   `learn_from_post` (reads the caption once, synchronously, also with the agent off). It then ignores the comment (no
+   `learn_from_post` (reads the post once, synchronously, also with the agent off). It then ignores the comment (no
    row) when the agent is off, a reply or run already exists, or the platform has no `public_reply` capability; stores
    a `skipped` reply when the video brain turns the agent off, it is a thread reply and `reply_to_threads` is off, or it
    is older than `MAX_COMMENT_AGE_HOURS`, or the person already started `MAX_RUNS_PER_BUYER_PER_DAY` comment runs in
@@ -125,8 +125,8 @@ what the creator typed.
 
 | Source | Trigger | What is learned |
 |---|---|---|
-| Post caption, first comment | `handle_new_comment` calls `learn_from_post` for the comment's post (stored, or just fetched by `ensure_post`) | `learn_from_post`: claims the post (`claim_caption_learning`: a conditional update that sets `PostBrain.caption_learned_at` only while it is empty, so only one caller ever wins), then `learner.from_caption(caption)`. Once claimed it never reads that post again (`already_learned`), even if the caption changes. An empty caption learns nothing but stays claimed. A learner error releases the claim (`release_caption_learning`), logs and returns `failed`, so the next comment retries |
-| Post caption, published from Hookd | `receivers.learn_from_published_caption` on `content.signals.post_published`: queues `tasks.learn_from_post` on commit | Same as above |
+| Post, first comment | `handle_new_comment` calls `learn_from_post` for the comment's post (stored, or just fetched by `ensure_post`) | `learn_from_post`: claims the post (`claim_post_learning`: a conditional update that sets `PostBrain.learned_at` only while it is empty, so only one caller ever wins), then `_read_post` builds a `PostReading`: the caption, plus the provider's `post_material` (images: the image, a video's cover frame, carousel slides; the most liked comments with the replies under them) within `POST_LEARN_LIMITS`, each image fetched with `download_image`. A platform error there leaves out the images and comments (logged) and the caption is still read; a failed image is skipped. Then `learner.from_post(reading)` returns facts (only from the caption, the images and the seller's own comments, never a buyer's words) and `buyer_questions` (topics buyers raise), saved as one post fact labelled `Buyers ask about` (`BUYER_QUESTIONS_LABEL`), comma separated. Once claimed it never reads that post again (`already_learned`), even if the caption or comments change, so a post read at its first comment sees few comments. Nothing to read (no caption, images or comments) learns nothing but stays claimed. A learner error releases the claim (`release_post_learning`), logs and returns `failed`, so the next comment retries |
+| Post, published from Hookd | `receivers.learn_from_published_caption` on `content.signals.post_published`: queues `tasks.learn_from_post` on commit | Same as above |
 | Inbox reply | `approve_reply` when `CommentReply.written_by_creator` (the sent text differs from the draft, leading @mention ignored): queues `tasks.learn_from_reply` on commit | `learn_from_reply`: `learner.from_reply(question, answer, post_caption)`, the facts the creator's answer states, linked to the reply (`source_reply`) |
 | The agent | `save_fact(label, fact, scope)`, usually right after the seller answered `ask_seller` | One fact, `FactSource.AGENT`, linked to the run (`source_run`) |
 
@@ -138,7 +138,7 @@ Using them: `brain_parts` (the `search_brain` tool) loads up to `LEARNED_FACTS_L
 facts and appends them as `Label: text` lines after the creator's brain (`_brain_text`). A learned fact whose label
 matches a creator line (`Label: ...`) is left out, so what the creator typed always wins. The whole brain comes back on
 every call (the topic is only for the trail), so "kitne ka hai" or "cost" never misses a "Price" line. The caption is
-read with `get_post`.
+read with `get_post`. `AGENT_SYSTEM` tells the agent a `Buyers ask about` line is a list of topics, never an answer.
 
 UI: the agent page's "What Hooky learned" card lists shop facts and counts post facts; the post page and post modal list
 the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-forget`).
@@ -164,21 +164,23 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 | `AGENT_REPLY_MODEL` | env `CLAUDE_REPLY_MODEL`, else `claude-haiku-5-5` | Model for `ClaudeAgentModel` and `ClaudeBrainLearner` |
 | `HOOKD_BRAIN_LEARNER` | `...claude.ClaudeBrainLearner` with a key and not testing, else `...simulated.SimulatedBrainLearner` | Dotted path to a `BrainLearner` |
 | `AGENT_REPLY_LIMITS` | `MIN_SPACING_SECONDS` 45, `JITTER_SECONDS` 30, `MAX_PER_HOUR` 20, `MAX_PER_DAY` 150, `MAX_SAME_TEXT_PER_HOUR` 3, `MAX_COMMENT_AGE_HOURS` 24, `RATE_LIMIT_PAUSE_MINUTES` 60 | Sending, read by `services.reply_limit` |
+| `POST_LEARN_LIMITS` | `IMAGES` 5, `COMMENTS` 15, `IMAGE_MAX_BYTES` 5 MB | How much of a post `learn_from_post` reads: images sent to the learner, top comments, largest image downloaded |
 | `AGENT_LOOP_LIMITS` | `DM_BATCH_SECONDS` 10 (0 in tests, eager Celery ignores the delay), `MAX_STEPS` 8, `MAX_RUN_STEPS` 40, `MAX_QUESTIONS` 3, `QUESTION_EXPIRES_HOURS` 24, `MAX_FOLLOWUPS` 2, `FOLLOWUP_MAX_HOURS` 167, `PRIVATE_REPLY_MAX_HOURS` 167, `MAX_RUNS_PER_BUYER_PER_DAY` 10, `STALE_RUN_MINUTES` 10, `MAX_OUTPUT_TOKENS` 4000 | How long a buyer DM waits for the next one, model calls per turn and per run, seller questions and their expiry, follow-ups, private reply window (7 days minus 1 h), comment runs per person a day, dead worker takeover, output ceiling per call |
 
 ## Engines (`engines/`)
 
 - `base.py`: `ModelStep(content, stop_reason)` and the `AgentModel` ABC (`name`, `step(system, tools, messages)`,
   content blocks in the Claude Messages format; `is_shop_message(text)`, whether a new person's first DM is for the
-  shop). `LearnedFactDraft(scope, label, text)` and the `BrainLearner` ABC
-  (`name`, `from_caption`, `from_reply`).
+  shop). `LearnedFactDraft(scope, label, text)`, `PostReading(caption, images: [(bytes, mime type)], comments: [PostComment])`,
+  `PostLearning(facts, buyer_questions)` and the `BrainLearner` ABC (`name`, `from_post`, `from_reply`).
 - `claude.py`: `ClaudeAgentModel.is_shop_message` is one `generate_json` call (`DM_FILTER_SYSTEM`, `DM_FILTER_SCHEMA`
   `{"shop": bool}`, text cut to `DM_FILTER_MAX_LENGTH` 300, max 300 output tokens). `ClaudeAgentModel.step` calls `ai.claude.run_step` (tools, `tool_choice` auto, effort low, top level
   `cache_control`, `MAX_OUTPUT_TOKENS`); the assistant content comes back as plain dicts, thinking blocks included, and is
   sent back unchanged. A thinking block is bound to the system prompt and tools it was written under, so a deploy that
   changes either would get every stored run refused (400 "bound to a different conversation"); `run_step` sends
   `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`), and
-  the API drops those old blocks and the run goes on with its text, tool calls and results. `ClaudeBrainLearner`: one `generate_json` call, max 4000 output tokens; facts without a label or
+  the API drops those old blocks and the run goes on with its text, tool calls and results. `ClaudeBrainLearner`: one `generate_json` call, max 4000 output tokens (`from_post` sends the images as
+  image blocks, then the `learn_post_request` text; `buyer_questions` cut to 5 of 80 characters); facts without a label or
   text are dropped, an unknown scope becomes `post`, labels cut to 80 and texts to 300 characters.
 - `prompts.py`: `AGENT_SYSTEM` (constant): who Hooky is; look facts up first, only facts from tools, numbers without a
   tool are refused; missing fact -> `ask_seller`, then `save_fact`; praise -> public thanks, interest -> DM or a
@@ -186,13 +188,15 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
   before `create_ticket`, tell the ticket number; spam, personal chat and other accounts' posts -> nothing; buyer's language and script, public replies start
   with @username under 200 characters, DMs under 500 without @mention, the voice, no hashtags, at most 1 emoji; never
   claim an action not taken; end with one sentence for the seller. `TOOLS` (constant order, `strict`, every property
-  required, `additionalProperties: false`). Learner prompts (constants): `LEARN_RULES`, `LEARN_CAPTION_SYSTEM` (at most
-  12 facts), `LEARN_REPLY_SYSTEM` (at most 3), `LEARN_SCHEMA`, `learn_reply_request`. `CAPTION_MAX_LENGTH` 2200.
+  required, `additionalProperties: false`). Learner prompts (constants): `LEARN_RULES`, `LEARN_POST_SYSTEM` (at most
+  15 facts, buyer words are never facts, up to 5 buyer topics), `LEARN_REPLY_SYSTEM` (at most 3), `LEARN_SCHEMA`, `LEARN_POST_SCHEMA` (facts + `buyer_questions`), `learn_post_request` (JSON with the caption and the comments, each `by` `seller` or `buyer`, cut at `COMMENT_MAX_LENGTH` 300), `learn_reply_request`. `CAPTION_MAX_LENGTH` 2200.
 - `simulated.py`: `SimulatedAgentModel`: `search_brain` on the comment, then `reply_to_comment` with the brain line
   sharing the most words (stop words dropped, plural "s" ignored, heading lines skipped); none and a "?" ->
   `ask_seller`, and the seller's answer becomes the reply; otherwise "Thank you so much!". `is_shop_message`: any of
   `SHOP_WORDS` (price, size, order, ship, kitna...). Never DMs, saves, tickets or
-  follows up. `SimulatedBrainLearner`: caption sentences with a digit become post facts labelled `Caption` (at most 8);
+  follows up. `SimulatedBrainLearner` (ignores images): caption sentences with a digit become post facts labelled `Caption`, and
+  sentences with a digit in the seller's own comments and replies `Seller reply` (at most 8 together); buyer comments with
+  a "?" become buyer questions (at most 5);
   a rewritten reply becomes one post fact labelled with the question.
 - `registry.py`: `get_model()`, `get_learner()`.
 
@@ -203,8 +207,8 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 | Model | Fields |
 |---|---|
 | `AgentProfile` (one per `SocialAccount`, `related_name="agent_profile"`, lazy) | `enabled` (False), `voice`, `knowledge` (account brain), `reply_to_threads` (False), `approve_before_sending` (False), `paused_until`, `pause_reason`, `next_send_at` |
-| `PostBrain` (one per `content.Post`, `related_name="brain"`) | `knowledge` (video brain), `agent_enabled` (True), `caption_learned_at` |
-| `LearnedFact` | `account`, `post` (empty = shop wide), `label`, `text`, `source` (`caption`, `reply`, `agent`), `source_post`, `source_reply` (`related_name="learned_facts"`), `source_run` (`related_name="learned_facts"`), all SET_NULL. Property `line`. Newest first |
+| `PostBrain` (one per `content.Post`, `related_name="brain"`) | `knowledge` (video brain), `agent_enabled` (True), `learned_at` (the post was read) |
+| `LearnedFact` | `account`, `post` (empty = shop wide), `label`, `text`, `source` (`post`, `reply`, `agent`), `source_post`, `source_reply` (`related_name="learned_facts"`), `source_run` (`related_name="learned_facts"`), all SET_NULL. Property `line`. Newest first |
 | `CommentReply` (one per `comments.Comment`, `related_name="agent_reply"`) | `status` (`ReplyStatus`), `draft_text`, `final_text` (property `written_by_creator`), `decision` JSON (`engine`, `reason`, `approval`), `scheduled_for`, `sent_at`, `reply_external_id`, `error`, `attempts` |
 | `AgentRun` | `account`, `comment` (OneToOne, `related_name="agent_run"`, empty for DM started runs), `conversation` (`messaging.Conversation`, SET_NULL), `buyer_external_id`, `buyer_username`, `status` (`RunStatus`: `queued`, `running`, `waiting_seller`, `waiting_followup`, `done`, `handed_off`, `failed`), `messages` (transcript), `held_results`, `steps`, `followups_used`, `private_reply_used_at`, `wake_at`, `outcome`, `error`. Newest first |
 | `AgentEvent` (`related_name="events"`) | `run`, `kind` (`EventKind`: `comment`, `seller_answer`, `dm`, `followup`), `payload` (`message_id`, `question_id` or `note`), `available_at`, `processed_at` |
@@ -218,7 +222,7 @@ Choices in `constants.py`. All in the Django admin (runs with their events and a
 ## Services (`services.py`) and the loop (`loop.py`)
 
 Every model and learner call runs inside `ai.services.attributed`: `comment_agent` (the run's account, subject the
-comment or, for a DM run, the run), `reply_preview`, `learn_caption`, `learn_reply` (`DEV-ai.md`).
+comment or, for a DM run, the run), `reply_preview`, `learn_post`, `learn_reply` (`DEV-ai.md`).
 
 | Function | Does |
 |---|---|
@@ -299,5 +303,7 @@ handlers and are strict. Instagram reply and DM text rules. Run limits: a long c
 a crash ends the run with nothing pending; a dead worker's run is taken over after 10 minutes; at most 3 seller
 questions; an unanswered question expires and the run wraps up; a follow-up is dropped when the buyer writes back, and
 without a model call when no DM is allowed; a follow-up cannot chain; the same problem is not ticketed twice; one
-person cannot start endless runs; wrong tool arguments are an error but tool bugs are not hidden. Learned brain and
-Claude learner as before.
+person cannot start endless runs; wrong tool arguments are an error but tool bugs are not hidden. Learned brain: a post is read once
+(caption, images, seller comments, buyer topics; caption only when the platform fails; a failed image skipped; nothing
+to read), learner failure retried, published post read. Claude learner: image blocks then the JSON text, schema, facts
+and buyer topics cleaned. Agent tests stub `post_material` (no images or comments) unless a test gives some.

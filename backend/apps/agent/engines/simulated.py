@@ -8,7 +8,7 @@ anything else gets a thank you. It never DMs, saves facts, opens tickets or sche
 import re
 
 from apps.agent.constants import FactScope
-from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep
+from apps.agent.engines.base import AgentModel, BrainLearner, LearnedFactDraft, ModelStep, PostLearning, PostReading
 
 WORD_PATTERN = re.compile(r"\w+")
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
@@ -110,7 +110,8 @@ class SimulatedAgentModel(AgentModel):
 
 SENTENCE_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
 TAG_PATTERN = re.compile(r"[#@]\w+")
-CAPTION_FACT_LIMIT = 8
+POST_FACT_LIMIT = 8
+BUYER_QUESTION_LIMIT = 5
 FACT_MAX_LENGTH = 300
 LABEL_MAX_LENGTH = 80
 
@@ -119,19 +120,34 @@ def _clean(text: str) -> str:
     return " ".join(TAG_PATTERN.sub("", text).split())
 
 
+def _number_sentences(text: str) -> list[str]:
+    sentences = (_clean(part) for part in SENTENCE_PATTERN.split(text))
+    return [sentence for sentence in sentences if any(char.isdigit() for char in sentence)]
+
+
 class SimulatedBrainLearner(BrainLearner):
-    """Stand-in learner: caption sentences with a number in them (prices, sizes, dates) become post facts, and the
+    """Stand-in learner: sentences with a number in them (prices, sizes, dates) in the caption or in the seller's own
+    comments become post facts, buyer comments with a "?" become buyer questions (images are not read), and the
     creator's answer becomes a fact labelled with the question, so the word matching engine finds it next time."""
 
     name = "simulated"
 
-    def from_caption(self, caption: str) -> list[LearnedFactDraft]:
-        sentences = (_clean(part) for part in SENTENCE_PATTERN.split(caption))
-        facts = [sentence for sentence in sentences if any(char.isdigit() for char in sentence)]
-        return [
-            LearnedFactDraft(scope=FactScope.POST, label="Caption", text=fact[:FACT_MAX_LENGTH])
-            for fact in facts[:CAPTION_FACT_LIMIT]
-        ]
+    def from_post(self, post: PostReading) -> PostLearning:
+        facts = [("Caption", sentence) for sentence in _number_sentences(post.caption)]
+        questions = []
+        for comment in post.comments:
+            for item in (comment, *comment.replies):
+                if item.from_account:
+                    facts += [("Seller reply", sentence) for sentence in _number_sentences(item.text)]
+                elif "?" in item.text and _clean(item.text):
+                    questions.append(_clean(item.text)[:LABEL_MAX_LENGTH])
+        return PostLearning(
+            facts=[
+                LearnedFactDraft(scope=FactScope.POST, label=label, text=text[:FACT_MAX_LENGTH])
+                for label, text in facts[:POST_FACT_LIMIT]
+            ],
+            buyer_questions=questions[:BUYER_QUESTION_LIMIT],
+        )
 
     def from_reply(self, *, question: str, answer: str, post_caption: str) -> list[LearnedFactDraft]:
         answer = MENTION_PATTERN.sub("", answer).strip()

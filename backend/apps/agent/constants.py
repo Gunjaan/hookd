@@ -14,7 +14,7 @@ class ReplyStatus(models.TextChoices):
 class FactSource(models.TextChoices):
     """Where the agent learned a fact on its own."""
 
-    CAPTION = "caption", "From a caption"
+    POST = "post", "From the post"
     REPLY = "reply", "From your reply"
     AGENT = "agent", "Saved by Hooky"
 

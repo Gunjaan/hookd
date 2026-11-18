@@ -65,18 +65,18 @@ def save_post_brain(post: Post, *, knowledge: str, agent_enabled: bool) -> PostB
     return brain
 
 
-def claim_caption_learning(post: Post) -> bool:
-    """Mark the post's caption as read. Only one caller ever wins, so a caption is read once."""
+def claim_post_learning(post: Post) -> bool:
+    """Mark the post as read. Only one caller ever wins, so a post is read once."""
     PostBrain.objects.get_or_create(post=post)
-    claimed = PostBrain.objects.filter(post=post, caption_learned_at__isnull=True).update(
-        caption_learned_at=timezone.now(), updated_at=timezone.now()
+    claimed = PostBrain.objects.filter(post=post, learned_at__isnull=True).update(
+        learned_at=timezone.now(), updated_at=timezone.now()
     )
     return claimed == 1
 
 
-def release_caption_learning(post: Post) -> None:
+def release_post_learning(post: Post) -> None:
     """Undo the claim after a failed read, so the next comment on the post tries again."""
-    PostBrain.objects.filter(post=post).update(caption_learned_at=None, updated_at=timezone.now())
+    PostBrain.objects.filter(post=post).update(learned_at=None, updated_at=timezone.now())
 
 
 # Learned facts

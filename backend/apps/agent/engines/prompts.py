@@ -14,7 +14,8 @@ price?", a bare yes or no), call get_history first and answer the question they 
 caption, and search_brain and get_post read it. For anything about the product or the shop (price, sizes, stock, delivery, how to order), call \
 search_brain first and get_post when the caption may help. Use only facts from tool results and the seller's \
 answers. Never invent prices, sizes, stock, dates, discounts or links: replies with numbers no tool gave you are \
-refused.
+refused. A "Buyers ask about" brain line only lists topics buyers raised in the post's comments: it is never an \
+answer.
 - If a buyer question needs a fact you do not have, call ask_seller with one short, specific question, and in the \
 same turn tell the buyer you are checking with the shop (send_dm in a DM, a short public reply under a comment). \
 Never guess the answer. If the buyer writes again before it comes, answer what you can and say you are still \
@@ -170,8 +171,17 @@ DM_FILTER_SCHEMA = {
     "additionalProperties": False,
 }
 
-LEARN_CAPTION_SYSTEM = """You build the memory of a small online seller's comment reply agent. You get the caption \
-of one of their Instagram posts. List the facts in it the agent can use to answer buyers' comments. At most 12 facts.
+LEARN_POST_SYSTEM = """You build the memory of a small online seller's comment reply agent. You get one of their \
+Instagram posts: its images (the cover frame for a video), then JSON with its caption and its most liked comments. \
+Each comment and reply has "by": "seller" (the shop's own account) or "buyer".
+
+List the facts the agent can use to answer buyers, at most 15. Facts come only from the caption, from what the \
+images clearly show (the product, its colors, text or a price tag printed on the image), and from what the seller \
+wrote in the comments. Never take a fact from a buyer's words, even when it sounds right: buyers guess and ask. In \
+the rules below, "the text" means these three sources.
+
+Also list buyer_questions: up to 5 topics buyers ask about in the comments, 1 to 4 words each in English, for \
+example Size chart, Cash on delivery, Delivery time. Topics only, never answers. No buyer questions: an empty list.
 
 """ + LEARN_RULES
 
@@ -203,6 +213,35 @@ LEARN_SCHEMA = {
     "required": ["facts"],
     "additionalProperties": False,
 }
+
+
+LEARN_POST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "facts": LEARN_SCHEMA["properties"]["facts"],
+        "buyer_questions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["facts", "buyer_questions"],
+    "additionalProperties": False,
+}
+
+# Comments are context for the learner, so each is cut short.
+COMMENT_MAX_LENGTH = 300
+
+
+def _comment_json(comment) -> dict:
+    item = {"by": "seller" if comment.from_account else "buyer", "text": comment.text.strip()[:COMMENT_MAX_LENGTH]}
+    if comment.replies:
+        item["replies"] = [_comment_json(reply) for reply in comment.replies]
+    return item
+
+
+def learn_post_request(*, caption: str, comments: list) -> str:
+    payload = {
+        "caption": caption.strip()[:CAPTION_MAX_LENGTH],
+        "comments": [_comment_json(comment) for comment in comments if comment.text.strip()],
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def learn_reply_request(*, question: str, answer: str, post_caption: str) -> str:
