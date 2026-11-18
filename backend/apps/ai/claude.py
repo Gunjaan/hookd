@@ -16,6 +16,7 @@ from apps.core.exceptions import HookdError
 logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 90
+THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01"
 
 
 class ClaudeUnavailable(HookdError):
@@ -94,8 +95,9 @@ def _call(model: str, *, system: str, request: dict, stored_response, **create_k
             duration_ms=int((time.monotonic() - started) * 1000), error=error,
         )
 
+    messages_api = client.beta.messages if "betas" in create_kwargs else client.messages
     try:
-        response = client.messages.create(model=model, system=system, **create_kwargs)
+        response = messages_api.create(model=model, system=system, **create_kwargs)
     except anthropic.APIStatusError as exc:
         logger.warning("Claude %s failed: %s", model, exc)
         record(error=str(exc))
@@ -142,9 +144,13 @@ def run_step(model: str, *, system: str, tools: list[dict], messages: list[dict]
         tools=tools,
         tool_choice={"type": "auto"},
         messages=messages,
-        # The system prompt and tools never change, so caching makes every step after the first cheap.
+        # The system prompt and tools rarely change, so caching makes every step after the first cheap.
         cache_control={"type": "ephemeral"},
         output_config={"effort": "low"},
+        # A thinking block is bound to the system prompt and tools it was written under. Runs stored before a
+        # prompt or tool change would be refused; drop_block lets them go on without that old reasoning.
+        betas=[THINKING_BINDING_BETA],
+        thinking={"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "drop_block"}},
     )
     if response.stop_reason in ("refusal", "max_tokens"):
         error = "The AI declined this request." if response.stop_reason == "refusal" else "The AI answer was cut off."

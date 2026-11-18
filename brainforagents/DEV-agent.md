@@ -167,7 +167,10 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
   (`name`, `from_caption`, `from_reply`).
 - `claude.py`: `ClaudeAgentModel` calls `ai.claude.run_step` (tools, `tool_choice` auto, effort low, top level
   `cache_control`, `MAX_OUTPUT_TOKENS`); the assistant content comes back as plain dicts, thinking blocks included, and is
-  sent back unchanged. `ClaudeBrainLearner`: one `generate_json` call, max 4000 output tokens; facts without a label or
+  sent back unchanged. A thinking block is bound to the system prompt and tools it was written under, so a deploy that
+  changes either would get every stored run refused (400 "bound to a different conversation"); `run_step` sends
+  `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`), and
+  the API drops those old blocks and the run goes on with its text, tool calls and results. `ClaudeBrainLearner`: one `generate_json` call, max 4000 output tokens; facts without a label or
   text are dropped, an unknown scope becomes `post`, labels cut to 80 and texts to 300 characters.
 - `prompts.py`: `AGENT_SYSTEM` (constant): who Hooky is; look facts up first, only facts from tools, numbers without a
   tool are refused; missing fact -> `ask_seller`, then `save_fact`; praise -> public thanks, interest -> DM or a
@@ -280,7 +283,7 @@ ignored with the agent off. Follow-ups: limits, wake by `wake_agent_runs`, priva
 longer allowed. Number guard unit test. Sending: spacing, hourly cap, rate limit pause, expired token, never twice,
 early task, `send_due_replies`. Inbox, settings (approval switch), preview (trail, stores nothing, unsaved brain), 404
 for other users on every action. Claude agent model: two steps recorded as `comment_agent` with the comment, thinking
-blocks sent back unchanged, constant system and tools with `cache_control`; refusal fails the run; tools match their
+blocks sent back unchanged, constant system and tools with `cache_control`, `drop_block` thinking binding; refusal fails the run; tools match their
 handlers and are strict. Instagram reply and DM text rules. Run limits: a long conversation is handed off and later DMs are left to the seller;
 a crash ends the run with nothing pending; a dead worker's run is taken over after 10 minutes; at most 3 seller
 questions; an unanswered question expires and the run wraps up; a follow-up is dropped when the buyer writes back, and

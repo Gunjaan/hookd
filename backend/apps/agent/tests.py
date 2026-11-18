@@ -1103,15 +1103,17 @@ class ClaudeAgentModelTests(AgentTestCase):
         ]
         responses = [claude_response(first, "tool_use"), claude_response([{"type": "text", "text": "Answered."}], "end_turn")]
         with mock.patch("apps.ai.claude.anthropic.Anthropic") as client:
-            client.return_value.messages.create.side_effect = responses
+            client.return_value.beta.messages.create.side_effect = responses
             comment = self.comment("shipping?")
             self.handle(comment)
-        create = client.return_value.messages.create
+        create = client.return_value.beta.messages.create
         second = create.call_args_list[1].kwargs
         self.assertEqual(second["messages"][1], {"role": "assistant", "content": first})
         self.assertEqual(second["messages"][2]["content"][0]["tool_use_id"], "tu1")
         self.assertEqual((second["model"], second["system"], second["tools"]), ("cheap-model", AGENT_SYSTEM, TOOLS))
         self.assertEqual(second["cache_control"], {"type": "ephemeral"})
+        self.assertEqual(second["betas"], ["thinking-binding-controls-2026-08-01"])
+        self.assertEqual(second["thinking"]["block_binding"], {"prefix_mismatch_behavior": "drop_block"})
         calls_made = AiCall.objects.order_by("pk")
         self.assertEqual(calls_made.count(), 2)
         self.assertEqual(
@@ -1122,7 +1124,7 @@ class ClaudeAgentModelTests(AgentTestCase):
 
     def test_refusal_fails_the_run_and_goes_to_review(self):
         with mock.patch("apps.ai.claude.anthropic.Anthropic") as client:
-            client.return_value.messages.create.return_value = claude_response([], "refusal")
+            client.return_value.beta.messages.create.return_value = claude_response([], "refusal")
             comment = self.comment("price?")
             self.handle(comment)
         self.assertEqual(AgentRun.objects.get().status, RunStatus.FAILED)
