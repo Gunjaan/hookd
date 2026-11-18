@@ -32,7 +32,7 @@ from apps.agent.constants import (
     RunStatus,
 )
 from apps.agent.engines.base import LearnedFactDraft
-from apps.agent.engines.registry import get_learner
+from apps.agent.engines.registry import get_learner, get_model
 from apps.agent.exceptions import (
     LearnedFactNotFound,
     QuestionNotFound,
@@ -80,6 +80,8 @@ EARLY_TOLERANCE = timedelta(seconds=5)
 WINDOW_MARGIN = timedelta(minutes=5)
 # A buyer DM continues their latest run while it is this recent; after that a fresh run starts.
 RUN_CONTINUES_FOR = timedelta(days=7)
+# A text this soon after a shared post was typed with it.
+SHARE_TEXT_WINDOW = timedelta(minutes=1)
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
 # Learned facts per brain (shop, post) handed to the agent, newest first.
 LEARNED_FACTS_LIMIT = 40
@@ -245,9 +247,11 @@ def handle_new_comment(comment_id: int) -> str:
 
 
 def handle_buyer_message(conversation_id: int, message_id: int) -> str:
-    """A buyer wrote to the account: continue their recent run, or start one. A shared post of the seller's that
-    Hookd has not seen is fetched first, so the run can read it. The DM waits DM_BATCH_SECONDS and pushes the run's
-    waiting DMs to the same time, so messages sent together are answered together. Returns the outcome."""
+    """A buyer wrote to the account: continue their recent run, or start one when the DM is meant for the shop
+    (`_starts_run`). A share of someone else's post, and the text sent with it, is never answered. A shared post of
+    the seller's that Hookd has not seen is fetched first, so the run can read it. The DM waits DM_BATCH_SECONDS and
+    pushes the run's waiting DMs to the same time, so messages sent together are answered together. Returns the
+    outcome."""
     conversation = message_queries.get_conversation(conversation_id)
     message = message_queries.get_message(message_id)
     if conversation is None or message is None or message.is_from_account:
@@ -256,12 +260,24 @@ def handle_buyer_message(conversation_id: int, message_id: int) -> str:
     profile = queries.get_profile(account)
     if profile is None or not profile.enabled or Capability.DIRECT_MESSAGE not in get_provider(account.platform).capabilities:
         return "ignored"
-    if message.shared_post_external_id:
-        content_services.ensure_post(account, message.shared_post_external_id)
+    if message.shared_post_external_id and content_services.ensure_post(account, message.shared_post_external_id) is None:
+        return "not_ours"
+    if _sent_with_foreign_share(account, message):
+        return "not_ours"
+    run = _live_run(account, conversation)
+    if run is not None and run.status == RunStatus.HANDED_OFF:
+        return "handed_off"
+    if run is None and not _starts_run(account, conversation, message):
+        return "not_relevant"
     with transaction.atomic():
-        run = _run_for_buyer(account, conversation)
         if run is None:
-            return "handed_off"
+            known = comment_queries.latest_comment_by_author(account, conversation.participant_external_id)
+            run = queries.create_dm_run(
+                account,
+                conversation=conversation,
+                buyer_external_id=conversation.participant_external_id,
+                buyer_username=known.author_username if known else "",
+            )
         cancel_followups(run, "Dropped the follow-up: the buyer wrote back.")
         due = timezone.now() + timedelta(seconds=_loop_limit("DM_BATCH_SECONDS"))
         queries.delay_pending_dms(run, due)
@@ -270,27 +286,50 @@ def handle_buyer_message(conversation_id: int, message_id: int) -> str:
     return "queued"
 
 
-def _run_for_buyer(account: SocialAccount, conversation: Conversation) -> AgentRun | None:
-    """The buyer's recent run (linked to this thread, or the one whose private reply they are answering), else a
-    new run started by this DM. None when Hooky recently handed this buyer to the seller: the seller answers them."""
-    since = timezone.now() - RUN_CONTINUES_FOR
+def _sent_with_foreign_share(account: SocialAccount, message: DirectMessage) -> bool:
+    """A text that came right after the person shared someone else's post (they arrive as separate webhooks)."""
+    if message.kind != MessageKind.TEXT:
+        return False
+    previous = message_queries.previous_buyer_message(message)
+    return (
+        previous is not None
+        and bool(previous.shared_post_external_id)
+        and message.sent_at - previous.sent_at <= SHARE_TEXT_WINDOW
+        and post_queries.find_post(account, previous.shared_post_external_id) is None
+    )
+
+
+def _live_run(account: SocialAccount, conversation: Conversation) -> AgentRun | None:
+    """The buyer's recent run that a DM continues (linked to this thread, or the one whose private reply they are
+    answering), handed off runs included so the caller leaves those to the seller. None when a DM would start a new
+    run."""
     run = queries.latest_run_for_conversation(conversation)
     if run is None:
         run = queries.latest_run_for_participant(account, conversation.participant_external_id)
         if run is not None:
             queries.update_run(run, conversation=conversation)
-    if run is not None and run.updated_at >= since:
-        if run.status == RunStatus.HANDED_OFF:
-            return None
-        if run.status != RunStatus.FAILED:
-            return run
-    known = comment_queries.latest_comment_by_author(account, conversation.participant_external_id)
-    return queries.create_dm_run(
-        account,
-        conversation=conversation,
-        buyer_external_id=conversation.participant_external_id,
-        buyer_username=known.author_username if known else "",
-    )
+    if run is not None and run.updated_at >= timezone.now() - RUN_CONTINUES_FOR and run.status != RunStatus.FAILED:
+        return run
+    return None
+
+
+def _starts_run(account: SocialAccount, conversation: Conversation, message: DirectMessage) -> bool:
+    """Whether a DM from someone without a live run is meant for the shop. Free checks first: their own post shared
+    (someone else's never gets here) or a story reply starts a run, a story mention or a bare photo does not, and
+    text from someone who commented on the seller's posts does. Other text costs one small model call; a model error
+    counts as meant for the shop, so a buyer is never dropped because the AI was down."""
+    if message.kind in (MessageKind.SHARE, MessageKind.STORY_REPLY):
+        return True
+    if message.kind != MessageKind.TEXT or not message.text.strip():
+        return False
+    if comment_queries.latest_comment_by_author(account, conversation.participant_external_id) is not None:
+        return True
+    try:
+        with attributed(Purpose.DM_FILTER, account=account, subject=message):
+            return get_model().is_shop_message(message.text)
+    except HookdError:
+        logger.exception("DM filter failed for message %s, answering it", message.pk)
+        return True
 
 
 def cancel_followups(run: AgentRun, reason: str) -> int:

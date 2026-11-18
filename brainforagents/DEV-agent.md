@@ -25,15 +25,21 @@ anti-spam rules.
    `customer_message_received`; `receivers.answer_buyer_message` queues `tasks.handle_buyer_message(conversation_id,
    message_id)`. `services.handle_buyer_message` (agent on, provider has `direct_message`) picks the buyer's run: the
    newest run linked to that conversation, or the newest run whose private reply this person is answering (then links
-   the conversation). A recent run (touched within `RUN_CONTINUES_FOR`, 7 days) is continued unless it failed (then a
-   new run starts) or was handed to the seller (then the DM is left to the seller: `handed_off`). Otherwise a new run
-   without a comment starts (`buyer_external_id`, `buyer_username` from their latest comment when known). Pending
+   the conversation). Checked first, for every DM: a share of someone else's post (`ensure_post` finds nothing) and a
+   text sent within `SHARE_TEXT_WINDOW` (1 min) after one (`_sent_with_foreign_share`) are never answered
+   (`not_ours`). A recent run (`_live_run`: touched within `RUN_CONTINUES_FOR`, 7 days, not failed) is continued,
+   unless it was handed to the seller (the DM is left to the seller: `handed_off`). Otherwise `_starts_run` decides
+   whether the DM is meant for the shop, else `not_relevant` (left to the seller): a share of the seller's own post or
+   a story reply yes, a story mention, photo or video no, text from someone who commented on the seller's posts yes,
+   any other text one small model call (`AgentModel.is_shop_message`, purpose `dm_filter`; a model error counts as
+   yes). Then a new run without a comment starts (`buyer_external_id`, `buyer_username` from their latest comment when
+   known). Pending
    follow-ups are dropped ("the buyer wrote back", shown in the trail), a `dm` event is added and `advance_run` queued.
    The event waits `DM_BATCH_SECONDS` (10) and every new DM pushes the run's waiting DMs to its own time
    (`delay_pending_dms`), so messages sent together (a shared post and the text typed with it arrive as separate
    webhooks) become one turn; the earlier queued `advance_run` finds nothing due and does nothing.
    A DM that shares a post first calls `content_services.ensure_post` for it, so the seller's own post posted outside
-   Hookd is stored (someone else's post fails the fetch and is not stored).
+   Hookd is stored (someone else's post fails the fetch, is not stored and ends the DM as `not_ours`).
 3. **`loop.advance(run_id)`** claims the run (`queries.claim_run`: conditional update to `running`; a second worker
    gets `busy` and leaves its event to the holder; a run left `running` for `STALE_RUN_MINUTES` because its worker died
    is taken over). Due events (unprocessed, `available_at` empty or past) become one
@@ -86,7 +92,7 @@ code says no, so the model corrects itself.
 | Tool | Does | Refused when |
 |---|---|---|
 | `search_brain(topic)` | The whole brain: shop facts, then this post's facts (`brain_parts`) | |
-| `get_post(post_id)` | Caption (2200 cut), type, link and video brain; empty id = the run's post: the commented post, or in a DM run the post the buyer shared most recently in the conversation (`loop._context`, which also makes it the post `search_brain` and `save_fact` use) | not a stored post (someone else's shared post: the model is told to use the caption the DM gave) |
+| `get_post(post_id)` | Caption (2200 cut), type, link and video brain; empty id = the run's post: the commented post, or in a DM run the post the buyer shared most recently in the conversation (`loop._context`, which also makes it the post `search_brain` and `save_fact` use) | not a stored post |
 | `get_history()` | `services.buyer_history`: the buyer's newest `HISTORY_COMMENTS` (5) comments and the newest `HISTORY_MESSAGES` (20) DMs both ways (`Shop:` for Hooky's and the seller's own, `Buyer:` read like `buyer_message_text`), from the run's conversation or the one with this buyer; the prompt has Hooky call it when a message only makes sense with what came before ("??", "same as before") | |
 | `reply_to_comment(text)` | Adds `@author` when missing, stores the `CommentReply` (`agent_reply`: draft = final = text, `decision.approval`), schedules it, or holds it in approval mode | DM started run (no comment), platform without public replies, already replied (a `skipped` row is reused), `reply_text_problems`, number guard, the same text `MAX_SAME_TEXT_PER_HOUR` times this hour |
 | `send_dm(text)` | `dm_route`: a normal `dm` while the buyer's 24 h window is open (5 min margin), else the comment's one `private_reply` while the comment is under `PRIVATE_REPLY_MAX_HOURS` (167 h) old. Taking the private reply sets `private_reply_used_at` at once. Stores an `OutgoingDM`, schedules it or holds it in approval mode | not allowed now (the reason is in the error), capability missing, `dm_text_problems`, number guard |
@@ -163,9 +169,11 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 ## Engines (`engines/`)
 
 - `base.py`: `ModelStep(content, stop_reason)` and the `AgentModel` ABC (`name`, `step(system, tools, messages)`,
-  content blocks in the Claude Messages format). `LearnedFactDraft(scope, label, text)` and the `BrainLearner` ABC
+  content blocks in the Claude Messages format; `is_shop_message(text)`, whether a new person's first DM is for the
+  shop). `LearnedFactDraft(scope, label, text)` and the `BrainLearner` ABC
   (`name`, `from_caption`, `from_reply`).
-- `claude.py`: `ClaudeAgentModel` calls `ai.claude.run_step` (tools, `tool_choice` auto, effort low, top level
+- `claude.py`: `ClaudeAgentModel.is_shop_message` is one `generate_json` call (`DM_FILTER_SYSTEM`, `DM_FILTER_SCHEMA`
+  `{"shop": bool}`, text cut to `DM_FILTER_MAX_LENGTH` 300, max 300 output tokens). `ClaudeAgentModel.step` calls `ai.claude.run_step` (tools, `tool_choice` auto, effort low, top level
   `cache_control`, `MAX_OUTPUT_TOKENS`); the assistant content comes back as plain dicts, thinking blocks included, and is
   sent back unchanged. A thinking block is bound to the system prompt and tools it was written under, so a deploy that
   changes either would get every stored run refused (400 "bound to a different conversation"); `run_step` sends
@@ -175,14 +183,15 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 - `prompts.py`: `AGENT_SYSTEM` (constant): who Hooky is; look facts up first, only facts from tools, numbers without a
   tool are refused; missing fact -> `ask_seller`, then `save_fact`; praise -> public thanks, interest -> DM or a
   follow-up only when it helps the sale; problems -> `check_tickets` first, share status and note, ask which product
-  before `create_ticket`, tell the ticket number; spam -> nothing; buyer's language and script, public replies start
+  before `create_ticket`, tell the ticket number; spam, personal chat and other accounts' posts -> nothing; buyer's language and script, public replies start
   with @username under 200 characters, DMs under 500 without @mention, the voice, no hashtags, at most 1 emoji; never
   claim an action not taken; end with one sentence for the seller. `TOOLS` (constant order, `strict`, every property
   required, `additionalProperties: false`). Learner prompts (constants): `LEARN_RULES`, `LEARN_CAPTION_SYSTEM` (at most
   12 facts), `LEARN_REPLY_SYSTEM` (at most 3), `LEARN_SCHEMA`, `learn_reply_request`. `CAPTION_MAX_LENGTH` 2200.
 - `simulated.py`: `SimulatedAgentModel`: `search_brain` on the comment, then `reply_to_comment` with the brain line
   sharing the most words (stop words dropped, plural "s" ignored, heading lines skipped); none and a "?" ->
-  `ask_seller`, and the seller's answer becomes the reply; otherwise "Thank you so much!". Never DMs, saves, tickets or
+  `ask_seller`, and the seller's answer becomes the reply; otherwise "Thank you so much!". `is_shop_message`: any of
+  `SHOP_WORDS` (price, size, order, ship, kitna...). Never DMs, saves, tickets or
   follows up. `SimulatedBrainLearner`: caption sentences with a digit become post facts labelled `Caption` (at most 8);
   a rewritten reply becomes one post fact labelled with the question.
 - `registry.py`: `get_model()`, `get_learner()`.
@@ -268,7 +277,9 @@ review cards explain why (approval mode, or Hooky could not finish) and have an 
 A `ScriptedModel` plays back model turns (`call`, `calls`, `done`) and keeps every transcript it was sent. Covered:
 webhook comment queued once, own comment not; unknown post fetched for `get_post`, stored with the agent off, fetch
 failure is a tool error; a shared post in a DM is fetched, shown with its id and caption and read by `get_post`, someone
-else's shared post still shows its caption and is not stored; a share and the text sent with it are read in one turn; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
+else's shared post and the text after it start no run, are not stored and are skipped in a live run too; a new
+person's personal text gets no run, a shop question does, a filter error still answers, a commenter's text skips the
+filter, photos and story mentions start no run; the simulated filter; a share and the text sent with it are read in one turn; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
 answer sent (Graph call checked); praise thanked; invented price refused by the number guard and corrected; numbers
 from the comment allowed, digits in handles ignored; missing fact -> `ask_seller`, run waits, the inbox answer resumes
 it with the exact tool_result, `save_fact` stored with the run, reply queued; held results returned with the answer;

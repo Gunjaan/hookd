@@ -25,6 +25,14 @@ STOP_WORDS = frozenset(
     }
 )
 THANKS_REPLY = "Thank you so much!"
+# Words that make a first DM from a new person read as a shop question.
+SHOP_WORDS = frozenset(
+    {
+        "price", "cost", "buy", "order", "size", "available", "stock", "ship", "shipping", "delivery",
+        "deliver", "cod", "payment", "pay", "return", "refund", "exchange", "kitna", "kitne", "rate", "dm", "link",
+        "collab", "product",
+    }
+)
 
 
 def _stem(word: str) -> str:
@@ -67,6 +75,9 @@ def _done(text: str) -> ModelStep:
 
 class SimulatedAgentModel(AgentModel):
     name = "simulated"
+
+    def is_shop_message(self, text: str) -> bool:
+        return bool(_words(text) & SHOP_WORDS)
 
     def step(self, *, system: str, tools: list[dict], messages: list[dict]) -> ModelStep:
         first = _first_text(messages)

@@ -9,6 +9,7 @@ from apps.ai.claude import generate_json, run_step
 
 # Ceilings, not charges: they leave room for the short thinking that comes before the answer.
 LEARN_MAX_OUTPUT_TOKENS = 4000
+FILTER_MAX_OUTPUT_TOKENS = 300
 LABEL_MAX_LENGTH = 80
 FACT_MAX_LENGTH = 300
 
@@ -25,6 +26,16 @@ class ClaudeAgentModel(AgentModel):
             max_output_tokens=settings.AGENT_LOOP_LIMITS["MAX_OUTPUT_TOKENS"],
         )
         return ModelStep(content=content, stop_reason=stop_reason)
+
+    def is_shop_message(self, text: str) -> bool:
+        data = generate_json(
+            settings.AGENT_REPLY_MODEL,
+            text.strip()[: prompts.DM_FILTER_MAX_LENGTH],
+            system=prompts.DM_FILTER_SYSTEM,
+            schema=prompts.DM_FILTER_SCHEMA,
+            max_output_tokens=FILTER_MAX_OUTPUT_TOKENS,
+        )
+        return bool(data.get("shop"))
 
 
 def _facts(data: dict) -> list[LearnedFactDraft]:

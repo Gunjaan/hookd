@@ -20,6 +20,7 @@ from apps.agent import model_querysets as queries
 from apps.agent import services, tools
 from apps.agent.constants import DMKind, EventKind, QuestionStatus, ReplyStatus, RunStatus, TicketStatus
 from apps.agent.engines.base import AgentModel, ModelStep
+from apps.agent.engines.simulated import SimulatedAgentModel
 from apps.agent.models import (
     AgentAction,
     AgentEvent,
@@ -32,6 +33,7 @@ from apps.agent.models import (
     SellerQuestion,
     SupportTicket,
 )
+from apps.ai.claude import ClaudeError
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
@@ -77,8 +79,10 @@ class ScriptedModel(AgentModel):
 
     name = "scripted"
 
-    def __init__(self, *steps, on_step=None):
+    def __init__(self, *steps, on_step=None, shop=True):
         self.steps = list(steps)
+        self.shop = shop
+        self.filtered = []
         self.seen = []
         self.on_step = on_step
 
@@ -87,6 +91,12 @@ class ScriptedModel(AgentModel):
         if self.on_step:
             self.on_step(len(self.seen))
         return self.steps.pop(0)
+
+    def is_shop_message(self, text):
+        self.filtered.append(text)
+        if isinstance(self.shop, Exception):
+            raise self.shop
+        return self.shop
 
     def last_user_text(self) -> str:
         """The newest user turn of the latest call."""
@@ -143,7 +153,10 @@ class AgentTestCase(TestCase):
     def scripted(self, model: AgentModel | None):
         if model is None:
             return contextlib.nullcontext()  # the simulated model (settings in tests)
-        return mock.patch("apps.agent.loop.get_model", return_value=model)
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch("apps.agent.loop.get_model", return_value=model))
+        stack.enter_context(mock.patch("apps.agent.services.get_model", return_value=model))
+        return stack
 
     def run_events(self, run: AgentRun, model: AgentModel | None = None) -> str:
         with self.scripted(model), mock.patch("apps.agent.tasks.send_reply.apply_async"), \
@@ -406,7 +419,6 @@ class LoopTests(AgentTestCase):
         self.assertEqual(comment.agent_reply.decision["reason"], "Spam, ignored.")
 
     def test_model_failure_goes_to_review(self):
-        from apps.ai.claude import ClaudeError
 
         broken = mock.Mock(spec=AgentModel)
         broken.step.side_effect = ClaudeError("Down.")
@@ -618,13 +630,52 @@ class DirectMessageTests(AgentTestCase):
         self.buyer_dm("and in black?", sender="buyer9", model=later)
         self.assertIn("Custom mug", AgentAction.objects.last().result)
 
-    def test_someone_elses_shared_post_still_gives_its_caption(self):
+    def test_someone_elses_shared_post_and_its_text_get_no_answer(self):
         self.graph.on("GET", "x1", {"error": {"message": "Unsupported get request", "code": 100}}, status=400)
-        model = ScriptedModel(call("get_post", post_id=""), done())
-        self.share("", "x1", "Mug from another shop", model)
-        self.assertIn("Mug from another shop", model.first_user_text())
-        self.assertEqual(self.tools_used(AgentRun.objects.get()), [("get_post", True)])
+        model = ScriptedModel()
+        self.buyer_dm("", sender="buyer9", model=model, kind="share", shared_post_external_id="x1")
+        self.buyer_dm("price of this?", sender="buyer9", model=model)
+        self.assertFalse(AgentRun.objects.exists())
+        self.assertEqual((model.seen, model.filtered), ([], []))
         self.assertFalse(Post.objects.filter(external_id="x1").exists())
+
+    def test_someone_elses_share_in_a_live_run_is_skipped(self):
+        self.buyer_dm("price of the kurta?", sender="buyer9", model=ScriptedModel(done()))
+        self.graph.on("GET", "x1", {"error": {"message": "Unsupported get request", "code": 100}}, status=400)
+        model = ScriptedModel()
+        self.share("", "x1", "Mug from another shop", model)
+        self.assertEqual(model.seen, [])
+        self.assertEqual(AgentEvent.objects.filter(kind=EventKind.DM).count(), 1)
+
+    def test_new_person_text_is_answered_only_when_it_is_for_the_shop(self):
+        personal = ScriptedModel(shop=False)
+        self.buyer_dm("same to youuu", sender="friend1", model=personal)
+        self.assertFalse(AgentRun.objects.exists())
+        self.assertEqual(personal.filtered, ["same to youuu"])
+
+        self.buyer_dm("kitne ka hai?", sender="buyer2", model=ScriptedModel(done()))
+        self.assertEqual(AgentRun.objects.get().buyer_external_id, "buyer2")
+
+    def test_filter_error_still_answers(self):
+        self.buyer_dm("hello", sender="buyer2", model=ScriptedModel(done(), shop=ClaudeError()))
+        self.assertTrue(AgentRun.objects.exists())
+
+    def test_commenter_text_skips_the_filter_and_media_never_starts_a_run(self):
+        self.comment("love it", author="buyer9")
+        model = ScriptedModel(done())
+        self.buyer_dm("hey", sender="buyer9", model=model)
+        self.assertEqual(model.filtered, [])
+        self.assertEqual(AgentRun.objects.count(), 1)
+
+        photo = ScriptedModel()
+        self.buyer_dm("", sender="friend2", model=photo, kind="media", media_url="https://cdn/x.jpg")
+        self.buyer_dm("", sender="friend3", model=photo, kind="story_mention", media_url="https://cdn/s.jpg")
+        self.assertEqual((AgentRun.objects.count(), photo.filtered), (1, []))
+
+    def test_simulated_filter_reads_shop_words(self):
+        model = SimulatedAgentModel()
+        self.assertTrue(model.is_shop_message("Is size M available?"))
+        self.assertFalse(model.is_shop_message("Same to youuuu"))
 
     @override_settings(AGENT_LOOP_LIMITS={**settings.AGENT_LOOP_LIMITS, "DM_BATCH_SECONDS": 10})
     def test_dms_sent_together_are_read_in_one_turn(self):

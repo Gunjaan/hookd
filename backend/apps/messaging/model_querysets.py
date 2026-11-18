@@ -60,6 +60,16 @@ def latest_shared_post_id(conversation: Conversation) -> str:
     )
 
 
+def previous_buyer_message(message: DirectMessage) -> DirectMessage | None:
+    """The message the same person sent right before this one in its conversation."""
+    return (
+        DirectMessage.objects.filter(conversation_id=message.conversation_id, is_from_account=False)
+        .filter(Q(sent_at__lt=message.sent_at) | Q(sent_at=message.sent_at, pk__lt=message.pk))
+        .order_by("-sent_at", "-pk")
+        .first()
+    )
+
+
 def find_conversation(account: SocialAccount, participant_external_id: str) -> Conversation | None:
     return Conversation.objects.filter(account=account, participant_external_id=participant_external_id).first()
 

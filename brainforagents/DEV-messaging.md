@@ -30,6 +30,6 @@ Admin: conversations (with the reply window end and the messages inline) and mes
 ## Files
 
 `models.py`, `model_querysets.py` (`get_or_create_conversation`, `create_message_if_new`, `note_customer_message`,
-`get_conversation`, `get_message`, `latest_shared_post_id`: the post the person shared most recently, `find_conversation`, `recent_messages`: the newest messages oldest first, for the agent's `get_history`), `signals.py` (`customer_message_received`), `services.py`, `admin.py`, `tests.py` (DM stored once and opens the window, story reply and mention and media kinds, shared post and reel id and caption,
+`get_conversation`, `get_message`, `latest_shared_post_id`: the post the person shared most recently, `previous_buyer_message`: what the person sent right before a message, `find_conversation`, `recent_messages`: the newest messages oldest first, for the agent's `get_history`), `signals.py` (`customer_message_received`), `services.py`, `admin.py`, `tests.py` (DM stored once and opens the window, story reply and mention and media kinds, shared post and reel id and caption,
 echo flagged without moving the window, out of order delivery keeps the latest time, deleted messages, read events
 and unknown accounts skipped).

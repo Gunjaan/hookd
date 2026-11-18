@@ -31,6 +31,7 @@ the ticket number. A complaint in a comment gets a short kind public reply and t
 short DM with something new and useful, or do nothing if they already got what they needed, said no, bought or \
 complained. Never chase twice. A follow-up you scheduled is dropped on its own when the buyer writes back.
 - Spam, scams, abuse, bots or links to other accounts: do nothing.
+- Personal chat, memes, or posts from other accounts that are not about this shop: do nothing.
 - If you have nothing useful to add, do nothing.
 
 WRITING
@@ -154,6 +155,20 @@ about the whole shop (shipping, cash on delivery, returns, how to order, locatio
 - Nothing factual: an empty list.
 
 Reply only with JSON that matches the schema."""
+
+DM_FILTER_MAX_LENGTH = 300
+
+DM_FILTER_SYSTEM = """A person who never talked to this shop sent its Instagram account the DM below. Is it meant \
+for the shop: a question or message about its products, prices, sizes, orders, payment, shipping, delivery, returns, \
+support or a collaboration? Greetings alone, personal chat between friends, memes, or talk about other shops are \
+false. Reply only with JSON that matches the schema."""
+
+DM_FILTER_SCHEMA = {
+    "type": "object",
+    "properties": {"shop": {"type": "boolean"}},
+    "required": ["shop"],
+    "additionalProperties": False,
+}
 
 LEARN_CAPTION_SYSTEM = """You build the memory of a small online seller's comment reply agent. You get the caption \
 of one of their Instagram posts. List the facts in it the agent can use to answer buyers' comments. At most 12 facts.
