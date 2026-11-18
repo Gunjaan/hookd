@@ -21,10 +21,10 @@ backend/
                                 blocks: title, robots (default "index, follow"), head (extra stylesheets), body
     layouts/auth.html           Brand panel (logo links to the landing page) + form panel (login, signup). Block: panel
     layouts/app.html            Shell for signed in pages: a sticky white side panel (`.app-side`) with icon links Profile,
-                                Create, Replies (pending review count), Agent (Hooky as its icon), Connections at the
+                                Create, Replies (pending review count), Tickets, Agent (Hooky as its icon), Connections at the
                                 bottom, then the user and a log out icon button. Under 768px the panel is a top bar (logo,
                                 avatar, log out) and the same links become a fixed bottom tab bar, like the Instagram app.
-                                Block: content. Pages set `nav_section` ("studio", "publishing", "agent" or "inbox").
+                                Block: content. Pages set `nav_section` ("studio", "publishing", "agent", "inbox" or "tickets").
                                 Also holds the shared `<dialog id="modal">` (`.modal`) that `data-modal` links fill
     components/                 Design system partials (see below), including icon.html: line icons (grid, plus, chat,
                                 heart, reel, carousel, refresh, upload, external, sparkle, reply, plug, drafts, back, logout)

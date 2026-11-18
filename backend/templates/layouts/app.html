@@ -26,6 +26,11 @@
             {% if nav_section == 'inbox' %}aria-current="page"{% endif %}
           >{% include "components/icon.html" with name="chat" size=22 %}<span>Replies</span>{% include "components/replies_badge.html" %}</a>
           <a
+            href="{% url 'agent-tickets' %}"
+            class="app-side__link{% if nav_section == 'tickets' %} app-side__link--active{% endif %}"
+            {% if nav_section == 'tickets' %}aria-current="page"{% endif %}
+          >{% include "components/icon.html" with name="ticket" size=22 %}<span>Tickets</span></a>
+          <a
             href="{% url 'agent' %}"
             class="app-side__link{% if nav_section == 'agent' %} app-side__link--active{% endif %}"
             {% if nav_section == 'agent' %}aria-current="page"{% endif %}

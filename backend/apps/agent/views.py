@@ -133,5 +133,5 @@ def tickets(request):
     return _page(
         request,
         "agent/tickets.html",
-        {"nav_section": "inbox", "status": status, "tabs": ticket_tabs(request.user), "tickets": rows},
+        {"nav_section": "tickets", "status": status, "tabs": ticket_tabs(request.user), "tickets": rows},
     )
