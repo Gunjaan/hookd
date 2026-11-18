@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from google.genai import types
 from PIL import Image
 
 from apps.accounts.model_querysets import create_user
@@ -27,6 +28,7 @@ from apps.creatives.engines.base import (
     RenderedImage,
     ShotPlan,
 )
+from apps.creatives.engines.gemini import GeminiImageEngine
 from apps.creatives.exceptions import CreativeEngineError
 from apps.creatives.models import Creative, CreativeSlide, CreativeSlideVersion
 
@@ -52,6 +54,7 @@ class FakeCopyEngine(CopyEngine):
     calls = []
     shots = 3
     fail = False
+    blocked_reason = ""
 
     def plan(self, photos, request_text):
         FakeCopyEngine.calls.append(("plan", len(photos), request_text))
@@ -70,6 +73,7 @@ class FakeCopyEngine(CopyEngine):
                 BrainQuestion(label="Sizes", question="What sizes do you have?", scope="post", answer="S, M, L"),
                 BrainQuestion(label="Delivery", question="How long does delivery take?", scope="account", answer=""),
             ],
+            blocked_reason=FakeCopyEngine.blocked_reason,
         )
 
     def rewrite(self, request_text):
@@ -107,6 +111,7 @@ class CreativeTestCase(StudioTestCase):
         FakeCopyEngine.calls = []
         FakeCopyEngine.shots = 3
         FakeCopyEngine.fail = False
+        FakeCopyEngine.blocked_reason = ""
         FakeImageEngine.prompts = []
         FakeImageEngine.fail_on = set()
 
@@ -182,6 +187,14 @@ class CreateTests(CreativeTestCase):
         creative = Creative.objects.get()
         self.assertEqual((creative.status, creative.error), ("failed", "Planning broke."))
         self.assertContains(self.client.get(reverse("creative-detail", args=[creative.pk])), "Planning broke.")
+
+    def test_planner_refusal_stops_the_draft_before_any_render(self):
+        FakeCopyEngine.blocked_reason = "Hookd cannot make posts for tobacco products."
+        self.create()
+        creative = Creative.objects.get()
+        self.assertEqual((creative.status, creative.error), ("failed", "Hookd cannot make posts for tobacco products."))
+        self.assertEqual(creative.slides.count(), 0)
+        self.assertEqual(FakeImageEngine.prompts, [])
 
     def test_photo_validation(self):
         response = self.client.post(reverse("creative-new"), {"photos": [photo() for _ in range(4)], "look": "model", "format_choice": "auto"})
@@ -534,6 +547,15 @@ class PromptTests(CreativeTestCase):
         self.assertNotIn("{", prompts.PLAN_SYSTEM)
         self.assertNotIn("{", prompts.REWRITE_SYSTEM)
 
+    def test_plan_schema_asks_for_blocked_reason(self):
+        self.assertIn("blocked_reason", prompts.PLAN_SCHEMA["required"])
+        self.assertIn("SAFETY", prompts.PLAN_SYSTEM)
+
+    def test_image_prompt_holds_the_safety_rules(self):
+        text = prompts.image_prompt(prompt="On a model", branding=[], tweak="")
+        self.assertIn("adults only, fully clothed", text)
+        self.assertIn("No children, no real or famous people", text)
+
     def test_image_prompt_lists_branding(self):
         text = prompts.image_prompt(prompt="On a model", branding=["red label"], tweak="")
         self.assertIn("identical to the reference: red label", text)
@@ -603,3 +625,42 @@ class ClaudeCopyEngineTests(CreativeTestCase):
         self.assertEqual(model, "cheap-model")
         self.assertEqual([block["type"] for block in content], ["image", "text"])
         self.assertEqual(content[0]["source"]["media_type"], "image/jpeg")
+
+
+@override_settings(CREATIVE_IMAGE_MODEL="image-model")
+class GeminiImageEngineTests(CreativeTestCase):
+    def render(self, response):
+        with mock.patch("apps.creatives.engines.gemini.generate", return_value=response) as self.call:
+            return GeminiImageEngine().render([ProductPhoto(b"jpeg-bytes")], "On a model")
+
+    def test_sends_strict_safety_settings(self):
+        response = types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(parts=[
+            types.Part.from_bytes(data=b"png", mime_type="image/png"),
+        ]))])
+        self.assertEqual(self.render(response).data, b"png")
+        self.assertEqual(
+            {(item.category.name, item.threshold.name) for item in self.call.call_args.args[2].safety_settings},
+            {
+                ("HARM_CATEGORY_SEXUALLY_EXPLICIT", "BLOCK_LOW_AND_ABOVE"),
+                ("HARM_CATEGORY_DANGEROUS_CONTENT", "BLOCK_LOW_AND_ABOVE"),
+                ("HARM_CATEGORY_HARASSMENT", "BLOCK_LOW_AND_ABOVE"),
+                ("HARM_CATEGORY_HATE_SPEECH", "BLOCK_LOW_AND_ABOVE"),
+            },
+        )
+
+    def test_blocked_prompt_gives_the_safety_message(self):
+        response = types.GenerateContentResponse(
+            prompt_feedback=types.GenerateContentResponsePromptFeedback(block_reason=types.BlockedReason.SAFETY),
+        )
+        with self.assertRaisesMessage(CreativeEngineError, "blocked by the safety filter"):
+            self.render(response)
+
+    def test_blocked_image_gives_the_safety_message(self):
+        response = types.GenerateContentResponse(candidates=[types.Candidate(finish_reason=types.FinishReason.IMAGE_SAFETY)])
+        with self.assertRaisesMessage(CreativeEngineError, "blocked by the safety filter"):
+            self.render(response)
+
+    def test_empty_answer_without_a_block_asks_to_retry(self):
+        response = types.GenerateContentResponse(candidates=[types.Candidate(finish_reason=types.FinishReason.STOP)])
+        with self.assertRaisesMessage(CreativeEngineError, "did not return a photo"):
+            self.render(response)

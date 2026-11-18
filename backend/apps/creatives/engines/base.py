@@ -28,6 +28,8 @@ class BrainQuestion:
 
 @dataclass(frozen=True)
 class PostBrief:
+    """`blocked_reason` is set when the request breaks the safety rules; nothing may be rendered then."""
+
     product: str
     branding: list[str]
     audience: str
@@ -35,6 +37,7 @@ class PostBrief:
     caption: str
     hashtags: list[str] = field(default_factory=list)
     questions: list[BrainQuestion] = field(default_factory=list)
+    blocked_reason: str = ""
 
 
 @dataclass(frozen=True)

@@ -40,9 +40,10 @@ class ClaudeCopyEngine(CopyEngine):
             schema=prompts.PLAN_SCHEMA,
             max_output_tokens=PLAN_MAX_OUTPUT_TOKENS,
         )
+        blocked_reason = str(data.get("blocked_reason", "")).strip()
         slides = [ShotPlan(role=str(s.get("role", "")), prompt=str(s.get("prompt", ""))) for s in data.get("slides") or []]
         slides = [slide for slide in slides if slide.prompt.strip()][:MAX_SLIDES]
-        if not slides:
+        if not slides and not blocked_reason:
             raise CreativeEngineError("The AI did not plan any photos. Please try again.")
         return PostBrief(
             product=str(data.get("product", "")),
@@ -52,6 +53,7 @@ class ClaudeCopyEngine(CopyEngine):
             caption=str(data.get("caption", "")),
             hashtags=_hashtags(data.get("hashtags")),
             questions=_questions(data.get("questions")),
+            blocked_reason=blocked_reason,
         )
 
     def rewrite(self, request_text: str) -> PostCopy:

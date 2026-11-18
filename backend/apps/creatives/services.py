@@ -28,6 +28,7 @@ from apps.creatives.engines.registry import get_copy_engine, get_image_engine
 from apps.creatives.exceptions import (
     CreativeCaptionTooLong,
     CreativeDailyLimitReached,
+    CreativeEngineError,
     CreativeNotFound,
     CreativeNotReady,
     SlideNotFound,
@@ -114,6 +115,8 @@ def generate_creative(creative_id: int) -> str:
                 _photos(creative),
                 prompts.plan_request(look=creative.look, format_choice=creative.format_choice, notes=creative.notes),
             )
+        if brief.blocked_reason:
+            raise CreativeEngineError(brief.blocked_reason)
     except HookdError as exc:
         queries.update_creative(creative, status=Creative.Status.FAILED, error=exc.message)
         return creative.status

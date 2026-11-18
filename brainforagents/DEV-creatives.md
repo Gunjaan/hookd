@@ -20,7 +20,8 @@ renders** the photos, since Claude cannot generate images.
    (product, branding details, audience), 1 to 5 shot plans, caption, hashtags and the reply agent questions.
    `single` keeps only the first shot. Saves the brief, caption, normalized hashtags, `brain_questions` and one `CreativeSlide` per shot (`generating`), then queues
    `tasks.render_slide` per slide on commit (one task per image keeps each under `CELERY_TASK_TIME_LIMIT`).
-   A planning error marks the draft `failed` with the message.
+   A planning error marks the draft `failed` with the message. A non empty `blocked_reason` from the planner (see
+   Safety rules) raises `CreativeEngineError(blocked_reason)`: the draft fails with that sentence and nothing is rendered.
 4. `render_slide`: one image engine call with the photos and `prompts.image_prompt` (shot prompt, optional
    "Change: <tweak>", the branding list). The result is stored as a 1080x1350 JPEG (`imaging.post_jpeg`, center
    crop). After each slide `_settle` makes the draft `ready` when nothing is pending and at least one slide worked,
@@ -75,27 +76,39 @@ renders** the photos, since Claude cannot generate images.
 - System prompts are constants with no per request values, so providers with prompt caching can reuse the prefix
   (tested by `PromptTests`).
 
+## Safety rules
+
+Three layers, no extra AI call:
+
+1. The planner refuses (`PLAN_SYSTEM` SAFETY, `blocked_reason`): the draft fails with its sentence before any render.
+2. Every image prompt ends with the safety rules (`IMAGE_TEMPLATE`).
+3. Gemini blocks at `BLOCK_LOW_AND_ABOVE` (`engines/gemini.py`); a block fails that slide with the safety message.
+
 ## Prompts (`prompts.py`)
 
 | Name | Use |
 |---|---|
-| `PLAN_SYSTEM` | Creative director prompt: product fidelity first (list every branding detail with exact text, never invent or move logos), shot rules per look, single (1) or carousel (3 to 5: hero, branding close up, in use, then fit, angle or styling), 40 to 70 word concrete shot prompts, caption rules (hook under 80 chars, 1 to 2 paragraphs, one call to action, max 3 emojis, under 600 chars, notes' language, never invent prices), 8 to 15 hashtags, then 3 to 6 reply agent questions (label, question under 70 chars with an example, scope `post` or `account`, answer only when the notes state it) |
+| `PLAN_SYSTEM` | Creative director prompt: product fidelity first (list every branding detail with exact text, never invent or move logos), shot rules per look, single (1) or carousel (3 to 5: hero, branding close up, in use, then fit, angle or styling), 40 to 70 word concrete shot prompts, caption rules (hook under 80 chars, 1 to 2 paragraphs, one call to action, max 3 emojis, under 600 chars, notes' language, never invent prices), 8 to 15 hashtags, then 3 to 6 reply agent questions (label, question under 70 chars with an example, scope `post` or `account`, answer only when the notes state it), then SAFETY: `blocked_reason` is one sentence to the seller when the photos or notes show nudity or sexual content, a child as the subject, weapons, drugs, tobacco or alcohol, a real or famous person's likeness, or no sellable product, else empty |
 | `REWRITE_SYSTEM` | Rewrites caption and hashtags from the brief with the seller's change request, same rules |
-| `PLAN_SCHEMA`, `REWRITE_SCHEMA` | JSON schemas for the two text calls |
+| `PLAN_SCHEMA`, `REWRITE_SCHEMA` | JSON schemas for the two text calls (`PLAN_SCHEMA` requires `blocked_reason`) |
+| `IMAGE_TEMPLATE` | Image prompt: product fidelity, then the safety rules (adults only, fully clothed in modest, non-sexual poses, no children, no real or famous people, no other brands' logos or products, no weapons, drugs, tobacco or alcohol) |
 | `plan_request`, `rewrite_request`, `image_prompt` | Per request text. `FORMAT_GUIDE` explains `auto` (single unless details or angles help, then 3) |
 
 ## Engines (`engines/`)
 
 - `base.py`: `ProductPhoto(data, mime_type)`, `ShotPlan(role, prompt)`, `BrainQuestion(label, question, scope,
-  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions)`, `PostCopy(caption, hashtags)`,
+  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions, blocked_reason)`, `PostCopy(caption, hashtags)`,
   `RenderedImage(data)`; ABCs `CopyEngine.plan(photos, request_text)`,
   `CopyEngine.rewrite(request_text)`, `ImageEngine.render(photos, prompt) -> RenderedImage`. Engines never touch the database.
 - `claude.py`: `ClaudeCopyEngine` through `apps.ai.claude.generate_json` (photos as base64 image blocks, then the
   request text; errors are `ClaudeError`, see `DEV-ai.md`). The schema has no array limits (Claude structured
   output does not support them), so the engine caps slides at 5, hashtags at 15 and questions at 6. Unknown question
-  scopes become `post`. No planned shot is a `CreativeEngineError`.
-- `gemini.py`: `GeminiImageEngine` through `apps.ai.gemini.generate` (errors are `GeminiError`). No image in the
-  answer is a `CreativeEngineError`.
+  scopes become `post`. No planned shot is a `CreativeEngineError`, unless the plan is blocked (`blocked_reason`).
+- `gemini.py`: `GeminiImageEngine` through `apps.ai.gemini.generate` (errors are `GeminiError`). Sends
+  `SAFETY_SETTINGS`: `BLOCK_LOW_AND_ABOVE` for sexually explicit, dangerous content, harassment and hate speech. No
+  image in the answer is a `CreativeEngineError`: "This photo was blocked by the safety filter..." when
+  `prompt_feedback.block_reason` is set or a candidate's `finish_reason` is in `BLOCKED_FINISH_REASONS` (safety,
+  prohibited content, blocklist, SPII, image safety, image prohibited content), else "did not return a photo".
 - `registry.py`: `get_copy_engine()`, `get_image_engine()` from the dotted path settings.
 
 ## Settings (`config/settings.py`)
@@ -176,6 +189,9 @@ cannot publish; HTTPS error shown; system prompts hold no placeholders; image pr
 Reply agent questions: stored and shown with prefilled answers, saved with the draft, publishing writes post facts to
 the video brain and shop facts to the account brain (same label replaced), a post that goes live later is taught
 through the signal, label merge; plan schema asks for questions.
+Safety: a planner `blocked_reason` fails the draft with that message and renders nothing; plan schema requires
+`blocked_reason`; image prompt holds the safety rules. `GeminiImageEngineTests` (`generate` mocked): safety settings
+sent, blocked prompt and blocked image give the safety message, empty answer without a block asks to retry.
 `ClaudeCopyEngineTests` (model call mocked): photos sent as image blocks before the text, slides, hashtags and
 questions capped, unknown scope becomes `post`.
 Edits and history (JSON endpoints): redo answers the working draft state and hides redo while rendering, redo while

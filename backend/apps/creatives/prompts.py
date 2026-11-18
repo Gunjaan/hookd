@@ -53,6 +53,12 @@ REPLY AGENT QUESTIONS
 - "scope" is "post" for facts about this product (price, sizes, colors, stock, material) and "account" for facts true for the whole shop (delivery, returns, payment, how to order).
 - "answer" is filled only when the notes state it, otherwise an empty string. Never guess an answer.
 
+SAFETY
+- Set "blocked_reason" when the product photos or notes show nudity or sexual content, a child as the subject, \
+weapons, drugs, tobacco or alcohol, a real or famous person's likeness, or are not a sellable product. Write one \
+short sentence to the seller saying why Hookd cannot make this post, for example "Hookd cannot make posts for \
+tobacco products." Otherwise set it to an empty string.
+
 Reply only with JSON that matches the schema."""
 
 REWRITE_SYSTEM = """You rewrite Instagram post copy for a small online seller. You get the product brief, the current \
@@ -75,11 +81,14 @@ IMAGE_TEMPLATE = """Use the attached photo(s) as the exact product reference.
 {prompt}{tweak}
 The product must stay identical to the reference: {branding}. Do not alter, add, remove or redraw any logo, print, \
 label or text. Photorealistic Instagram photo, vertical 4:5, natural skin and fabric texture, true to life colors. \
-No text, no watermark, no borders, no other products."""
+No text, no watermark, no borders, no other products. Any people are adults only, fully clothed in modest, \
+non-sexual poses. No children, no real or famous people, no other brands' logos or products, no weapons, drugs, \
+tobacco or alcohol."""
 
 PLAN_SCHEMA = {
     "type": "object",
     "properties": {
+        "blocked_reason": {"type": "string"},
         "product": {"type": "string"},
         "branding": {"type": "array", "items": {"type": "string"}},
         "audience": {"type": "string"},
@@ -109,7 +118,7 @@ PLAN_SCHEMA = {
             },
         },
     },
-    "required": ["product", "branding", "audience", "slides", "caption", "hashtags", "questions"],
+    "required": ["blocked_reason", "product", "branding", "audience", "slides", "caption", "hashtags", "questions"],
     "additionalProperties": False,
 }
 
