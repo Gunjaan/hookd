@@ -147,7 +147,8 @@ numbers like the Instagram app), `.highlights` / `.highlight` (`--butter/lilac/b
 (`__link`, `__fallback` (pastel caption square when there is no image or it fails), `__type`, `__overlay` (likes and comments
 on hover), `__status`, `__working`), the post page (`.post-view`: `__media`, `__side`, `__head`, `__name`, `__open`,
 `__thread`, `__caption`, `__more`, `__foot`; `.post-extras`), the post modal (`.post-modal`: `__media`, `__side`, `__body`,
-`__caption`, `__meta`, `__brain`, `__foot`), `.comment-list`, `.comment` (`__body`, `__author`, `__text`,
+`__caption`, `__meta`, `__brain`, `__foot`; both columns are capped at the modal height so the photo stays centred and
+only `__body` scrolls, and the header badges wrap), `.comment-list`, `.comment` (`__body`, `__author`, `__text`,
 `__time`), `.compose`, `.job-list`, `.job`, the create page (`.create-hero`: `__copy`, `__lede`, `__actions`, `__steps`;
 `.create-step--butter/lilac/sage`, `__icon`). Story pages (post studio): `.story` (form column),
 `.story__actions`, `.story-step` (numbered pastel card, `--butter/lilac/blush/sage`; `__number`, `__body`, `__optional`),

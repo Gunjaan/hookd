@@ -1122,6 +1122,7 @@
   align-items: center;
   justify-content: center;
   min-height: 320px;
+  max-height: calc(100vh - var(--space-8));
   background: var(--color-ink);
 }
 
@@ -1138,15 +1139,19 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  max-height: calc(100vh - var(--space-8));
 }
 
 .post-modal__side .post-view__head {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
   padding-right: var(--space-9);
 }
 
 .post-modal__body {
   display: flex;
   flex: 1;
+  min-height: 0;
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-4);
@@ -1186,6 +1191,11 @@
   .post-modal {
     grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;
+  }
+
+  .post-modal__media,
+  .post-modal__side {
+    max-height: none;
   }
 
   .post-modal__media img,
