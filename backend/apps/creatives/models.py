@@ -113,27 +113,3 @@ class CreativeSlideVersion(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at", "-pk"]
-
-
-class CreativeAiCall(TimeStampedModel):
-    """One billed AI call made for a draft, with its tokens and the cost at the prices of that moment."""
-
-    class Kind(models.TextChoices):
-        PLAN = "plan", "Plan and copy"
-        RENDER = "render", "Photo"
-        REWRITE = "rewrite", "Caption rewrite"
-
-    creative = models.ForeignKey(Creative, on_delete=models.CASCADE, related_name="ai_calls")
-    slide = models.ForeignKey(CreativeSlide, on_delete=models.SET_NULL, null=True, blank=True, related_name="ai_calls")
-    kind = models.CharField(max_length=16, choices=Kind.choices)
-    model = models.CharField(max_length=100)
-    input_tokens = models.PositiveIntegerField(default=0)
-    output_tokens = models.PositiveIntegerField(default=0)
-    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    @property
-    def total_tokens(self) -> int:
-        return self.input_tokens + self.output_tokens

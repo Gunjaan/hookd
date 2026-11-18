@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'django_celery_results',
     'apps.core',
+    'apps.ai',
     'apps.accounts',
     'apps.integrations',
     'apps.comments',
@@ -276,7 +277,7 @@ CREATIVE_COPY_MODEL = env_str('CLAUDE_COPY_MODEL', 'claude-haiku-5-5')
 CREATIVE_IMAGE_MODEL = env_str('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1')
 # New drafts per user per rolling 24 hours. Caps AI spend.
 CREATIVE_DAILY_LIMIT = 20
-# USD per million tokens, used to record the cost of every post studio AI call (admin only). Check
+# USD per million tokens, used to record the cost of every AI call (`ai.AiCall`, admin only). Check
 # https://platform.claude.com/docs/en/about-claude/pricing and https://ai.google.dev/gemini-api/docs/pricing when
 # changing models; a model missing here is recorded at cost 0.
 AI_MODEL_PRICES = {

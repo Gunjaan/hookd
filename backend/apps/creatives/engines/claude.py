@@ -2,7 +2,7 @@
 
 from django.conf import settings
 
-from apps.core.claude import generate_json, image_block
+from apps.ai.claude import generate_json, image_block
 from apps.creatives import prompts
 from apps.creatives.engines.base import BrainQuestion, CopyEngine, PostBrief, PostCopy, ProductPhoto, ShotPlan
 from apps.creatives.exceptions import CreativeEngineError
@@ -33,18 +33,17 @@ def _questions(items) -> list[BrainQuestion]:
 
 class ClaudeCopyEngine(CopyEngine):
     def plan(self, photos: list[ProductPhoto], request_text: str) -> PostBrief:
-        answer = generate_json(
+        data = generate_json(
             settings.CREATIVE_COPY_MODEL,
             [*(image_block(photo.data, photo.mime_type) for photo in photos), {"type": "text", "text": request_text}],
             system=prompts.PLAN_SYSTEM,
             schema=prompts.PLAN_SCHEMA,
             max_output_tokens=PLAN_MAX_OUTPUT_TOKENS,
         )
-        data = answer.data
         slides = [ShotPlan(role=str(s.get("role", "")), prompt=str(s.get("prompt", ""))) for s in data.get("slides") or []]
         slides = [slide for slide in slides if slide.prompt.strip()][:MAX_SLIDES]
         if not slides:
-            raise CreativeEngineError("The AI did not plan any photos. Please try again.", usage=answer.usage)
+            raise CreativeEngineError("The AI did not plan any photos. Please try again.")
         return PostBrief(
             product=str(data.get("product", "")),
             branding=[str(item) for item in data.get("branding") or []],
@@ -53,15 +52,14 @@ class ClaudeCopyEngine(CopyEngine):
             caption=str(data.get("caption", "")),
             hashtags=_hashtags(data.get("hashtags")),
             questions=_questions(data.get("questions")),
-            usage=answer.usage,
         )
 
     def rewrite(self, request_text: str) -> PostCopy:
-        answer = generate_json(
+        data = generate_json(
             settings.CREATIVE_COPY_MODEL,
             request_text,
             system=prompts.REWRITE_SYSTEM,
             schema=prompts.REWRITE_SCHEMA,
             max_output_tokens=REWRITE_MAX_OUTPUT_TOKENS,
         )
-        return PostCopy(caption=str(answer.data.get("caption", "")), hashtags=_hashtags(answer.data.get("hashtags")), usage=answer.usage)
+        return PostCopy(caption=str(data.get("caption", "")), hashtags=_hashtags(data.get("hashtags")))

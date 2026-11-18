@@ -19,7 +19,6 @@ from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
-from apps.core.ai import JsonAnswer, TokenUsage
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.models import SocialAccount
 from apps.integrations.providers.instagram.provider import InstagramProvider
@@ -463,7 +462,7 @@ class ClaudeReplyEngineTests(AgentTestCase):
     @override_settings(AGENT_REPLY_MODEL="cheap-model")
     def test_decision_from_the_model_answer(self):
         answer = {"intent": "price", "language": "Hindi (Hinglish)", "reply_text": " @fan1 Rs 799 hai! ", "confidence": 1.4, "reason": "Price fact."}
-        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=answer) as call:
             decision = self.engine.decide(self.context())
         self.assertEqual(
             (decision.reply_text, decision.confidence, decision.language),
@@ -479,7 +478,7 @@ class ClaudeReplyEngineTests(AgentTestCase):
 
     def test_unreadable_confidence_is_zero(self):
         answer = {"intent": "x", "language": "English", "reply_text": "@fan1 hi", "confidence": "bad", "reason": ""}
-        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))):
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=answer):
             decision = self.engine.decide(self.context())
         self.assertEqual(decision.confidence, 0.0)
 
@@ -490,7 +489,7 @@ class ClaudeReplyEngineTests(AgentTestCase):
         self.assertNotIn("rule_id", REPLY_SCHEMA["properties"])
 
     def test_engine_failure_goes_to_review(self):
-        from apps.core.claude import ClaudeError
+        from apps.ai.claude import ClaudeError
 
         with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.claude.ClaudeReplyEngine"):
             with mock.patch("apps.agent.engines.claude.generate_json", side_effect=ClaudeError("Down.")):
@@ -500,8 +499,24 @@ class ClaudeReplyEngineTests(AgentTestCase):
         self.assertEqual(reply.draft_text, "")
         self.assertIn("Down.", reply.decision["reason"])
 
+    def test_reply_call_is_recorded_for_the_comment(self):
+        from apps.ai.models import AiCall
+
+        response = mock.Mock(stop_reason="end_turn")
+        response.content = [mock.Mock(type="text", text=json.dumps(
+            {"intent": "price", "language": "English", "reply_text": "@fan1 Rs 799", "confidence": 1, "reason": ""}
+        ))]
+        response.usage = mock.Mock(input_tokens=10, cache_read_input_tokens=0, cache_creation_input_tokens=0, output_tokens=5)
+        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.claude.ClaudeReplyEngine", ANTHROPIC_API_KEY="key"):
+            with mock.patch("apps.ai.claude.anthropic.Anthropic") as client:
+                client.return_value.messages.create.return_value = response
+                comment = self.comment("price?")
+                self.handle(comment)
+        call = AiCall.objects.get()
+        self.assertEqual((call.purpose, call.account, call.user, call.subject), ("comment_reply", self.account, self.user, comment))
+
     def test_preview_shows_engine_failure(self):
-        from apps.core.claude import ClaudeError
+        from apps.ai.claude import ClaudeError
 
         with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.claude.ClaudeReplyEngine"):
             with mock.patch("apps.agent.engines.claude.generate_json", side_effect=ClaudeError("Down.")):
@@ -550,7 +565,7 @@ class LearningTests(AgentTestCase):
         self.assertEqual(LearnedFact.objects.get().text, "Bag at Rs 999")
 
     def test_learner_failure_is_retried_on_the_next_comment(self):
-        from apps.core.claude import ClaudeError
+        from apps.ai.claude import ClaudeError
 
         with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption", side_effect=ClaudeError()):
             self.assertEqual(services.learn_from_post(self.post.pk), "failed")
@@ -646,7 +661,7 @@ class ClaudeBrainLearnerTests(TestCase):
             {"scope": "post", "label": "", "text": "no label"},
             "junk",
         ]}
-        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=answer) as call:
             facts = ClaudeBrainLearner().from_caption("Kurta Rs 799")
         self.assertEqual(
             [(fact.scope, fact.label, fact.text) for fact in facts],

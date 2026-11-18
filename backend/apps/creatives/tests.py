@@ -15,7 +15,8 @@ from apps.content.models import PublishJob
 from apps.content.tests import IG_ID, StudioTestCase, media
 from apps.creatives import prompts, services
 from apps.agent.models import AgentProfile, PostBrain
-from apps.core.ai import TokenUsage
+from apps.ai import services as ai_services
+from apps.ai.models import AiCall
 from apps.creatives.engines.base import (
     BrainQuestion,
     CopyEngine,
@@ -27,7 +28,7 @@ from apps.creatives.engines.base import (
     ShotPlan,
 )
 from apps.creatives.exceptions import CreativeEngineError
-from apps.creatives.models import Creative, CreativeAiCall, CreativeSlide, CreativeSlideVersion
+from apps.creatives.models import Creative, CreativeSlide, CreativeSlideVersion
 
 PRICES = {"copy-model": {"input": 0.25, "output": 1.5}, "image-model": {"input": 0.5, "output": 60}}
 
@@ -42,6 +43,11 @@ def photo(name="tee.jpg", **kwargs) -> SimpleUploadedFile:
     return SimpleUploadedFile(name, image_bytes(**kwargs), content_type="image/jpeg")
 
 
+def billed(model: str, input_tokens: int, output_tokens: int) -> None:
+    """Stands in for the provider client's call record."""
+    ai_services.record(provider="claude", model=model, request={}, input_tokens=input_tokens, output_tokens=output_tokens)
+
+
 class FakeCopyEngine(CopyEngine):
     calls = []
     shots = 3
@@ -51,6 +57,7 @@ class FakeCopyEngine(CopyEngine):
         FakeCopyEngine.calls.append(("plan", len(photos), request_text))
         if FakeCopyEngine.fail:
             raise CreativeEngineError("Planning broke.")
+        billed("copy-model", 2000, 800)
         return PostBrief(
             product="black cotton t-shirt",
             branding=["white text 'SALT CO.' centered on chest"],
@@ -63,12 +70,12 @@ class FakeCopyEngine(CopyEngine):
                 BrainQuestion(label="Sizes", question="What sizes do you have?", scope="post", answer="S, M, L"),
                 BrainQuestion(label="Delivery", question="How long does delivery take?", scope="account", answer=""),
             ],
-            usage=TokenUsage("copy-model", input_tokens=2000, output_tokens=800),
         )
 
     def rewrite(self, request_text):
         FakeCopyEngine.calls.append(("rewrite", 0, request_text))
-        return PostCopy(caption="Shorter caption.", hashtags=["cotton"], usage=TokenUsage("copy-model", 300, 100))
+        billed("copy-model", 300, 100)
+        return PostCopy(caption="Shorter caption.", hashtags=["cotton"])
 
 
 class FakeImageEngine(ImageEngine):
@@ -78,8 +85,10 @@ class FakeImageEngine(ImageEngine):
     def render(self, photos, prompt):
         FakeImageEngine.prompts.append(prompt)
         if any(marker in prompt for marker in FakeImageEngine.fail_on):
-            raise CreativeEngineError("Blocked shot.", usage=TokenUsage("image-model", 600, 0))
-        return RenderedImage(image_bytes(size=(1024, 1024), fmt="PNG"), usage=TokenUsage("image-model", 600, 1290))
+            billed("image-model", 600, 0)
+            raise CreativeEngineError("Blocked shot.")
+        billed("image-model", 600, 1290)
+        return RenderedImage(image_bytes(size=(1024, 1024), fmt="PNG"))
 
 
 ENGINES = {
@@ -290,13 +299,13 @@ class EditTests(CreativeTestCase):
         slide.refresh_from_db()
         second = slide.image.name
         FakeImageEngine.prompts = []
-        calls = CreativeAiCall.objects.count()
+        calls = AiCall.objects.count()
         data = self.client.post(reverse("api-version-use", args=[slide.versions.get().pk])).json()
         self.assertEqual((data["status"], data["can_post"], data["message"]), ("ready", True, "Earlier photo is back in the post."))
         slide.refresh_from_db()
         self.assertEqual(slide.image.name, first)
         self.assertEqual(list(slide.versions.values_list("image", "tweak")), [(second, "outdoor")])
-        self.assertEqual((FakeImageEngine.prompts, CreativeAiCall.objects.count()), ([], calls))
+        self.assertEqual((FakeImageEngine.prompts, AiCall.objects.count()), ([], calls))
 
     def test_rewrite_is_text_only_and_keeps_answers(self):
         data = self.client.post(reverse("api-draft-rewrite", args=[self.creative.pk]), self.draft_form(instruction="shorter")).json()
@@ -538,42 +547,43 @@ class UsageTests(CreativeTestCase):
     def test_every_ai_call_is_recorded_with_its_cost(self):
         self.create()
         creative = Creative.objects.get()
-        calls = list(creative.ai_calls.order_by("pk"))
-        self.assertEqual([call.kind for call in calls], ["plan", "render", "render", "render"])
+        calls = list(AiCall.objects.order_by("pk"))
+        self.assertEqual(
+            [call.purpose for call in calls], ["creative_plan", "creative_photo", "creative_photo", "creative_photo"]
+        )
+        self.assertEqual({(call.user, call.subject) for call in calls}, {(self.user, creative)})
         plan = calls[0]
         self.assertEqual((plan.model, plan.input_tokens, plan.output_tokens), ("copy-model", 2000, 800))
         self.assertEqual(plan.cost_usd, Decimal("0.001700"))  # 2000 * 0.25 + 800 * 1.5 per million
         self.assertEqual(calls[1].cost_usd, Decimal("0.077700"))  # 600 * 0.5 + 1290 * 60 per million
-        self.assertEqual({call.slide_id for call in calls[1:]}, set(creative.slides.values_list("pk", flat=True)))
 
         self.client.post(reverse("api-draft-rewrite", args=[creative.pk]), {"instruction": "shorter"})
-        self.assertEqual(creative.ai_calls.filter(kind="rewrite").count(), 1)
+        self.assertEqual(AiCall.objects.filter(purpose="caption_rewrite", subject_id=creative.pk).count(), 1)
 
     def test_failed_render_with_usage_is_recorded(self):
         FakeImageEngine.fail_on = {"Shot 1"}
         self.create()
-        failed = CreativeAiCall.objects.get(slide__position=1)
+        failed = AiCall.objects.get(purpose="creative_photo", output_tokens=0)
         self.assertEqual((failed.input_tokens, failed.output_tokens, failed.cost_usd), (600, 0, Decimal("0.000300")))
 
     @override_settings(AI_MODEL_PRICES={})
     def test_unknown_model_costs_zero(self):
         self.create()
-        self.assertEqual(CreativeAiCall.objects.filter(cost_usd__gt=0).count(), 0)
-        self.assertEqual(CreativeAiCall.objects.count(), 4)
+        self.assertEqual(AiCall.objects.filter(cost_usd__gt=0).count(), 0)
+        self.assertEqual(AiCall.objects.count(), 4)
 
     def test_admin_shows_usage_totals(self):
         self.create()
         self.client.force_login(get_user_model().objects.create_superuser(email="admin@example.com", password="a-strong-pass-123"))
         listing = self.client.get(reverse("admin:creatives_creative_changelist"))
         self.assertContains(listing, "0.2348")  # 0.0017 + 3 * 0.0777
-        calls = self.client.get(reverse("admin:creatives_creativeaicall_changelist"))
+        calls = self.client.get(reverse("admin:ai_aicall_changelist"))
         self.assertContains(calls, "Filtered calls: 3800 input tokens, 4670 output tokens, 0.2348 USD")
 
 
 class ClaudeCopyEngineTests(CreativeTestCase):
     @override_settings(CREATIVE_COPY_MODEL="cheap-model")
     def test_plan_sends_photos_and_caps_the_answer(self):
-        from apps.core.ai import JsonAnswer
         from apps.creatives.engines.claude import ClaudeCopyEngine
 
         answer = {
@@ -585,7 +595,7 @@ class ClaudeCopyEngineTests(CreativeTestCase):
             "hashtags": [f"tag{n}" for n in range(20)],
             "questions": [{"label": "Price", "question": f"Q{n}?", "scope": "odd", "answer": ""} for n in range(8)],
         }
-        with mock.patch("apps.creatives.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+        with mock.patch("apps.creatives.engines.claude.generate_json", return_value=answer) as call:
             brief = ClaudeCopyEngine().plan([ProductPhoto(b"jpeg-bytes")], "Look: model")
         self.assertEqual((len(brief.slides), len(brief.hashtags), len(brief.questions)), (5, 15, 6))
         self.assertEqual(brief.questions[0].scope, "post")

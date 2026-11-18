@@ -20,6 +20,7 @@ Not built yet: YouTube, sending DMs, private replies and auto replies to DMs and
 | `DEV-infrastructure.md` | deploy.py and Docker, Postgres, Redis, cache, env vars, cron, Celery, running and testing, production with Caddy |
 | `DEV-auth.md` | `apps.accounts`: custom User, session login, signup, logout |
 | `DEV-core.md` | `apps.core`: base model, encrypted field, `HookdError`, health check |
+| `DEV-ai.md` | `apps.ai`: Claude and Gemini clients, record of every AI call (what was sent, answer, tokens, cost, purpose, user), cost admin |
 | `DEV-integrations.md` | `apps.integrations`: provider interface, SocialAccount, connect flow, token refresh |
 | `DEV-instagram.md` | Instagram provider: Unified Login (Facebook Login for Business), token lifecycle, Meta app setup |
 | `DEV-comments.md` | `apps.comments`: Comment model, webhook endpoint, how comments arrive |

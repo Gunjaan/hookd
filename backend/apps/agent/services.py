@@ -26,6 +26,8 @@ from apps.agent.engines.base import AgentContext, AgentDecision, LearnedFactDraf
 from apps.agent.engines.registry import get_engine, get_learner
 from apps.agent.exceptions import LearnedFactNotFound, ReplyNotEditable, ReplyNotFound, ReplyTextRejected
 from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
+from apps.ai.constants import Purpose
+from apps.ai.services import attributed
 from apps.comments import model_querysets as comment_queries
 from apps.comments.models import Comment
 from apps.content import model_querysets as post_queries
@@ -215,7 +217,8 @@ def handle_new_comment(comment_id: int) -> str:
         account=account, profile=profile, post=post, brain=brain, text=comment.text, author=comment.author_username
     )
     try:
-        decision = engine.decide(context)
+        with attributed(Purpose.COMMENT_REPLY, account=account, subject=comment):
+            decision = engine.decide(context)
     except HookdError as exc:
         # The AI could not answer: the creator writes this one by hand in the inbox.
         logger.warning("Reply engine failed for comment %s: %s", comment.pk, exc.message)
@@ -260,7 +263,8 @@ def preview_reply(
         account=account, profile=profile, post=post, brain=brain, text=text, author="customer", voice=voice,
         knowledge=knowledge,
     )
-    decision = get_engine().decide(context)
+    with attributed(Purpose.REPLY_PREVIEW, account=account, subject=post):
+        decision = get_engine().decide(context)
     if brain is not None and not brain.agent_enabled:
         routing = Routing(ReplyStatus.SKIPPED, "The agent is off for this post.")
     else:
@@ -433,7 +437,8 @@ def learn_from_post(post_id: int) -> str:
     if not post.caption.strip():
         return "learned 0"
     try:
-        facts = get_learner().from_caption(post.caption)
+        with attributed(Purpose.LEARN_CAPTION, account=post.account, subject=post):
+            facts = get_learner().from_caption(post.caption)
     except HookdError as exc:
         queries.release_caption_learning(post)
         logger.warning("Could not learn from the caption of post %s: %s", post.pk, exc.message)
@@ -450,9 +455,10 @@ def learn_from_reply(reply_id: int) -> str:
     comment = reply.comment
     post = post_queries.find_post(comment.account, comment.media_external_id)
     try:
-        facts = get_learner().from_reply(
-            question=comment.text, answer=reply.final_text, post_caption=post.caption if post else ""
-        )
+        with attributed(Purpose.LEARN_REPLY, account=comment.account, subject=reply):
+            facts = get_learner().from_reply(
+                question=comment.text, answer=reply.final_text, post_caption=post.caption if post else ""
+            )
     except HookdError as exc:
         logger.warning("Could not learn from reply %s: %s", reply.pk, exc.message)
         return "failed"

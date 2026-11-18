@@ -3,13 +3,11 @@
 Token budget per draft: one text call that reads the photos once and returns the brief, shot plan, caption and
 hashtags together, then one image call per slide. Redoing a photo renders only that slide; rewriting the caption
 sends the stored brief as text, never the photos again; putting back an earlier photo costs nothing. Every billed
-call is recorded with its tokens and cost (`CreativeAiCall`, admin only).
+call is recorded with what was sent, its tokens and cost (`ai.AiCall`, admin only).
 """
 
-import logging
 import re
 from datetime import timedelta
-from decimal import Decimal
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
@@ -17,11 +15,12 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.agent import services as agent_services
+from apps.ai.claude import ClaudeUnavailable
+from apps.ai.constants import Purpose
+from apps.ai.gemini import GeminiUnavailable
+from apps.ai.services import attributed
 from apps.content import services as content_services
 from apps.core.exceptions import HookdError
-from apps.core.ai import TokenUsage
-from apps.core.claude import ClaudeUnavailable
-from apps.core.gemini import GeminiUnavailable
 from apps.creatives import imaging, prompts
 from apps.creatives import model_querysets as queries
 from apps.creatives.engines.base import ProductPhoto
@@ -34,11 +33,9 @@ from apps.creatives.exceptions import (
     SlideNotFound,
     SlideVersionNotFound,
 )
-from apps.creatives.models import Creative, CreativeAiCall, CreativeSlide, FormatChoice
+from apps.creatives.models import Creative, CreativeSlide, FormatChoice
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.constants import PublishKind
-
-logger = logging.getLogger(__name__)
 
 MAX_HASHTAGS = 30
 CAPTION_MAX_LENGTH = 2200
@@ -112,15 +109,14 @@ def generate_creative(creative_id: int) -> str:
         return creative.status
 
     try:
-        brief = get_copy_engine().plan(
-            _photos(creative),
-            prompts.plan_request(look=creative.look, format_choice=creative.format_choice, notes=creative.notes),
-        )
+        with attributed(Purpose.CREATIVE_PLAN, user=creative.user, subject=creative):
+            brief = get_copy_engine().plan(
+                _photos(creative),
+                prompts.plan_request(look=creative.look, format_choice=creative.format_choice, notes=creative.notes),
+            )
     except HookdError as exc:
-        _record_usage(creative, CreativeAiCall.Kind.PLAN, getattr(exc, "usage", None))
         queries.update_creative(creative, status=Creative.Status.FAILED, error=exc.message)
         return creative.status
-    _record_usage(creative, CreativeAiCall.Kind.PLAN, brief.usage)
 
     shots = [(shot.role, shot.prompt) for shot in brief.slides]
     if creative.format_choice == FormatChoice.SINGLE:
@@ -151,12 +147,11 @@ def render_slide(slide_id: int) -> str:
     creative = slide.creative
     prompt = prompts.image_prompt(prompt=slide.prompt, branding=creative.brief.get("branding") or [], tweak=slide.tweak)
     try:
-        rendered = get_image_engine().render(_photos(creative), prompt)
+        with attributed(Purpose.CREATIVE_PHOTO, user=creative.user, subject=creative):
+            rendered = get_image_engine().render(_photos(creative), prompt)
     except HookdError as exc:
-        _record_usage(creative, CreativeAiCall.Kind.RENDER, getattr(exc, "usage", None), slide=slide)
         queries.mark_slide_failed(slide, exc.message)
     else:
-        _record_usage(creative, CreativeAiCall.Kind.RENDER, rendered.usage, slide=slide)
         queries.save_slide_image(slide, imaging.post_jpeg(rendered.data))
     _settle(creative)
     return slide.status
@@ -171,24 +166,6 @@ def _settle(creative: Creative) -> None:
         queries.update_creative(creative, status=Creative.Status.READY, error="")
     else:
         queries.update_creative(creative, status=Creative.Status.FAILED, error="None of the photos could be made. Please try again.")
-
-
-def _record_usage(creative: Creative, kind: str, usage: TokenUsage | None, slide: CreativeSlide | None = None) -> None:
-    if usage is not None:
-        queries.add_ai_call(
-            creative, kind=kind, model=usage.model, input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens, cost_usd=call_cost(usage), slide=slide,
-        )
-
-
-def call_cost(usage: TokenUsage) -> Decimal:
-    """USD at AI_MODEL_PRICES (per million tokens). A model without a price costs 0 and is logged."""
-    price = settings.AI_MODEL_PRICES.get(usage.model)
-    if price is None:
-        logger.warning("No price for AI model %s, its cost is recorded as 0.", usage.model)
-        return Decimal("0")
-    cost = (Decimal(str(price["input"])) * usage.input_tokens + Decimal(str(price["output"])) * usage.output_tokens) / 1_000_000
-    return cost.quantize(Decimal("0.000001"))
 
 
 def _photos(creative: Creative) -> list[ProductPhoto]:
@@ -257,12 +234,12 @@ def rewrite_caption(*, user, creative_id: int, instruction: str = "", copy: dict
     creative = _editable(user, creative_id)
     if copy:
         creative = _save_copy(creative, **copy)
-    rewritten = get_copy_engine().rewrite(
-        prompts.rewrite_request(
-            brief=creative.brief, caption=creative.caption, hashtags=creative.hashtags, instruction=instruction
+    with attributed(Purpose.CAPTION_REWRITE, user=user, subject=creative):
+        rewritten = get_copy_engine().rewrite(
+            prompts.rewrite_request(
+                brief=creative.brief, caption=creative.caption, hashtags=creative.hashtags, instruction=instruction
+            )
         )
-    )
-    _record_usage(creative, CreativeAiCall.Kind.REWRITE, rewritten.usage)
     return queries.update_creative(
         creative, caption=rewritten.caption.strip(), hashtags=format_hashtags(rewritten.hashtags)
     )

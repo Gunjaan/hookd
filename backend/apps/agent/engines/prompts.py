@@ -74,7 +74,8 @@ delivery, returns, how to order, contact, location, opening hours.
 - label: 1 to 3 words naming the topic, for example Price, Sizes, Delivery, How to order. Use the same label for the \
 same topic every time. A fact about another item than the product (seen in the post) is labelled with that item's \
 name, for example Laptop.
-- text: the fact in one short sentence, under 200 characters, in the text's language.
+- text: the fact in one short sentence, under 200 characters, always in English, whatever language the text is in \
+(translate it). Keep prices, numbers, product names and brand names exactly as written.
 - scope "post" for facts about this product or post (its price, sizes, colors, stock). Scope "account" for facts \
 about the whole shop (shipping, cash on delivery, returns, how to order, location).
 - Nothing factual: an empty list.

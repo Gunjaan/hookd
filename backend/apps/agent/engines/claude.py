@@ -5,7 +5,7 @@ from django.conf import settings
 from apps.agent.engines import prompts
 from apps.agent.constants import FactScope
 from apps.agent.engines.base import AgentContext, AgentDecision, BrainLearner, LearnedFactDraft, ReplyEngine
-from apps.core.claude import generate_json
+from apps.ai.claude import generate_json
 
 # Ceilings, not charges: they leave room for the short thinking that comes before the JSON answer.
 MAX_OUTPUT_TOKENS = 2000
@@ -31,7 +31,7 @@ class ClaudeReplyEngine(ReplyEngine):
             system=prompts.REPLY_SYSTEM,
             schema=prompts.REPLY_SCHEMA,
             max_output_tokens=MAX_OUTPUT_TOKENS,
-        ).data
+        )
         return AgentDecision(
             intent=str(data.get("intent", "")) or "comment",
             language=str(data.get("language", "")) or "unknown",
@@ -65,7 +65,7 @@ class ClaudeBrainLearner(BrainLearner):
             system=system,
             schema=prompts.LEARN_SCHEMA,
             max_output_tokens=LEARN_MAX_OUTPUT_TOKENS,
-        ).data
+        )
         return _facts(data)
 
     def from_caption(self, caption: str) -> list[LearnedFactDraft]:

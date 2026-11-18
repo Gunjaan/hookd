@@ -1,13 +1,11 @@
 """All database access for the post studio lives here."""
 
 from datetime import datetime
-from decimal import Decimal
 
 from django.core.files.base import ContentFile
-from django.db.models import F, Prefetch, QuerySet, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Prefetch, QuerySet
 
-from apps.creatives.models import Creative, CreativeAiCall, CreativeSlide, CreativeSlideVersion, CreativeSource
+from apps.creatives.models import Creative, CreativeSlide, CreativeSlideVersion, CreativeSource
 
 
 def create_creative(*, user, look: str, format_choice: str, notes: str) -> Creative:
@@ -137,33 +135,6 @@ def slide_statuses(creative: Creative) -> list[str]:
 
 def ready_slides(creative: Creative) -> list[CreativeSlide]:
     return list(CreativeSlide.objects.filter(creative=creative, status=CreativeSlide.Status.READY).order_by("position"))
-
-
-def add_ai_call(
-    creative: Creative, *, kind: str, model: str, input_tokens: int, output_tokens: int, cost_usd: Decimal,
-    slide: CreativeSlide | None = None,
-) -> CreativeAiCall:
-    return CreativeAiCall.objects.create(
-        creative=creative, slide=slide, kind=kind, model=model,
-        input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost_usd,
-    )
-
-
-def with_usage_totals(queryset: QuerySet[Creative]) -> QuerySet[Creative]:
-    """Annotate drafts with `total_tokens` and `total_cost` over their AI calls (admin list)."""
-    return queryset.annotate(
-        total_tokens=Coalesce(Sum(F("ai_calls__input_tokens") + F("ai_calls__output_tokens")), 0),
-        total_cost=Coalesce(Sum("ai_calls__cost_usd"), Decimal("0")),
-    )
-
-
-def usage_totals(queryset: QuerySet[CreativeAiCall]) -> dict:
-    """Calls, tokens and cost over a set of AI calls (admin changelist totals)."""
-    return queryset.aggregate(
-        input_tokens=Coalesce(Sum("input_tokens"), 0),
-        output_tokens=Coalesce(Sum("output_tokens"), 0),
-        cost=Coalesce(Sum("cost_usd"), Decimal("0")),
-    )
 
 
 def delete_creative(creative: Creative) -> None:

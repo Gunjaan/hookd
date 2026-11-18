@@ -10,13 +10,7 @@ class CreativeNotReady(HookdError):
 
 
 class CreativeEngineError(HookdError):
-    """`usage` is set when the model answered (and billed) but the answer was unusable."""
-
     default_message = "The AI could not finish this. Please try again."
-
-    def __init__(self, message: str | None = None, usage=None):
-        super().__init__(message)
-        self.usage = usage
 
 
 class CreativeDailyLimitReached(HookdError):

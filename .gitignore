@@ -16,3 +16,4 @@ logs/
 backend/media/
 hookd-plan.md
 .env.prod
+hookdtutorial/

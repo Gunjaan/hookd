@@ -126,12 +126,12 @@ creator writes it in the inbox. The preview page shows the error as a message.
   facts, post facts win on a conflict. Learner prompts (constants): `LEARN_RULES` (buyer facts only: price, sizes,
   colors, material, stock, availability (also what is not for sale), offer, delivery, shipping, COD, returns, how to
   order, contact, location, hours; only what the text states; 1 to 3 word labels reused per topic, another item seen
-  in the post is labelled with its name (so it never replaces the product's facts); text under 200 characters in the
-  text's language; scope `post` for the product, `account` for the shop), `LEARN_CAPTION_SYSTEM` (at most 12 facts),
+  in the post is labelled with its name (so it never replaces the product's facts); text under 200 characters, always in
+  English (translated, numbers and names kept as written); scope `post` for the product, `account` for the shop), `LEARN_CAPTION_SYSTEM` (at most 12 facts),
   `LEARN_REPLY_SYSTEM` (at most 3; a direct answer to the buyer's question is always a fact even off the topic list;
   holding replies, thanks and "DM us" state none), `LEARN_SCHEMA` (`facts[]` of scope, label, text),
   `learn_reply_request(question, answer, post_caption)`.
-- `claude.py`: `ClaudeReplyEngine` (`name = "claude"`): one `core.claude.generate_json` call (structured JSON output,
+- `claude.py`: `ClaudeReplyEngine` (`name = "claude"`): one `ai.claude.generate_json` call (structured JSON output,
   low effort), max 2000 output tokens (a ceiling with room for the short thinking before the answer). Confidence is
   clamped to 0..1 (unreadable is 0). `ClaudeBrainLearner` (`name = "claude"`): one `generate_json` call, max 4000
   output tokens; facts without a label or text are dropped, an unknown scope becomes `post`, labels are
@@ -155,6 +155,9 @@ Choices in `constants.py`: `ReplyStatus`, `FactSource`, `FactScope` (`post`, `ac
 A video brain only exists for posts Hookd has synced (`Post` rows); comments on other posts use the account brain.
 
 ## Services (`services.py`)
+
+Every engine and learner call runs inside `ai.services.attributed` (`comment_reply`, `reply_preview`, `learn_caption`,
+`learn_reply`, with the account and the comment, post or reply), so each AI call is recorded with what it was for (`DEV-ai.md`).
 
 | Function | Does |
 |---|---|
@@ -211,7 +214,7 @@ early task waits; `send_due_replies`; Instagram text rules; inbox list, approve 
 empty list and badge), approve refused text, reject, retry, side panel count; settings save and on/off checkbox, home redirect, video brain save, preview stores
 nothing, 404 for other users. Claude engine (model call mocked): decision mapped and clamped, compact request without
 empty fields or rules, unreadable confidence is 0, constant system prompt without `rule_id` in the schema, engine
-failure goes to review with the reason, preview shows the error. Learned brain: a synced post is not read until its first comment and then only
+failure goes to review with the reason, preview shows the error, a reply call is recorded with purpose, account, user and comment. Learned brain: a synced post is not read until its first comment and then only
 once (a later caption change is ignored), read with the agent off, a post fetched for a comment is read, a post
 published from Hookd is read, learner failure is retried on the next comment, learned facts answer comments while typed facts
 win on the same label, a rewritten inbox reply teaches the next answer, an unchanged approval learns nothing, the same

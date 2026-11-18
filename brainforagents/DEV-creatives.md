@@ -12,8 +12,8 @@ renders** the photos, since Claude cannot generate images.
 
 1. `/studio/publishing/new/` (`CreativeForm`): photos (1 to 3, JPEG/PNG/WebP, 10 MB, must open in Pillow), `look`
    (`model`, `studio`, `lifestyle`, `flatlay`), `format_choice` (`auto`, `single`, `carousel`), `notes`.
-2. `services.start_creative` checks `ANTHROPIC_API_KEY` (`core.claude.ClaudeUnavailable`), `GEMINI_API_KEY`
-   (`core.gemini.GeminiUnavailable`) and `CREATIVE_DAILY_LIMIT` per
+2. `services.start_creative` checks `ANTHROPIC_API_KEY` (`ai.claude.ClaudeUnavailable`), `GEMINI_API_KEY`
+   (`ai.gemini.GeminiUnavailable`) and `CREATIVE_DAILY_LIMIT` per
    user per rolling 24 h (`CreativeDailyLimitReached`), stores each photo downscaled (`imaging.source_jpeg`: upright,
    max 1024 px, JPEG q85), creates the draft in `planning` and queues `tasks.generate_creative` on commit.
 3. `generate_creative`: **one** copy engine call with the photos and `prompts.plan_request` returns the brief
@@ -69,11 +69,9 @@ renders** the photos, since Claude cannot generate images.
 - One image call per slide, `response_modalities=["IMAGE"]` (no text back), aspect ratio `4:5`.
 - Redo renders one slide; rewrite never resends photos; going back to an earlier photo costs nothing; redo controls
   are hidden while anything renders; daily draft cap per user.
-- **Usage and cost are recorded for every billed call** (`CreativeAiCall`): plan, each render (also a render that
-  answered without a photo, `CreativeEngineError.usage`) and rewrite. Cost = tokens x `AI_MODEL_PRICES` (USD per
-  million, `config/settings.py`) at call time, so history keeps the price of its day. Admin only: the `Creative` list
-  shows tokens and cost per draft, the "Creative ai calls" list filters by user, kind, model and date with a totals
-  line for the filtered calls (`templates/admin/creatives/creativeaicall/change_list.html`). Sellers never see it.
+- **Every AI call is recorded** (`ai.AiCall`, see `DEV-ai.md`): plan (`creative_plan`), each render
+  (`creative_photo`, also failed ones) and rewrite (`caption_rewrite`), each with the draft owner and the draft as
+  subject. The `Creative` admin list shows tokens and cost per draft and links to its calls.
 - System prompts are constants with no per request values, so providers with prompt caching can reuse the prefix
   (tested by `PromptTests`).
 
@@ -89,15 +87,15 @@ renders** the photos, since Claude cannot generate images.
 ## Engines (`engines/`)
 
 - `base.py`: `ProductPhoto(data, mime_type)`, `ShotPlan(role, prompt)`, `BrainQuestion(label, question, scope,
-  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions, usage)`, `PostCopy(caption, hashtags, usage)`,
-  `RenderedImage(data, usage)` (`usage` is a `core.ai.TokenUsage`); ABCs `CopyEngine.plan(photos, request_text)`,
+  answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions)`, `PostCopy(caption, hashtags)`,
+  `RenderedImage(data)`; ABCs `CopyEngine.plan(photos, request_text)`,
   `CopyEngine.rewrite(request_text)`, `ImageEngine.render(photos, prompt) -> RenderedImage`. Engines never touch the database.
-- `claude.py`: `ClaudeCopyEngine` through `apps.core.claude.generate_json` (photos as base64 image blocks, then the
-  request text; errors are `ClaudeError`, see `DEV-core.md`). The schema has no array limits (Claude structured
+- `claude.py`: `ClaudeCopyEngine` through `apps.ai.claude.generate_json` (photos as base64 image blocks, then the
+  request text; errors are `ClaudeError`, see `DEV-ai.md`). The schema has no array limits (Claude structured
   output does not support them), so the engine caps slides at 5, hashtags at 15 and questions at 6. Unknown question
-  scopes become `post`. No planned shot is a `CreativeEngineError` (with `usage`).
-- `gemini.py`: `GeminiImageEngine` through `apps.core.gemini.generate` (errors are `GeminiError`). No image in the
-  answer is a `CreativeEngineError` (with `usage`).
+  scopes become `post`. No planned shot is a `CreativeEngineError`.
+- `gemini.py`: `GeminiImageEngine` through `apps.ai.gemini.generate` (errors are `GeminiError`). No image in the
+  answer is a `CreativeEngineError`.
 - `registry.py`: `get_copy_engine()`, `get_image_engine()` from the dotted path settings.
 
 ## Settings (`config/settings.py`)
@@ -111,7 +109,7 @@ renders** the photos, since Claude cannot generate images.
 | `CREATIVE_COPY_MODEL` | env `CLAUDE_COPY_MODEL`, else `claude-haiku-5-5` | Text model |
 | `CREATIVE_IMAGE_MODEL` | env `GEMINI_IMAGE_MODEL`, else `gemini-nano-banana-2.1` | Image model |
 | `CREATIVE_DAILY_LIMIT` | `20` | New drafts per user per 24 h |
-| `AI_MODEL_PRICES` | copy and image model prices | USD per million input and output tokens per model name |
+| `AI_MODEL_PRICES` | copy and image model prices | USD per million input and output tokens per model name (`DEV-ai.md`) |
 
 ## Models
 
@@ -121,9 +119,8 @@ renders** the photos, since Claude cannot generate images.
 | `CreativeSource` | `creative`, `token`, `position`, `file` (`MEDIA_ROOT/creatives/sources/<token>.jpg`) |
 | `CreativeSlide` | `creative`, `position`, `role`, `prompt`, `tweak`, `status` (`pending`, `ready`, `failed`), `image` (`MEDIA_ROOT/creatives/slides/<uuid>.jpg`), `error` |
 | `CreativeSlideVersion` | `slide` (`versions`), `image`, `tweak` (the change that made it). Newest first |
-| `CreativeAiCall` | `creative` (`ai_calls`), `slide` (SET_NULL), `kind` (`plan`, `render`, `rewrite`), `model`, `input_tokens`, `output_tokens`, `cost_usd`. Property `total_tokens` |
 
-Choices: `Look`, `FormatChoice` in `models.py`. All in the Django admin (sources, slides and AI calls inline on the draft, versions inline on the slide).
+Choices: `Look`, `FormatChoice` in `models.py`. All in the Django admin (sources and slides inline on the draft, a link to its AI calls, versions inline on the slide).
 Files (sources, slides, versions) are deleted with the draft (`model_querysets.delete_creative`); a redo keeps the old file as a version.
 
 ## Services (`services.py`)
@@ -133,7 +130,6 @@ Files (sources, slides, versions) are deleted with the draft (`model_querysets.d
 | `list_creatives(user)`, `get_user_creative` (`CreativeNotFound`), `publish_accounts(user)` | Pages |
 | `start_creative`, `generate_creative`, `render_slide`, `expire_stale_work` | Flow steps 2 to 5 |
 | `regenerate_slide` (`SlideNotFound`, `CreativeNotReady`), `use_slide_version` (`SlideVersionNotFound`), `update_copy`, `rewrite_caption`, `delete_creative` | Editing. Redo, swap and rewrite take `copy` (caption, hashtags, answers) and save it first (`_save_copy`). Editable in `ready`, `generating` and `failed` with a brief |
-| `call_cost(usage)` | USD for a `TokenUsage` at `AI_MODEL_PRICES` |
 | `publish_creative` | Step 7 |
 | `save_brain_answers(creative, post)`, `save_brain_answers_for_job(job, post)`, `merge_brain_lines(existing, lines)` | Step 8, through `agent.services` (`get_post_brain`, `save_post_brain`, `get_profile`, `update_profile`) |
 | `user_file(user, kind, file_id)` | A slide image, earlier version or source photo of the user's own draft |
@@ -142,8 +138,7 @@ Files (sources, slides, versions) are deleted with the draft (`model_querysets.d
 `model_querysets.py`: `create_creative`, `add_source`, `list_sources`, `count_creatives_since`, `get_creative`,
 `get_creative_for_user`, `list_creatives_for_user` (30 newest), `update_creative`, `save_plan`, `find_creative_for_job`, `get_slide`,
 `get_slide_for_user`, `get_source_for_user`, `mark_slide_pending` (archives the current image), `save_slide_image`, `mark_slide_failed`,
-`get_version_for_user`, `swap_version_into_slide`, `slide_statuses`, `ready_slides`, `add_ai_call`, `with_usage_totals`,
-`usage_totals`, `delete_creative`.
+`get_version_for_user`, `swap_version_into_slide`, `slide_statuses`, `ready_slides`, `delete_creative`.
 `imaging.py`: `source_jpeg`, `post_jpeg` (Pillow). `receivers.py`: `post_published` receiver. Errors in `exceptions.py`.
 `forms.brain_answers(data)`: the `answer_0..5` values, max 300 characters each.
 
@@ -187,5 +182,5 @@ Edits and history (JSON endpoints): redo answers the working draft state and hid
 rendering is refused, redo leaves the copy alone, rewrite keeps answers and uses the edited caption; redo keeps the old
 photo as a version (also when the redo fails); "Use this one" swaps back with no AI call; progress reports state and
 fails a stale slide; save returns normalized copy; too long caption 400; login (401) and CSRF (403) enforced;
-originals shown; page wired to the endpoints with no meta refresh; other users get 404 for drafts, slides and versions. Usage: a row per plan, render and rewrite with
-cost from `AI_MODEL_PRICES`, failed render with usage recorded, unknown model costs 0, admin totals.
+originals shown; page wired to the endpoints with no meta refresh; other users get 404 for drafts, slides and versions. Usage (fake engines record like the clients): an `AiCall` per plan, render and
+rewrite with the purpose, owner, draft and cost from `AI_MODEL_PRICES`, failed render recorded, unknown model costs 0, admin totals.

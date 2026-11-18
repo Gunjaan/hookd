@@ -3,8 +3,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from apps.core.ai import TokenUsage
-
 
 @dataclass(frozen=True)
 class ProductPhoto:
@@ -37,20 +35,17 @@ class PostBrief:
     caption: str
     hashtags: list[str] = field(default_factory=list)
     questions: list[BrainQuestion] = field(default_factory=list)
-    usage: TokenUsage | None = None
 
 
 @dataclass(frozen=True)
 class PostCopy:
     caption: str
     hashtags: list[str]
-    usage: TokenUsage | None = None
 
 
 @dataclass(frozen=True)
 class RenderedImage:
     data: bytes
-    usage: TokenUsage | None = None
 
 
 class CopyEngine(ABC):

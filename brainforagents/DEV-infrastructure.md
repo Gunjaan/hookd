@@ -137,10 +137,10 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `EMAIL_HOST_USER` | | `support@hookd.world` | Mailbox to log in with. Also the sender: `DEFAULT_FROM_EMAIL = SERVER_EMAIL = Hookd <EMAIL_HOST_USER>`, so mail passes SPF and DMARC |
 | `EMAIL_HOST_PASSWORD` | for real mail | | That mailbox's password |
 | `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` (includes `INSTAGRAM_WEBHOOK_FIELDS`, default `comments`) |
-| `ANTHROPIC_API_KEY` | for AI | | Claude API key for all AI text: post studio plans and captions, comment replies, brain facts (`apps/core/claude.py`). The reply agent uses Claude only when it is set |
+| `ANTHROPIC_API_KEY` | for AI | | Claude API key for all AI text: post studio plans and captions, comment replies, brain facts (`apps/ai/claude.py`). The reply agent uses Claude only when it is set |
 | `CLAUDE_COPY_MODEL` | | `claude-haiku-5-5` | Model that reads product photos, plans shots and writes captions |
 | `CLAUDE_REPLY_MODEL` | | `claude-haiku-5-5` | Model that writes comment replies and learns brain facts from captions and inbox replies (`DEV-agent.md`) |
-| `GEMINI_API_KEY` | for AI photos | | Google AI Studio key for rendering post studio photos (`apps/core/gemini.py`) |
+| `GEMINI_API_KEY` | for AI photos | | Google AI Studio key for rendering post studio photos (`apps/ai/gemini.py`) |
 | `GEMINI_IMAGE_MODEL` | | `gemini-nano-banana-2.1` | Image model that renders post photos |
 
 Not an env var: `AI_MODEL_PRICES` in `config/settings.py` holds USD per million input and output tokens per model, used
