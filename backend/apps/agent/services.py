@@ -243,7 +243,8 @@ def handle_new_comment(comment_id: int) -> str:
 
 def handle_buyer_message(conversation_id: int, message_id: int) -> str:
     """A buyer wrote to the account: continue their recent run, or start one. A shared post of the seller's that
-    Hookd has not seen is fetched first, so the run can read it. Returns the outcome."""
+    Hookd has not seen is fetched first, so the run can read it. The DM waits DM_BATCH_SECONDS and pushes the run's
+    waiting DMs to the same time, so messages sent together are answered together. Returns the outcome."""
     conversation = message_queries.get_conversation(conversation_id)
     message = message_queries.get_message(message_id)
     if conversation is None or message is None or message.is_from_account:
@@ -259,8 +260,10 @@ def handle_buyer_message(conversation_id: int, message_id: int) -> str:
         if run is None:
             return "handed_off"
         cancel_followups(run, "Dropped the follow-up: the buyer wrote back.")
-        queries.add_event(run, EventKind.DM, {"message_id": message.pk})
-        _queue_advance(run)
+        due = timezone.now() + timedelta(seconds=_loop_limit("DM_BATCH_SECONDS"))
+        queries.delay_pending_dms(run, due)
+        queries.add_event(run, EventKind.DM, {"message_id": message.pk}, available_at=due)
+        _queue_advance(run, eta=due)
     return "queued"
 
 

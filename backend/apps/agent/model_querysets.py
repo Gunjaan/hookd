@@ -312,10 +312,14 @@ def drop_pending_events(run: AgentRun) -> int:
     return AgentEvent.objects.filter(run=run, processed_at__isnull=True).update(processed_at=timezone.now())
 
 
+def delay_pending_dms(run: AgentRun, available_at: datetime) -> None:
+    AgentEvent.objects.filter(run=run, kind=EventKind.DM, processed_at__isnull=True).update(available_at=available_at)
+
+
 def next_event_time(run: AgentRun, now: datetime) -> datetime | None:
-    """When the earliest event that is not due yet (a follow-up) comes due."""
+    """When the earliest follow-up that is not due yet comes due."""
     event = (
-        AgentEvent.objects.filter(run=run, processed_at__isnull=True, available_at__gt=now)
+        AgentEvent.objects.filter(run=run, kind=EventKind.FOLLOWUP, processed_at__isnull=True, available_at__gt=now)
         .order_by("available_at")
         .first()
     )

@@ -317,7 +317,10 @@ AGENT_REPLY_LIMITS = {
 # MAX_FOLLOWUPS that may not chain, MAX_RUNS_PER_BUYER_PER_DAY comment runs per person. FOLLOWUP_MAX_HOURS and
 # PRIVATE_REPLY_MAX_HOURS follow Meta (one private reply within 7 days of a comment; 1 hour of margin). A run stuck in
 # "running" longer than STALE_RUN_MINUTES (its worker died) can be taken over. MAX_OUTPUT_TOKENS is per model call.
+# A buyer DM waits DM_BATCH_SECONDS, restarted by every new DM, so messages sent together (a shared post and the text
+# typed with it arrive as separate webhooks) are read in one turn. 0 in tests: eager Celery ignores the delay.
 AGENT_LOOP_LIMITS = {
+    'DM_BATCH_SECONDS': 0 if TESTING else 10,
     'MAX_STEPS': 8,
     'MAX_RUN_STEPS': 40,
     'MAX_QUESTIONS': 3,

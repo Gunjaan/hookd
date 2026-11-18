@@ -595,6 +595,24 @@ class DirectMessageTests(AgentTestCase):
         self.assertEqual(self.tools_used(AgentRun.objects.get()), [("get_post", True)])
         self.assertFalse(Post.objects.filter(external_id="x1").exists())
 
+    @override_settings(AGENT_LOOP_LIMITS={**settings.AGENT_LOOP_LIMITS, "DM_BATCH_SECONDS": 10})
+    def test_dms_sent_together_are_read_in_one_turn(self):
+        early = ScriptedModel(done())
+        self.share("", "m1", "New kurta drop", early)
+        self.buyer_dm("same one with custom text?", sender="buyer9", model=early)
+        self.assertEqual(early.seen, [])
+        events = AgentEvent.objects.filter(kind=EventKind.DM)
+        self.assertEqual(len({event.available_at for event in events}), 1)
+        self.assertGreater(events.first().available_at, timezone.now())
+
+        events.update(available_at=timezone.now())
+        model = ScriptedModel(done())
+        self.run_events(AgentRun.objects.get(), model)
+        turn = model.first_user_text()
+        self.assertIn("shared a post, post_id m1", turn)
+        self.assertIn("same one with custom text?", turn)
+        self.assertEqual(AgentRun.objects.get().wake_at, None)
+
     def test_dm_run_cannot_reply_publicly(self):
         self.buyer_dm("hi", sender="buyer9", model=ScriptedModel(call("reply_to_comment", text="@x hi"), done()))
         self.assertIn("no comment to reply to", AgentAction.objects.get().result)

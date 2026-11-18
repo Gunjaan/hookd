@@ -29,6 +29,9 @@ anti-spam rules.
    new run starts) or was handed to the seller (then the DM is left to the seller: `handed_off`). Otherwise a new run
    without a comment starts (`buyer_external_id`, `buyer_username` from their latest comment when known). Pending
    follow-ups are dropped ("the buyer wrote back", shown in the trail), a `dm` event is added and `advance_run` queued.
+   The event waits `DM_BATCH_SECONDS` (10) and every new DM pushes the run's waiting DMs to its own time
+   (`delay_pending_dms`), so messages sent together (a shared post and the text typed with it arrive as separate
+   webhooks) become one turn; the earlier queued `advance_run` finds nothing due and does nothing.
    A DM that shares a post first calls `content_services.ensure_post` for it, so the seller's own post posted outside
    Hookd is stored (someone else's post fails the fetch and is not stored).
 3. **`loop.advance(run_id)`** claims the run (`queries.claim_run`: conditional update to `running`; a second worker
@@ -149,7 +152,7 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 | `AGENT_REPLY_MODEL` | env `CLAUDE_REPLY_MODEL`, else `claude-haiku-5-5` | Model for `ClaudeAgentModel` and `ClaudeBrainLearner` |
 | `HOOKD_BRAIN_LEARNER` | `...claude.ClaudeBrainLearner` with a key and not testing, else `...simulated.SimulatedBrainLearner` | Dotted path to a `BrainLearner` |
 | `AGENT_REPLY_LIMITS` | `MIN_SPACING_SECONDS` 45, `JITTER_SECONDS` 30, `MAX_PER_HOUR` 20, `MAX_PER_DAY` 150, `MAX_SAME_TEXT_PER_HOUR` 3, `MAX_COMMENT_AGE_HOURS` 24, `RATE_LIMIT_PAUSE_MINUTES` 60 | Sending, read by `services.reply_limit` |
-| `AGENT_LOOP_LIMITS` | `MAX_STEPS` 8, `MAX_RUN_STEPS` 40, `MAX_QUESTIONS` 3, `QUESTION_EXPIRES_HOURS` 24, `MAX_FOLLOWUPS` 2, `FOLLOWUP_MAX_HOURS` 167, `PRIVATE_REPLY_MAX_HOURS` 167, `MAX_RUNS_PER_BUYER_PER_DAY` 10, `STALE_RUN_MINUTES` 10, `MAX_OUTPUT_TOKENS` 4000 | Model calls per turn and per run, seller questions and their expiry, follow-ups, private reply window (7 days minus 1 h), comment runs per person a day, dead worker takeover, output ceiling per call |
+| `AGENT_LOOP_LIMITS` | `DM_BATCH_SECONDS` 10 (0 in tests, eager Celery ignores the delay), `MAX_STEPS` 8, `MAX_RUN_STEPS` 40, `MAX_QUESTIONS` 3, `QUESTION_EXPIRES_HOURS` 24, `MAX_FOLLOWUPS` 2, `FOLLOWUP_MAX_HOURS` 167, `PRIVATE_REPLY_MAX_HOURS` 167, `MAX_RUNS_PER_BUYER_PER_DAY` 10, `STALE_RUN_MINUTES` 10, `MAX_OUTPUT_TOKENS` 4000 | How long a buyer DM waits for the next one, model calls per turn and per run, seller questions and their expiry, follow-ups, private reply window (7 days minus 1 h), comment runs per person a day, dead worker takeover, output ceiling per call |
 
 ## Engines (`engines/`)
 
@@ -216,7 +219,7 @@ comment or, for a DM run, the run), `reply_preview`, `learn_caption`, `learn_rep
 `model_querysets.py` holds every query: profile, brains, learned facts, replies (`sent_times_since` counts replies and
 DMs), runs (`create_run_if_new`, `create_dm_run`, `claim_run`, `update_run`, `latest_run_for_conversation`,
 `latest_run_for_participant`, `due_wake_run_ids`, `runs_for_comments`), events (`add_event`, `due_events`,
-`mark_events_processed`, `next_event_time`), actions, questions, DMs (`claim_dm_for_sending`, `overdue_queued_dm_ids`)
+`mark_events_processed`, `delay_pending_dms`, `next_event_time`: follow-ups only), actions, questions, DMs (`claim_dm_for_sending`, `overdue_queued_dm_ids`)
 and tickets. Uses `content`, `comments` (`get_comment`, `latest_comment_by_author`) and `messaging` (`get_conversation`,
 `get_message`, `get_or_create_conversation`) querysets.
 
@@ -256,7 +259,7 @@ review cards explain why (approval mode, or Hooky could not finish) and have an 
 A `ScriptedModel` plays back model turns (`call`, `calls`, `done`) and keeps every transcript it was sent. Covered:
 webhook comment queued once, own comment not; unknown post fetched for `get_post`, stored with the agent off, fetch
 failure is a tool error; a shared post in a DM is fetched, shown with its id and caption and read by `get_post`, someone
-else's shared post still shows its caption and is not stored; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
+else's shared post still shows its caption and is not stored; a share and the text sent with it are read in one turn; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
 answer sent (Graph call checked); praise thanked; invented price refused by the number guard and corrected; numbers
 from the comment allowed, digits in handles ignored; missing fact -> `ask_seller`, run waits, the inbox answer resumes
 it with the exact tool_result, `save_fact` stored with the run, reply queued; held results returned with the answer;
