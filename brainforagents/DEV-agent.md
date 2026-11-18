@@ -2,8 +2,8 @@
 
 Answers new comments on connected accounts from an account brain and a per post video brain. There are no rules to
 set up: when the brains hold the answer the reply goes out on its own, when a needed fact is missing the draft waits in
-the inbox for approval. The engine that writes replies is pluggable; today it is a **low cost Gemini model** (`GeminiReplyEngine`)
-until Claude is connected, with the word matching **simulated engine** standing in when `GEMINI_API_KEY` is empty and
+the inbox for approval. The engine that writes replies is pluggable; today it is **Claude Haiku** (`ClaudeReplyEngine`), with the
+word matching **simulated engine** standing in when `ANTHROPIC_API_KEY` is empty and
 in tests. Brains are filled by the creator on the agent page and the post page, by the post studio's "Teach your
 reply agent" questions (`DEV-creatives.md`), and **on their own** by the brain learner: a post's caption (read once, on
 the first comment or when Hookd publishes it) and every inbox reply the creator rewrote become learned facts (see "Learned brain"). Sending is slow and capped on purpose so Hookd stays inside Meta's rate limits and anti-spam rules.
@@ -86,7 +86,7 @@ the post's facts under the Video brain. Each fact has Remove (`api-agent-fact-fo
 - The agent starts **off** per account, so nothing is posted until the creator turns it on. Once on, only replies the
   engine is confident the brains fully answer go out unasked.
 
-Engine failure: when `decide` raises a `HookdError` (Gemini down, missing key, unreadable answer),
+Engine failure: when `decide` raises a `HookdError` (Claude down, missing key, refusal, unreadable answer),
 `handle_new_comment` stores the reply as `pending_review` with an empty draft and the error in `decision.reason`, so the
 creator writes it in the inbox. The preview page shows the error as a message.
 
@@ -94,9 +94,9 @@ creator writes it in the inbox. The preview page shows the error as a message.
 
 | Setting | Default | Notes |
 |---|---|---|
-| `HOOKD_REPLY_ENGINE` | `apps.agent.engines.gemini.GeminiReplyEngine` when `GEMINI_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedReplyEngine` | Dotted path to a `ReplyEngine` |
-| `AGENT_REPLY_MODEL` | env `GEMINI_REPLY_MODEL`, else `gemini-3.5-flash-lite` | Text model for `GeminiReplyEngine` and `GeminiBrainLearner` |
-| `HOOKD_BRAIN_LEARNER` | `apps.agent.engines.gemini.GeminiBrainLearner` when `GEMINI_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedBrainLearner` | Dotted path to a `BrainLearner` |
+| `HOOKD_REPLY_ENGINE` | `apps.agent.engines.claude.ClaudeReplyEngine` when `ANTHROPIC_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedReplyEngine` | Dotted path to a `ReplyEngine` |
+| `AGENT_REPLY_MODEL` | env `CLAUDE_REPLY_MODEL`, else `claude-haiku-5-5` | Model for `ClaudeReplyEngine` and `ClaudeBrainLearner` |
+| `HOOKD_BRAIN_LEARNER` | `apps.agent.engines.claude.ClaudeBrainLearner` when `ANTHROPIC_API_KEY` is set and not testing, else `apps.agent.engines.simulated.SimulatedBrainLearner` | Dotted path to a `BrainLearner` |
 | `AGENT_REPLY_LIMITS` | see below | One dict, read by `services._limit` |
 
 `AGENT_REPLY_LIMITS`: `MIN_SPACING_SECONDS` 45, `JITTER_SECONDS` 30, `MAX_PER_HOUR` 20, `MAX_PER_DAY` 150,
@@ -131,15 +131,16 @@ creator writes it in the inbox. The preview page shows the error as a message.
   `LEARN_REPLY_SYSTEM` (at most 3; a direct answer to the buyer's question is always a fact even off the topic list;
   holding replies, thanks and "DM us" state none), `LEARN_SCHEMA` (`facts[]` of scope, label, text),
   `learn_reply_request(question, answer, post_caption)`.
-- `gemini.py`: `GeminiReplyEngine` (`name = "gemini"`): one `core.gemini.generate_json` call, max 400 output tokens.
-  Confidence is clamped to 0..1 (unreadable is 0). `GeminiBrainLearner` (`name = "gemini"`): one `generate_json`
-  call, max 1200 output tokens; facts without a label or text are dropped, an unknown scope becomes `post`, labels are
+- `claude.py`: `ClaudeReplyEngine` (`name = "claude"`): one `core.claude.generate_json` call (structured JSON output,
+  low effort), max 2000 output tokens (a ceiling with room for the short thinking before the answer). Confidence is
+  clamped to 0..1 (unreadable is 0). `ClaudeBrainLearner` (`name = "claude"`): one `generate_json` call, max 4000
+  output tokens; facts without a label or text are dropped, an unknown scope becomes `post`, labels are
   cut to 80 and texts to 300 characters.
 - `registry.py`: `get_engine()`, `get_learner()`.
 
-**Plugging in Claude:** add `engines/claude.py` with a `ReplyEngine` that sends `prompts.REPLY_SYSTEM` (cached) and
-`prompts.reply_request(context)` and returns an `AgentDecision`, set `HOOKD_REPLY_ENGINE`, add the API key env var to
-`.env.example` and `DEV-infrastructure.md`. Routing and sending need no change.
+**Another engine:** add a module with a `ReplyEngine` / `BrainLearner`, point `HOOKD_REPLY_ENGINE` /
+`HOOKD_BRAIN_LEARNER` at it. Routing and sending need no change. Schemas follow Claude's structured output rules
+(`additionalProperties: false` on every object, no array length limits).
 
 ## Models
 
@@ -208,11 +209,11 @@ information goes to review; the same person can get several replies; repeated te
 45 to 75 s; hourly cap reschedules without a call; rate limit pauses and requeues; expired token; never sent twice;
 early task waits; `send_due_replies`; Instagram text rules; inbox list, approve edited text (JSON with redrawn tabs,
 empty list and badge), approve refused text, reject, retry, side panel count; settings save and on/off checkbox, home redirect, video brain save, preview stores
-nothing, 404 for other users. Gemini engine (model call mocked): decision mapped and clamped, compact request without
+nothing, 404 for other users. Claude engine (model call mocked): decision mapped and clamped, compact request without
 empty fields or rules, unreadable confidence is 0, constant system prompt without `rule_id` in the schema, engine
 failure goes to review with the reason, preview shows the error. Learned brain: a synced post is not read until its first comment and then only
 once (a later caption change is ignored), read with the agent off, a post fetched for a comment is read, a post
 published from Hookd is read, learner failure is retried on the next comment, learned facts answer comments while typed facts
 win on the same label, a rewritten inbox reply teaches the next answer, an unchanged approval learns nothing, the same
-topic replaces the older fact, pages list facts and Remove works (404 for other users). Gemini learner: facts mapped,
+topic replaces the older fact, pages list facts and Remove works (404 for other users). Claude learner: facts mapped,
 cleaned and invalid ones dropped, constant system prompt.

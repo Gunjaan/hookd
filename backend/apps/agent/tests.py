@@ -19,7 +19,7 @@ from apps.agent.models import AgentProfile, CommentReply, LearnedFact, PostBrain
 from apps.comments.models import Comment
 from apps.content.models import Post
 from apps.content.tests import FakeGraph
-from apps.core.gemini import JsonAnswer, TokenUsage
+from apps.core.ai import JsonAnswer, TokenUsage
 from apps.integrations import model_querysets as account_queries
 from apps.integrations.models import SocialAccount
 from apps.integrations.providers.instagram.provider import InstagramProvider
@@ -440,12 +440,12 @@ class SetupPageTests(AgentTestCase):
             self.assertEqual(getattr(self.client, method)(url).status_code, 404, url)
 
 
-class GeminiReplyEngineTests(AgentTestCase):
+class ClaudeReplyEngineTests(AgentTestCase):
     def setUp(self):
         super().setUp()
-        from apps.agent.engines.gemini import GeminiReplyEngine
+        from apps.agent.engines.claude import ClaudeReplyEngine
 
-        self.engine = GeminiReplyEngine()
+        self.engine = ClaudeReplyEngine()
 
     def context(self, **fields):
         from apps.agent.engines.base import AgentContext
@@ -463,23 +463,23 @@ class GeminiReplyEngineTests(AgentTestCase):
     @override_settings(AGENT_REPLY_MODEL="cheap-model")
     def test_decision_from_the_model_answer(self):
         answer = {"intent": "price", "language": "Hindi (Hinglish)", "reply_text": " @fan1 Rs 799 hai! ", "confidence": 1.4, "reason": "Price fact."}
-        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
             decision = self.engine.decide(self.context())
         self.assertEqual(
             (decision.reply_text, decision.confidence, decision.language),
             ("@fan1 Rs 799 hai!", 1.0, "Hindi (Hinglish)"),
         )
-        model, contents = call.call_args.args
+        model, content = call.call_args.args
         self.assertEqual(model, "cheap-model")
-        sent = json.loads(contents[0])
+        sent = json.loads(content)
         self.assertEqual(sent["post_facts"], "Price: Rs 799")
         self.assertNotIn("rules", sent)
         self.assertNotIn("voice", sent)
-        self.assertEqual(call.call_args.kwargs["max_output_tokens"], 400)
+        self.assertEqual(call.call_args.kwargs["max_output_tokens"], 2000)
 
     def test_unreadable_confidence_is_zero(self):
         answer = {"intent": "x", "language": "English", "reply_text": "@fan1 hi", "confidence": "bad", "reason": ""}
-        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))):
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))):
             decision = self.engine.decide(self.context())
         self.assertEqual(decision.confidence, 0.0)
 
@@ -490,10 +490,10 @@ class GeminiReplyEngineTests(AgentTestCase):
         self.assertNotIn("rule_id", REPLY_SCHEMA["properties"])
 
     def test_engine_failure_goes_to_review(self):
-        from apps.core.gemini import GeminiError
+        from apps.core.claude import ClaudeError
 
-        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.gemini.GeminiReplyEngine"):
-            with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
+        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.claude.ClaudeReplyEngine"):
+            with mock.patch("apps.agent.engines.claude.generate_json", side_effect=ClaudeError("Down.")):
                 outcome = self.handle(self.comment("price?"))
         self.assertEqual(outcome, ReplyStatus.PENDING_REVIEW)
         reply = CommentReply.objects.get()
@@ -501,10 +501,10 @@ class GeminiReplyEngineTests(AgentTestCase):
         self.assertIn("Down.", reply.decision["reason"])
 
     def test_preview_shows_engine_failure(self):
-        from apps.core.gemini import GeminiError
+        from apps.core.claude import ClaudeError
 
-        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.gemini.GeminiReplyEngine"):
-            with mock.patch("apps.agent.engines.gemini.generate_json", side_effect=GeminiError("Down.")):
+        with override_settings(HOOKD_REPLY_ENGINE="apps.agent.engines.claude.ClaudeReplyEngine"):
+            with mock.patch("apps.agent.engines.claude.generate_json", side_effect=ClaudeError("Down.")):
                 response = self.client.post(reverse("api-agent-preview", args=[self.account.pk]), {"text": "price?", "post": ""})
         self.assertContains(response, "Down.", status_code=400)
 
@@ -550,9 +550,9 @@ class LearningTests(AgentTestCase):
         self.assertEqual(LearnedFact.objects.get().text, "Bag at Rs 999")
 
     def test_learner_failure_is_retried_on_the_next_comment(self):
-        from apps.core.gemini import GeminiError
+        from apps.core.claude import ClaudeError
 
-        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption", side_effect=GeminiError()):
+        with mock.patch("apps.agent.engines.simulated.SimulatedBrainLearner.from_caption", side_effect=ClaudeError()):
             self.assertEqual(services.learn_from_post(self.post.pk), "failed")
         self.assertIsNone(PostBrain.objects.get(post=self.post).caption_learned_at)
         self.post.caption = "Kurta at Rs 799"
@@ -633,10 +633,10 @@ class LearningTests(AgentTestCase):
         self.assertFalse(LearnedFact.objects.filter(pk=shop.pk).exists())
 
 
-class GeminiBrainLearnerTests(TestCase):
+class ClaudeBrainLearnerTests(TestCase):
     @override_settings(AGENT_REPLY_MODEL="cheap-model")
     def test_facts_from_the_model_answer(self):
-        from apps.agent.engines.gemini import GeminiBrainLearner
+        from apps.agent.engines.claude import ClaudeBrainLearner
         from apps.agent.engines.prompts import LEARN_CAPTION_SYSTEM
 
         answer = {"facts": [
@@ -646,12 +646,12 @@ class GeminiBrainLearnerTests(TestCase):
             {"scope": "post", "label": "", "text": "no label"},
             "junk",
         ]}
-        with mock.patch("apps.agent.engines.gemini.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
-            facts = GeminiBrainLearner().from_caption("Kurta Rs 799")
+        with mock.patch("apps.agent.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+            facts = ClaudeBrainLearner().from_caption("Kurta Rs 799")
         self.assertEqual(
             [(fact.scope, fact.label, fact.text) for fact in facts],
             [("post", "Price", "Rs 799"), ("account", "Delivery", "3 to 5 days"), ("post", "Sizes", "S to XL")],
         )
-        self.assertEqual(call.call_args.args, ("cheap-model", ["Kurta Rs 799"]))
+        self.assertEqual(call.call_args.args, ("cheap-model", "Kurta Rs 799"))
         self.assertEqual(call.call_args.kwargs["system"], LEARN_CAPTION_SYSTEM)
         self.assertNotIn("{", LEARN_CAPTION_SYSTEM)

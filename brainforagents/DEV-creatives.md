@@ -5,14 +5,15 @@ The seller uploads 1 to 3 phone photos of one product, picks a look, single or c
 editable caption and hashtags, and 3 to 6 **"Teach your reply agent" questions** (price, sizes, delivery...) whose
 answers go into the reply agent's brains when the post goes live. "Post now" hands the photos to the normal publish pipeline (`DEV-content.md`).
 
-Engines are pluggable. Today **Gemini (Google AI Studio) does everything**: a cheap text model plans and writes, an
-image model renders. Claude replaces the copy engine later with one new file (see "Plugging in Claude").
+Engines are pluggable. **Claude Haiku plans and writes** (it reads the product photos), **Gemini (Google AI Studio)
+renders** the photos, since Claude cannot generate images.
 
 ## Flow
 
 1. `/studio/publishing/new/` (`CreativeForm`): photos (1 to 3, JPEG/PNG/WebP, 10 MB, must open in Pillow), `look`
    (`model`, `studio`, `lifestyle`, `flatlay`), `format_choice` (`auto`, `single`, `carousel`), `notes`.
-2. `services.start_creative` checks `GEMINI_API_KEY` (`core.gemini.GeminiUnavailable`) and `CREATIVE_DAILY_LIMIT` per
+2. `services.start_creative` checks `ANTHROPIC_API_KEY` (`core.claude.ClaudeUnavailable`), `GEMINI_API_KEY`
+   (`core.gemini.GeminiUnavailable`) and `CREATIVE_DAILY_LIMIT` per
    user per rolling 24 h (`CreativeDailyLimitReached`), stores each photo downscaled (`imaging.source_jpeg`: upright,
    max 1024 px, JPEG q85), creates the draft in `planning` and queues `tasks.generate_creative` on commit.
 3. `generate_creative`: **one** copy engine call with the photos and `prompts.plan_request` returns the brief
@@ -61,9 +62,10 @@ image model renders. Claude replaces the copy engine later with one new file (se
 
 ## Token and cost rules
 
-- Photos downscaled once to max 1024 px; the plan call sends them at `MEDIA_RESOLUTION_MEDIUM` (enough to read labels).
+- Photos downscaled once to max 1024 px before the plan call (enough to read labels, few image tokens).
 - One text call per draft does analysis, branding, shots, caption, hashtags and reply agent questions together,
-  JSON schema output, `max_output_tokens` 2560 (rewrite 1024). The questions cost no extra call.
+  structured JSON output at low effort, `max_output_tokens` 8000 (rewrite 4000; ceilings with room for the short
+  thinking). The questions cost no extra call.
 - One image call per slide, `response_modalities=["IMAGE"]` (no text back), aspect ratio `4:5`.
 - Redo renders one slide; rewrite never resends photos; going back to an earlier photo costs nothing; redo controls
   are hidden while anything renders; daily draft cap per user.
@@ -88,26 +90,25 @@ image model renders. Claude replaces the copy engine later with one new file (se
 
 - `base.py`: `ProductPhoto(data, mime_type)`, `ShotPlan(role, prompt)`, `BrainQuestion(label, question, scope,
   answer)`, `PostBrief(product, branding, audience, slides, caption, hashtags, questions, usage)`, `PostCopy(caption, hashtags, usage)`,
-  `RenderedImage(data, usage)` (`usage` is a `core.gemini.TokenUsage`); ABCs `CopyEngine.plan(photos, request_text)`,
+  `RenderedImage(data, usage)` (`usage` is a `core.ai.TokenUsage`); ABCs `CopyEngine.plan(photos, request_text)`,
   `CopyEngine.rewrite(request_text)`, `ImageEngine.render(photos, prompt) -> RenderedImage`. Engines never touch the database.
-- `gemini.py`: `GeminiCopyEngine`, `GeminiImageEngine` through `apps.core.gemini` (`generate_json`, `generate`; API
-  and network errors are `GeminiError`, see `DEV-core.md`). No planned shot or no image in the answer is a
-  `CreativeEngineError` (with `usage` when the model answered). Unknown question scopes become `post`.
+- `claude.py`: `ClaudeCopyEngine` through `apps.core.claude.generate_json` (photos as base64 image blocks, then the
+  request text; errors are `ClaudeError`, see `DEV-core.md`). The schema has no array limits (Claude structured
+  output does not support them), so the engine caps slides at 5, hashtags at 15 and questions at 6. Unknown question
+  scopes become `post`. No planned shot is a `CreativeEngineError` (with `usage`).
+- `gemini.py`: `GeminiImageEngine` through `apps.core.gemini.generate` (errors are `GeminiError`). No image in the
+  answer is a `CreativeEngineError` (with `usage`).
 - `registry.py`: `get_copy_engine()`, `get_image_engine()` from the dotted path settings.
-
-**Plugging in Claude:** add `engines/claude.py` with a `CopyEngine` that sends `prompts.PLAN_SYSTEM` (with
-`cache_control`) and the photos plus request text, using structured output with `PLAN_SCHEMA`; point
-`HOOKD_COPY_ENGINE` at it; add `ANTHROPIC_API_KEY` to settings, `.env.example` and `DEV-infrastructure.md`; check
-the key in `start_creative` for whichever engines are configured. Images stay on Gemini.
 
 ## Settings (`config/settings.py`)
 
 | Setting | Default | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | env | Required for the studio |
-| `HOOKD_COPY_ENGINE` | `apps.creatives.engines.gemini.GeminiCopyEngine` | Dotted path |
+| `ANTHROPIC_API_KEY` | env | Required for the studio (copy) |
+| `GEMINI_API_KEY` | env | Required for the studio (photos) |
+| `HOOKD_COPY_ENGINE` | `apps.creatives.engines.claude.ClaudeCopyEngine` | Dotted path |
 | `HOOKD_IMAGE_ENGINE` | `apps.creatives.engines.gemini.GeminiImageEngine` | Dotted path |
-| `CREATIVE_COPY_MODEL` | env `GEMINI_COPY_MODEL`, else `gemini-3.5-flash-lite` | Text model |
+| `CREATIVE_COPY_MODEL` | env `CLAUDE_COPY_MODEL`, else `claude-haiku-5-5` | Text model |
 | `CREATIVE_IMAGE_MODEL` | env `GEMINI_IMAGE_MODEL`, else `gemini-nano-banana-2.1` | Image model |
 | `CREATIVE_DAILY_LIMIT` | `20` | New drafts per user per 24 h |
 | `AI_MODEL_PRICES` | copy and image model prices | USD per million input and output tokens per model name |
@@ -172,7 +173,7 @@ Drafts grid or a 3 step how it works card, then Published from Hookd). Other use
 Engines faked with `override_settings` (`FakeCopyEngine`, `FakeImageEngine`), Graph faked as in content tests.
 New page steps; carousel planned with one text call, three renders with branding in the prompt, 1080x1350 JPEG,
 ready page and draft card; sources downscaled to 1024 px JPEG; single keeps one slide; one failed slide still
-ready; all failed marks failed; planning error shown; photo validation (count, unreadable, type); missing key;
+ready; all failed marks failed; planning error shown; photo validation (count, unreadable, type); missing keys (each);
 daily limit; stale slide failed on view; redo renders only that slide with the change and no text call; rewrite
 sends no photos; hashtag normalization; caption over 2200 refused; delete removes files; 404 for other users;
 owner image and download; carousel publish with edited caption and hashtags; single publishes as image; not ready
@@ -180,6 +181,8 @@ cannot publish; HTTPS error shown; system prompts hold no placeholders; image pr
 Reply agent questions: stored and shown with prefilled answers, saved with the draft, publishing writes post facts to
 the video brain and shop facts to the account brain (same label replaced), a post that goes live later is taught
 through the signal, label merge; plan schema asks for questions.
+`ClaudeCopyEngineTests` (model call mocked): photos sent as image blocks before the text, slides, hashtags and
+questions capped, unknown scope becomes `post`.
 Edits and history (JSON endpoints): redo answers the working draft state and hides redo while rendering, redo while
 rendering is refused, redo leaves the copy alone, rewrite keeps answers and uses the edited caption; redo keeps the old
 photo as a version (also when the redo fails); "Use this one" swaps back with no AI call; progress reports state and

@@ -15,13 +15,14 @@ from apps.content.models import PublishJob
 from apps.content.tests import IG_ID, StudioTestCase, media
 from apps.creatives import prompts, services
 from apps.agent.models import AgentProfile, PostBrain
-from apps.core.gemini import TokenUsage
+from apps.core.ai import TokenUsage
 from apps.creatives.engines.base import (
     BrainQuestion,
     CopyEngine,
     ImageEngine,
     PostBrief,
     PostCopy,
+    ProductPhoto,
     RenderedImage,
     ShotPlan,
 )
@@ -84,6 +85,7 @@ class FakeImageEngine(ImageEngine):
 ENGINES = {
     "HOOKD_COPY_ENGINE": "apps.creatives.tests.FakeCopyEngine",
     "HOOKD_IMAGE_ENGINE": "apps.creatives.tests.FakeImageEngine",
+    "ANTHROPIC_API_KEY": "test-key",
     "GEMINI_API_KEY": "test-key",
     "AI_MODEL_PRICES": PRICES,
 }
@@ -187,10 +189,10 @@ class CreateTests(CreativeTestCase):
         self.assertContains(response, "use a JPEG, PNG or WebP photo")
         self.assertFalse(Creative.objects.exists())
 
-    @override_settings(GEMINI_API_KEY="")
-    def test_missing_key_is_explained(self):
-        response = self.create()
-        self.assertContains(response, "GEMINI_API_KEY is missing")
+    def test_missing_keys_are_explained(self):
+        for key in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
+            with self.subTest(key), override_settings(**{key: ""}):
+                self.assertContains(self.create(), f"{key} is missing")
         self.assertFalse(Creative.objects.exists())
 
     @override_settings(CREATIVE_DAILY_LIMIT=1)
@@ -566,3 +568,28 @@ class UsageTests(CreativeTestCase):
         self.assertContains(listing, "0.2348")  # 0.0017 + 3 * 0.0777
         calls = self.client.get(reverse("admin:creatives_creativeaicall_changelist"))
         self.assertContains(calls, "Filtered calls: 3800 input tokens, 4670 output tokens, 0.2348 USD")
+
+
+class ClaudeCopyEngineTests(CreativeTestCase):
+    @override_settings(CREATIVE_COPY_MODEL="cheap-model")
+    def test_plan_sends_photos_and_caps_the_answer(self):
+        from apps.core.ai import JsonAnswer
+        from apps.creatives.engines.claude import ClaudeCopyEngine
+
+        answer = {
+            "product": "Tee",
+            "branding": ["logo"],
+            "audience": "students",
+            "slides": [{"role": "hero", "prompt": f"Shot {n}"} for n in range(7)] + [{"role": "x", "prompt": " "}],
+            "caption": "New tee",
+            "hashtags": [f"tag{n}" for n in range(20)],
+            "questions": [{"label": "Price", "question": f"Q{n}?", "scope": "odd", "answer": ""} for n in range(8)],
+        }
+        with mock.patch("apps.creatives.engines.claude.generate_json", return_value=JsonAnswer(answer, TokenUsage("m"))) as call:
+            brief = ClaudeCopyEngine().plan([ProductPhoto(b"jpeg-bytes")], "Look: model")
+        self.assertEqual((len(brief.slides), len(brief.hashtags), len(brief.questions)), (5, 15, 6))
+        self.assertEqual(brief.questions[0].scope, "post")
+        model, content = call.call_args.args
+        self.assertEqual(model, "cheap-model")
+        self.assertEqual([block["type"] for block in content], ["image", "text"])
+        self.assertEqual(content[0]["source"]["media_type"], "image/jpeg")

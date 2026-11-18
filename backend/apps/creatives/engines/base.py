@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from apps.core.gemini import TokenUsage
+from apps.core.ai import TokenUsage
 
 
 @dataclass(frozen=True)

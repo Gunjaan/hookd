@@ -262,36 +262,41 @@ HOOKD_PROVIDERS = [
 PROVIDER_HTTP_TIMEOUT_SECONDS = env_int('PROVIDER_HTTP_TIMEOUT_SECONDS', 15)
 
 
-# Post studio (see brainforagents/DEV-creatives.md). Gemini plans, writes and renders for now; a Claude copy
-# engine replaces HOOKD_COPY_ENGINE later.
+# AI providers. Claude writes all text (post plans, captions, comment replies, brain facts); Gemini renders the post
+# photos, which Claude cannot do.
 
+ANTHROPIC_API_KEY = env_str('ANTHROPIC_API_KEY')
 GEMINI_API_KEY = env_str('GEMINI_API_KEY')
-HOOKD_COPY_ENGINE = 'apps.creatives.engines.gemini.GeminiCopyEngine'
+
+# Post studio (see brainforagents/DEV-creatives.md).
+
+HOOKD_COPY_ENGINE = 'apps.creatives.engines.claude.ClaudeCopyEngine'
 HOOKD_IMAGE_ENGINE = 'apps.creatives.engines.gemini.GeminiImageEngine'
-CREATIVE_COPY_MODEL = env_str('GEMINI_COPY_MODEL', 'gemini-3.5-flash-lite')
+CREATIVE_COPY_MODEL = env_str('CLAUDE_COPY_MODEL', 'claude-haiku-5-5')
 CREATIVE_IMAGE_MODEL = env_str('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1')
 # New drafts per user per rolling 24 hours. Caps AI spend.
 CREATIVE_DAILY_LIMIT = 20
 # USD per million tokens, used to record the cost of every post studio AI call (admin only). Check
-# https://ai.google.dev/gemini-api/docs/pricing when changing models; a model missing here is recorded at cost 0.
+# https://platform.claude.com/docs/en/about-claude/pricing and https://ai.google.dev/gemini-api/docs/pricing when
+# changing models; a model missing here is recorded at cost 0.
 AI_MODEL_PRICES = {
-    'gemini-3.5-flash-lite': {'input': 0.25, 'output': 1.50},
+    'claude-haiku-5-5': {'input': 0.10, 'output': 0.50},
     'gemini-nano-banana-2.1': {'input': 0.50, 'output': 60.00},
 }
 
-# Comment reply agent (see brainforagents/DEV-agent.md). A low cost Gemini model writes replies for now (Claude
-# later). Without a key, and in tests, the keyword based simulated engine stands in.
+# Comment reply agent (see brainforagents/DEV-agent.md). A low cost Claude model writes replies. Without a key, and
+# in tests, the keyword based simulated engine stands in.
 
 HOOKD_REPLY_ENGINE = (
-    'apps.agent.engines.gemini.GeminiReplyEngine'
-    if GEMINI_API_KEY and not TESTING
+    'apps.agent.engines.claude.ClaudeReplyEngine'
+    if ANTHROPIC_API_KEY and not TESTING
     else 'apps.agent.engines.simulated.SimulatedReplyEngine'
 )
-AGENT_REPLY_MODEL = env_str('GEMINI_REPLY_MODEL', 'gemini-3.5-flash-lite')
+AGENT_REPLY_MODEL = env_str('CLAUDE_REPLY_MODEL', 'claude-haiku-5-5')
 # Fills the brains on its own from post captions and the replies the creator writes in the inbox (same model).
 HOOKD_BRAIN_LEARNER = (
-    'apps.agent.engines.gemini.GeminiBrainLearner'
-    if GEMINI_API_KEY and not TESTING
+    'apps.agent.engines.claude.ClaudeBrainLearner'
+    if ANTHROPIC_API_KEY and not TESTING
     else 'apps.agent.engines.simulated.SimulatedBrainLearner'
 )
 

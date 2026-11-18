@@ -81,25 +81,46 @@ class GeminiTests(TestCase):
         with self.assertRaises(GeminiUnavailable):
             generate("model", ["hi"], None)
 
-    @override_settings(GEMINI_API_KEY="key")
+
+def claude_response(text: str, stop_reason: str = "end_turn") -> mock.Mock:
+    response = mock.Mock(stop_reason=stop_reason, content=[mock.Mock(type="text", text=text)])
+    response.usage = mock.Mock(input_tokens=100, cache_read_input_tokens=20, cache_creation_input_tokens=None, output_tokens=30)
+    return response
+
+
+@override_settings(ANTHROPIC_API_KEY="key")
+class ClaudeTests(TestCase):
+    def ask(self, response):
+        from apps.core.claude import generate_json
+
+        with mock.patch("apps.core.claude.anthropic.Anthropic") as client:
+            client.return_value.messages.create.return_value = response
+            answer = generate_json("model", "hi", system="s", schema={}, max_output_tokens=10)
+        return answer, client.return_value.messages.create.call_args.kwargs
+
+    @override_settings(ANTHROPIC_API_KEY="")
+    def test_missing_key(self):
+        from apps.core.claude import ClaudeUnavailable, generate_json
+
+        with self.assertRaises(ClaudeUnavailable):
+            generate_json("model", "hi", system="s", schema={}, max_output_tokens=10)
+
     def test_non_json_answer_is_an_error(self):
-        from apps.core.gemini import GeminiError, generate_json
+        from apps.core.claude import ClaudeError
 
-        with mock.patch("apps.core.gemini.genai.Client") as client:
-            client.return_value.models.generate_content.return_value.text = "not json"
-            with self.assertRaises(GeminiError):
-                generate_json("model", ["hi"], system="s", schema={}, max_output_tokens=10)
+        with self.assertRaises(ClaudeError):
+            self.ask(claude_response("not json"))
 
-    @override_settings(GEMINI_API_KEY="key")
+    def test_refusal_and_cut_off_answers_are_errors(self):
+        from apps.core.claude import ClaudeError
+
+        for stop_reason in ("refusal", "max_tokens"):
+            with self.subTest(stop_reason), self.assertRaises(ClaudeError):
+                self.ask(claude_response('{"a": 1}', stop_reason))
+
     def test_json_answer_carries_token_usage(self):
-        from apps.core.gemini import generate_json
-
-        with mock.patch("apps.core.gemini.genai.Client") as client:
-            response = client.return_value.models.generate_content.return_value
-            response.text = '{"a": 1}'
-            response.usage_metadata.prompt_token_count = 120
-            response.usage_metadata.candidates_token_count = 30
-            response.usage_metadata.thoughts_token_count = None
-            answer = generate_json("model", ["hi"], system="s", schema={}, max_output_tokens=10)
+        answer, sent = self.ask(claude_response('{"a": 1}'))
         self.assertEqual(answer.data, {"a": 1})
         self.assertEqual((answer.usage.model, answer.usage.input_tokens, answer.usage.output_tokens), ("model", 120, 30))
+        self.assertEqual(sent["messages"], [{"role": "user", "content": "hi"}])
+        self.assertEqual(sent["output_config"]["format"], {"type": "json_schema", "schema": {}})

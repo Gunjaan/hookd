@@ -1,4 +1,4 @@
-"""Stand-in reply engine and brain learner, used without a Gemini key and in tests.
+"""Stand-in reply engine and brain learner, used without an Anthropic key and in tests.
 
 Deliberately naive: the reply is the brain line sharing the most words with the comment (video brain first). A
 question no brain line answers gets a holding reply with low confidence, so it waits for the creator; anything

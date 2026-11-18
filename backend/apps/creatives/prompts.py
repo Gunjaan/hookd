@@ -85,19 +85,17 @@ PLAN_SCHEMA = {
         "audience": {"type": "string"},
         "slides": {
             "type": "array",
-            "minItems": 1,
-            "maxItems": 5,
             "items": {
                 "type": "object",
                 "properties": {"role": {"type": "string"}, "prompt": {"type": "string"}},
                 "required": ["role", "prompt"],
+                "additionalProperties": False,
             },
         },
         "caption": {"type": "string"},
-        "hashtags": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "hashtags": {"type": "array", "items": {"type": "string"}},
         "questions": {
             "type": "array",
-            "maxItems": 6,
             "items": {
                 "type": "object",
                 "properties": {
@@ -107,19 +105,22 @@ PLAN_SCHEMA = {
                     "answer": {"type": "string"},
                 },
                 "required": ["label", "question", "scope", "answer"],
+                "additionalProperties": False,
             },
         },
     },
     "required": ["product", "branding", "audience", "slides", "caption", "hashtags", "questions"],
+    "additionalProperties": False,
 }
 
 REWRITE_SCHEMA = {
     "type": "object",
     "properties": {
         "caption": {"type": "string"},
-        "hashtags": {"type": "array", "items": {"type": "string"}, "maxItems": 15},
+        "hashtags": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["caption", "hashtags"],
+    "additionalProperties": False,
 }
 
 

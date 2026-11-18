@@ -137,13 +137,14 @@ All read in `backend/config/settings.py` via helpers in `backend/config/env.py` 
 | `EMAIL_HOST_USER` | | `support@hookd.world` | Mailbox to log in with. Also the sender: `DEFAULT_FROM_EMAIL = SERVER_EMAIL = Hookd <EMAIL_HOST_USER>`, so mail passes SPF and DMARC |
 | `EMAIL_HOST_PASSWORD` | for real mail | | That mailbox's password |
 | `INSTAGRAM_*` | for Instagram | | See `DEV-instagram.md` (includes `INSTAGRAM_WEBHOOK_FIELDS`, default `comments`) |
-| `GEMINI_API_KEY` | for AI | | Google AI Studio key for the post studio and the reply agent (`apps/core/gemini.py`) |
-| `GEMINI_COPY_MODEL` | | `gemini-3.5-flash-lite` | Text model that plans shots and writes captions |
+| `ANTHROPIC_API_KEY` | for AI | | Claude API key for all AI text: post studio plans and captions, comment replies, brain facts (`apps/core/claude.py`). The reply agent uses Claude only when it is set |
+| `CLAUDE_COPY_MODEL` | | `claude-haiku-5-5` | Model that reads product photos, plans shots and writes captions |
+| `CLAUDE_REPLY_MODEL` | | `claude-haiku-5-5` | Model that writes comment replies and learns brain facts from captions and inbox replies (`DEV-agent.md`) |
+| `GEMINI_API_KEY` | for AI photos | | Google AI Studio key for rendering post studio photos (`apps/core/gemini.py`) |
 | `GEMINI_IMAGE_MODEL` | | `gemini-nano-banana-2.1` | Image model that renders post photos |
-| `GEMINI_REPLY_MODEL` | | `gemini-3.5-flash-lite` | Text model that writes comment replies and learns brain facts from captions and inbox replies (`DEV-agent.md`). The reply agent uses Gemini only when `GEMINI_API_KEY` is set |
 
 Not an env var: `AI_MODEL_PRICES` in `config/settings.py` holds USD per million input and output tokens per model, used
-to record the cost of every post studio AI call (`DEV-creatives.md`). Add an entry when changing `GEMINI_COPY_MODEL` or
+to record the cost of every post studio AI call (`DEV-creatives.md`). Add an entry when changing `CLAUDE_COPY_MODEL` or
 `GEMINI_IMAGE_MODEL`; a model without one is recorded at cost 0 with a warning in the log.
 
 ### Email (GoDaddy Workspace Email)

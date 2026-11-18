@@ -1,14 +1,13 @@
-"""Shared Gemini (Google AI Studio) access for the AI engines: one place for the client, timeouts and errors."""
+"""Shared Gemini (Google AI Studio) access for the image engine: one place for the client, timeouts and errors."""
 
-import json
 import logging
-from dataclasses import dataclass
 
 import httpx2
 from django.conf import settings
 from google import genai
 from google.genai import errors, types
 
+from apps.core.ai import TokenUsage
 from apps.core.exceptions import HookdError
 
 logger = logging.getLogger(__name__)
@@ -17,26 +16,11 @@ TIMEOUT_MS = 90_000
 
 
 class GeminiUnavailable(HookdError):
-    default_message = "AI is not set up yet: GEMINI_API_KEY is missing."
+    default_message = "AI photos are not set up yet: GEMINI_API_KEY is missing."
 
 
 class GeminiError(HookdError):
     default_message = "The AI service did not answer. Please try again."
-
-
-@dataclass(frozen=True)
-class TokenUsage:
-    """Billed tokens of one call. Output includes thinking tokens, which are billed as output."""
-
-    model: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-
-@dataclass(frozen=True)
-class JsonAnswer:
-    data: dict
-    usage: TokenUsage
 
 
 def token_usage(model: str, response: types.GenerateContentResponse) -> TokenUsage:
@@ -63,24 +47,3 @@ def generate(model: str, contents: list, config: types.GenerateContentConfig) ->
     except httpx2.HTTPError as exc:
         logger.warning("Gemini %s unreachable: %s", model, exc)
         raise GeminiError("The AI service did not answer in time. Please try again.") from exc
-
-
-def generate_json(model: str, contents: list, *, system: str, schema: dict, max_output_tokens: int) -> JsonAnswer:
-    """One call with a JSON schema answer and its token usage. Raises GeminiError when the answer is not JSON."""
-    response = generate(
-        model,
-        contents,
-        types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_json_schema=schema,
-            max_output_tokens=max_output_tokens,
-        ),
-    )
-    try:
-        data = json.loads(response.text or "")
-    except ValueError as exc:
-        raise GeminiError("The AI returned an unreadable answer. Please try again.") from exc
-    if not isinstance(data, dict):
-        raise GeminiError("The AI returned an unreadable answer. Please try again.")
-    return JsonAnswer(data=data, usage=token_usage(model, response))

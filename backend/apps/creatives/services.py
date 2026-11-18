@@ -19,7 +19,9 @@ from django.utils import timezone
 from apps.agent import services as agent_services
 from apps.content import services as content_services
 from apps.core.exceptions import HookdError
-from apps.core.gemini import GeminiUnavailable, TokenUsage
+from apps.core.ai import TokenUsage
+from apps.core.claude import ClaudeUnavailable
+from apps.core.gemini import GeminiUnavailable
 from apps.creatives import imaging, prompts
 from apps.creatives import model_querysets as queries
 from apps.creatives.engines.base import ProductPhoto
@@ -83,6 +85,8 @@ def start_creative(*, user, photos: list[UploadedFile], look: str, format_choice
     """Store the downscaled photos and queue the AI work. Returns the draft in `planning`."""
     from apps.creatives.tasks import generate_creative  # tasks.py imports this module
 
+    if not settings.ANTHROPIC_API_KEY:
+        raise ClaudeUnavailable("The post studio is not set up yet: ANTHROPIC_API_KEY is missing.")
     if not settings.GEMINI_API_KEY:
         raise GeminiUnavailable("The post studio is not set up yet: GEMINI_API_KEY is missing.")
     since = timezone.now() - timedelta(days=1)

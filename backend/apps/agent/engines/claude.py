@@ -1,14 +1,15 @@
-"""Reply engine and brain learner on a low cost Gemini text model, until Claude replaces them."""
+"""Reply engine and brain learner on a low cost Claude model (Haiku by default)."""
 
 from django.conf import settings
 
 from apps.agent.engines import prompts
 from apps.agent.constants import FactScope
 from apps.agent.engines.base import AgentContext, AgentDecision, BrainLearner, LearnedFactDraft, ReplyEngine
-from apps.core.gemini import generate_json
+from apps.core.claude import generate_json
 
-MAX_OUTPUT_TOKENS = 400
-LEARN_MAX_OUTPUT_TOKENS = 1200
+# Ceilings, not charges: they leave room for the short thinking that comes before the JSON answer.
+MAX_OUTPUT_TOKENS = 2000
+LEARN_MAX_OUTPUT_TOKENS = 4000
 LABEL_MAX_LENGTH = 80
 FACT_MAX_LENGTH = 300
 
@@ -20,13 +21,13 @@ def _confidence(value) -> float:
         return 0.0
 
 
-class GeminiReplyEngine(ReplyEngine):
-    name = "gemini"
+class ClaudeReplyEngine(ReplyEngine):
+    name = "claude"
 
     def decide(self, context: AgentContext) -> AgentDecision:
         data = generate_json(
             settings.AGENT_REPLY_MODEL,
-            [prompts.reply_request(context)],
+            prompts.reply_request(context),
             system=prompts.REPLY_SYSTEM,
             schema=prompts.REPLY_SCHEMA,
             max_output_tokens=MAX_OUTPUT_TOKENS,
@@ -54,13 +55,13 @@ def _facts(data: dict) -> list[LearnedFactDraft]:
     return facts
 
 
-class GeminiBrainLearner(BrainLearner):
-    name = "gemini"
+class ClaudeBrainLearner(BrainLearner):
+    name = "claude"
 
     def _ask(self, system: str, request: str) -> list[LearnedFactDraft]:
         data = generate_json(
             settings.AGENT_REPLY_MODEL,
-            [request],
+            request,
             system=system,
             schema=prompts.LEARN_SCHEMA,
             max_output_tokens=LEARN_MAX_OUTPUT_TOKENS,

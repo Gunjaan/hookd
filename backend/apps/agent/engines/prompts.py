@@ -49,6 +49,7 @@ REPLY_SCHEMA = {
         "reason": {"type": "string"},
     },
     "required": ["intent", "language", "reply_text", "confidence", "reason"],
+    "additionalProperties": False,
 }
 
 
@@ -106,10 +107,12 @@ LEARN_SCHEMA = {
                     "text": {"type": "string"},
                 },
                 "required": ["scope", "label", "text"],
+                "additionalProperties": False,
             },
         },
     },
     "required": ["facts"],
+    "additionalProperties": False,
 }
 
 
