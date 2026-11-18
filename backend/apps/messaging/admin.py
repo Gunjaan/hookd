@@ -24,6 +24,6 @@ class ConversationAdmin(admin.ModelAdmin):
 class DirectMessageAdmin(admin.ModelAdmin):
     list_display = ["text", "kind", "is_from_account", "conversation", "sent_at"]
     list_filter = ["kind", "is_from_account"]
-    search_fields = ["text", "external_id", "story_external_id"]
+    search_fields = ["text", "external_id", "story_external_id", "shared_post_external_id"]
     raw_id_fields = ["conversation"]
     readonly_fields = ["payload", "created_at", "updated_at"]

@@ -120,13 +120,12 @@ def search_brain(ctx: ToolContext, topic: str) -> ToolResult:
 
 
 def get_post(ctx: ToolContext, post_id: str) -> ToolResult:
-    comment = ctx.run.comment
-    if not post_id or (comment is not None and post_id == comment.media_external_id):
+    if not post_id or (ctx.post is not None and post_id == ctx.post.external_id):
         post = ctx.post
     else:
         post = post_queries.find_post(ctx.run.account, post_id)
     if post is None:
-        return _error("Post not found. Only posts Hookd has synced can be read.")
+        return _error("Post not found. Only the seller's own posts can be read, use the caption you were given.")
     lines = [
         f"Post id: {post.external_id}",
         f"Type: {post.get_product_type_display()}, {post.get_media_type_display()}",

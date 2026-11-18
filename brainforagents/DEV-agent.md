@@ -29,6 +29,8 @@ anti-spam rules.
    new run starts) or was handed to the seller (then the DM is left to the seller: `handed_off`). Otherwise a new run
    without a comment starts (`buyer_external_id`, `buyer_username` from their latest comment when known). Pending
    follow-ups are dropped ("the buyer wrote back", shown in the trail), a `dm` event is added and `advance_run` queued.
+   A DM that shares a post first calls `content_services.ensure_post` for it, so the seller's own post posted outside
+   Hookd is stored (someone else's post fails the fetch and is not stored).
 3. **`loop.advance(run_id)`** claims the run (`queries.claim_run`: conditional update to `running`; a second worker
    gets `busy` and leaves its event to the holder; a run left `running` for `STALE_RUN_MINUTES` because its worker died
    is taken over). Due events (unprocessed, `available_at` empty or past) become one
@@ -76,7 +78,7 @@ code says no, so the model corrects itself.
 | Tool | Does | Refused when |
 |---|---|---|
 | `search_brain(topic)` | The whole brain: shop facts, then this post's facts (`brain_parts`) | |
-| `get_post(post_id)` | Caption (2200 cut), type, link and video brain; empty id = the commented post | not a stored post |
+| `get_post(post_id)` | Caption (2200 cut), type, link and video brain; empty id = the run's post: the commented post, or in a DM run the post the buyer shared most recently in the conversation (`loop._context`, which also makes it the post `search_brain` and `save_fact` use) | not a stored post (someone else's shared post: the model is told to use the caption the DM gave) |
 | `reply_to_comment(text)` | Adds `@author` when missing, stores the `CommentReply` (`agent_reply`: draft = final = text, `decision.approval`), schedules it, or holds it in approval mode | DM started run (no comment), platform without public replies, already replied (a `skipped` row is reused), `reply_text_problems`, number guard, the same text `MAX_SAME_TEXT_PER_HOUR` times this hour |
 | `send_dm(text)` | `dm_route`: a normal `dm` while the buyer's 24 h window is open (5 min margin), else the comment's one `private_reply` while the comment is under `PRIVATE_REPLY_MAX_HOURS` (167 h) old. Taking the private reply sets `private_reply_used_at` at once. Stores an `OutgoingDM`, schedules it or holds it in approval mode | not allowed now (the reason is in the error), capability missing, `dm_text_problems`, number guard |
 | `ask_seller(question)` | `SellerQuestion` (open, with the `tool_use_id`); the run pauses | empty, a second question in the same turn, `MAX_QUESTIONS` (3) already asked in this run |
@@ -209,7 +211,7 @@ comment or, for a DM run, the run), `reply_preview`, `learn_caption`, `learn_rep
 | `inbox(user, status)` (each reply with `post` and `run`), `inbox_counts`, `open_questions`, `open_question_count`, `pending_dms`, `pending_dm_count`, `attention_count` (pending replies + pending DMs + open questions: sidebar badge, status bar) | Inbox |
 | `approve_reply`, `reject_reply`, `retry_reply`, `approve_dm`, `reject_dm` (a discarded private reply frees it), `answer_question`, `dismiss_question` (add a `seller_answer` event and queue the run) | Inbox actions. Wrong status raises `ReplyNotEditable` / `QuestionNotOpen`, refused text `ReplyTextRejected`, unknown ids `ReplyNotFound` / `QuestionNotFound` / `TicketNotFound` |
 | `tickets(user, status)`, `ticket_counts`, `get_user_ticket`, `update_ticket(ticket, status, seller_note)` | Tickets page |
-| `learn_from_post`, `learn_from_reply`, `account_learned_facts`, `post_learned_facts`, `post_learned_fact_count`, `forget_fact`, `buyer_message_text` | Learned brain; how a DM reads to the agent |
+| `learn_from_post`, `learn_from_reply`, `account_learned_facts`, `post_learned_facts`, `post_learned_fact_count`, `forget_fact`, `buyer_message_text` | Learned brain; how a DM reads to the agent (a share reads `(shared a post, post_id X, caption: "...")`, caption cut at `SHARED_CAPTION_PREVIEW` 300, then the buyer's text) |
 
 `model_querysets.py` holds every query: profile, brains, learned facts, replies (`sent_times_since` counts replies and
 DMs), runs (`create_run_if_new`, `create_dm_run`, `claim_run`, `update_run`, `latest_run_for_conversation`,
@@ -253,7 +255,8 @@ review cards explain why (approval mode, or Hooky could not finish) and have an 
 
 A `ScriptedModel` plays back model turns (`call`, `calls`, `done`) and keeps every transcript it was sent. Covered:
 webhook comment queued once, own comment not; unknown post fetched for `get_post`, stored with the agent off, fetch
-failure is a tool error; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
+failure is a tool error; a shared post in a DM is fetched, shown with its id and caption and read by `get_post`, someone
+else's shared post still shows its caption and is not stored; agent off stores nothing; thread, old and post-off comments skipped without a run. Loop: brain
 answer sent (Graph call checked); praise thanked; invented price refused by the number guard and corrected; numbers
 from the comment allowed, digits in handles ignored; missing fact -> `ask_seller`, run waits, the inbox answer resumes
 it with the exact tool_result, `save_fact` stored with the run, reply queued; held results returned with the answer;

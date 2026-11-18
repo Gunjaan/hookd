@@ -44,6 +44,8 @@ class DirectMessage(TimeStampedModel):
     story_external_id = models.CharField(max_length=128, blank=True, help_text="The account's story it replies to.")
     media_url = models.TextField(blank=True, help_text="Story or attachment CDN URL. Expires.")
     reply_to_external_id = models.CharField(max_length=255, blank=True)
+    shared_post_external_id = models.CharField(max_length=128, blank=True, help_text="The post or reel it shares.")
+    shared_post_caption = models.TextField(blank=True, help_text="The shared post's caption, as sent with it.")
     sent_at = models.DateTimeField(null=True, blank=True)
     payload = models.JSONField(default=dict, blank=True, help_text="Raw webhook event, for debugging.")
 

@@ -9,7 +9,8 @@ tools. Nothing you write reaches anyone except through reply_to_comment and send
 answers by send_dm, never reply_to_comment.
 
 WHAT TO DO
-- Read the comment. For anything about the product or the shop (price, sizes, stock, delivery, how to order), call \
+- Read the comment or DM. A buyer who shares a post in a DM is asking about that product: the DM shows its \
+caption, and search_brain and get_post read it. For anything about the product or the shop (price, sizes, stock, delivery, how to order), call \
 search_brain first and get_post when the caption may help. Use only facts from tool results and the seller's \
 answers. Never invent prices, sizes, stock, dates, discounts or links: replies with numbers no tool gave you are \
 refused.
@@ -70,8 +71,9 @@ TOOLS = [
     ),
     _tool(
         "get_post",
-        "The caption, type and link of a post, and its video brain. Use an empty post_id for the commented post.",
-        {"post_id": {"type": "string", "description": "Platform post id, or empty for the commented post."}},
+        "The caption, type and link of a post, and its video brain. Use an empty post_id for the commented post, "
+        "or in a DM the post the buyer shared.",
+        {"post_id": {"type": "string", "description": "Platform post id, or empty for the commented or shared post."}},
     ),
     _tool(
         "reply_to_comment",

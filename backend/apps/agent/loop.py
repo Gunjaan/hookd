@@ -216,7 +216,13 @@ def _turns(ctx: tools.ToolContext, model: AgentModel, on_action: Callable, save:
 
 def _context(run: AgentRun) -> tools.ToolContext:
     profile = queries.get_or_create_profile(run.account)
-    post = post_queries.find_post(run.account, run.comment.media_external_id) if run.comment_id else None
+    if run.comment_id:
+        post_id = run.comment.media_external_id
+    elif run.conversation_id:
+        post_id = message_queries.latest_shared_post_id(run.conversation)
+    else:
+        post_id = ""
+    post = post_queries.find_post(run.account, post_id)
     return tools.ToolContext(run=run, profile=profile, post=post)
 
 

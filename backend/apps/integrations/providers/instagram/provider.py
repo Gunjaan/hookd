@@ -153,6 +153,20 @@ def _ms_timestamp(value) -> datetime | None:
         return None
 
 
+# Attachment types of a shared post or reel: `ig_post` replaces the legacy `share` (both arrive during Meta's
+# transition, with the same payload).
+SHARED_POST_TYPES = ("ig_post", "ig_reel", "reel", "share")
+
+
+def _shared_post(attachments: list[dict]) -> dict | None:
+    """The payload of the shared post or reel attachment ({ig_post_media_id or reel_video_id, title, url})."""
+    for kind in SHARED_POST_TYPES:
+        for item in attachments:
+            if item.get("type") == kind:
+                return item.get("payload") or {}
+    return None
+
+
 def _message_kind(message: dict) -> str:
     attachments = message.get("attachments") or []
     if (message.get("reply_to") or {}).get("story"):
@@ -161,6 +175,8 @@ def _message_kind(message: dict) -> str:
         return MessageKind.STORY_MENTION
     if message.get("is_unsupported"):
         return MessageKind.UNSUPPORTED
+    if _shared_post(attachments) is not None:
+        return MessageKind.SHARE
     return MessageKind.MEDIA if attachments else MessageKind.TEXT
 
 
@@ -375,7 +391,8 @@ class InstagramProvider(BaseProvider):
 
     def parse_webhook_messages(self, payload: dict) -> list[IncomingMessage]:
         """`messages` field events under entry[].messaging[]. Echoes (sent by the account, `is_echo`) swap sender
-        and recipient. Deleted messages and other events (reactions, reads, postbacks) are skipped."""
+        and recipient. A shared post or reel keeps its id and caption. Deleted messages and other events (reactions,
+        reads, postbacks) are skipped."""
         if payload.get("object") != "instagram":
             return []
         messages = []
@@ -388,7 +405,9 @@ class InstagramProvider(BaseProvider):
                 participant = (event.get("recipient") if is_echo else event.get("sender")) or {}
                 reply_to = message.get("reply_to") or {}
                 story = reply_to.get("story") or {}
-                attachment = next(iter(message.get("attachments") or []), {})
+                attachments = message.get("attachments") or []
+                attachment = next(iter(attachments), {})
+                shared = _shared_post(attachments) or {}
                 messages.append(
                     IncomingMessage(
                         account_external_id=str(entry.get("id", "")),
@@ -400,6 +419,8 @@ class InstagramProvider(BaseProvider):
                         story_external_id=str(story.get("id", "")),
                         media_url=story.get("url") or (attachment.get("payload") or {}).get("url", ""),
                         reply_to_external_id=str(reply_to.get("mid") or ""),
+                        shared_post_external_id=str(shared.get("ig_post_media_id") or shared.get("reel_video_id") or ""),
+                        shared_post_caption=shared.get("title") or "",
                         sent_at=_ms_timestamp(event.get("timestamp")),
                         payload=event,
                     )

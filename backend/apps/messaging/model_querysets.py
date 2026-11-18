@@ -25,6 +25,8 @@ def create_message_if_new(conversation: Conversation, incoming: IncomingMessage)
             "story_external_id": incoming.story_external_id,
             "media_url": incoming.media_url,
             "reply_to_external_id": incoming.reply_to_external_id,
+            "shared_post_external_id": incoming.shared_post_external_id,
+            "shared_post_caption": incoming.shared_post_caption,
             "sent_at": incoming.sent_at,
             "payload": incoming.payload,
         },
@@ -44,3 +46,15 @@ def get_conversation(conversation_id: int) -> Conversation | None:
 
 def get_message(message_id: int) -> DirectMessage | None:
     return DirectMessage.objects.filter(pk=message_id).first()
+
+
+def latest_shared_post_id(conversation: Conversation) -> str:
+    """The post the person shared most recently in this conversation, or empty."""
+    return (
+        DirectMessage.objects.filter(conversation=conversation, is_from_account=False)
+        .exclude(shared_post_external_id="")
+        .order_by("-sent_at", "-pk")
+        .values_list("shared_post_external_id", flat=True)
+        .first()
+        or ""
+    )

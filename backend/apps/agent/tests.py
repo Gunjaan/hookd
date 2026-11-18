@@ -153,11 +153,11 @@ class AgentTestCase(TestCase):
         self.queued_dm = queued_dm
         return outcome
 
-    def buyer_dm(self, text: str, *, sender="fan1", model: AgentModel | None = None, mid="") -> None:
+    def buyer_dm(self, text: str, *, sender="fan1", model: AgentModel | None = None, mid="", **fields) -> None:
         self.counter += 1
         incoming = IncomingMessage(
             account_external_id=IG_ID, external_id=mid or f"mid{self.counter}", participant_external_id=sender,
-            text=text, sent_at=timezone.now(),
+            text=text, sent_at=timezone.now(), **fields,
         )
         with self.scripted(model), mock.patch("apps.agent.tasks.send_reply.apply_async"), \
                 mock.patch("apps.agent.tasks.send_dm.apply_async") as queued_dm:
@@ -565,6 +565,35 @@ class DirectMessageTests(AgentTestCase):
         self.assertIn("Status: In progress", status)
         self.assertIn("Replacement ships Monday", status)
         self.assertFalse(AgentAction.objects.filter(tool="send_dm", is_error=True).exists())
+
+    def share(self, text: str, post_id: str, caption: str, model: AgentModel) -> None:
+        self.buyer_dm(
+            text, sender="buyer9", model=model, kind="share", shared_post_external_id=post_id, shared_post_caption=caption,
+        )
+
+    def test_shared_post_is_fetched_and_becomes_the_runs_post(self):
+        self.graph.on("GET", "m9", {
+            "id": "m9", "caption": "Custom mug, any text, Rs 499", "media_type": "IMAGE", "media_product_type": "FEED",
+            "timestamp": "2026-11-16T10:00:00+0000",
+        })
+        model = ScriptedModel(call("get_post", post_id=""), done())
+        self.share("same cup with aspire?", "m9", "Your first coffee deserves a mug", model)
+        self.assertIn('shared a post, post_id m9, caption: \\"Your first coffee deserves a mug\\"', model.first_user_text())
+        self.assertIn("same cup with aspire?", model.first_user_text())
+        self.assertEqual(self.tools_used(AgentRun.objects.get()), [("get_post", False)])
+        self.assertIn("Custom mug, any text, Rs 499", AgentAction.objects.get().result)
+
+        later = ScriptedModel(call("get_post", post_id="m9"), done())
+        self.buyer_dm("and in black?", sender="buyer9", model=later)
+        self.assertIn("Custom mug", AgentAction.objects.last().result)
+
+    def test_someone_elses_shared_post_still_gives_its_caption(self):
+        self.graph.on("GET", "x1", {"error": {"message": "Unsupported get request", "code": 100}}, status=400)
+        model = ScriptedModel(call("get_post", post_id=""), done())
+        self.share("", "x1", "Mug from another shop", model)
+        self.assertIn("Mug from another shop", model.first_user_text())
+        self.assertEqual(self.tools_used(AgentRun.objects.get()), [("get_post", True)])
+        self.assertFalse(Post.objects.filter(external_id="x1").exists())
 
     def test_dm_run_cannot_reply_publicly(self):
         self.buyer_dm("hi", sender="buyer9", model=ScriptedModel(call("reply_to_comment", text="@x hi"), done()))

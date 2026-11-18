@@ -50,6 +50,8 @@ class IncomingMessage:
     story_external_id: str = ""  # the account's story a story reply answers
     media_url: str = ""  # story or attachment media, a CDN URL that expires
     reply_to_external_id: str = ""  # the message this one quotes
+    shared_post_external_id: str = ""  # the post or reel a share points to
+    shared_post_caption: str = ""  # its caption as the platform sent it
     sent_at: datetime | None = None
     payload: dict = field(default_factory=dict)
 

@@ -63,6 +63,19 @@ class InstagramMessageWebhookTests(TestCase):
         self.assertEqual(media.kind, "media")
         self.assertEqual(Conversation.objects.count(), 1)
 
+    def test_shared_post_and_reel_keep_their_id_and_caption(self):
+        post = {"ig_post_media_id": "1801", "title": "Your first coffee deserves a mug", "url": "https://cdn/p"}
+        self.deliver(messaging_payload(
+            message_event({"mid": "mid1", "attachments": [{"type": "share", "payload": post}, {"type": "ig_post", "payload": post}]}),
+            message_event({"mid": "mid2", "attachments": [{"type": "ig_reel", "payload": {"reel_video_id": "1802", "title": "Reel"}}]}),
+        ))
+        shared, reel = DirectMessage.objects.order_by("external_id")
+        self.assertEqual(
+            (shared.kind, shared.shared_post_external_id, shared.shared_post_caption, shared.media_url),
+            ("share", "1801", "Your first coffee deserves a mug", "https://cdn/p"),
+        )
+        self.assertEqual((reel.kind, reel.shared_post_external_id, reel.shared_post_caption), ("share", "1802", "Reel"))
+
     def test_echo_is_flagged_and_does_not_move_the_reply_window(self):
         self.deliver(messaging_payload(
             message_event({"mid": "mid1", "text": "hi"}, timestamp=1763208000000),

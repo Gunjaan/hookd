@@ -83,6 +83,8 @@ RUN_CONTINUES_FOR = timedelta(days=7)
 MENTION_PATTERN = re.compile(r"^@\S+\s*")
 # Learned facts per brain (shop, post) handed to the agent, newest first.
 LEARNED_FACTS_LIMIT = 40
+# How much of a shared post's caption the DM shows; get_post reads the whole caption.
+SHARED_CAPTION_PREVIEW = 300
 
 
 def reply_limit(name: str):
@@ -240,7 +242,8 @@ def handle_new_comment(comment_id: int) -> str:
 
 
 def handle_buyer_message(conversation_id: int, message_id: int) -> str:
-    """A buyer wrote to the account: continue their recent run, or start one. Returns the outcome."""
+    """A buyer wrote to the account: continue their recent run, or start one. A shared post of the seller's that
+    Hookd has not seen is fetched first, so the run can read it. Returns the outcome."""
     conversation = message_queries.get_conversation(conversation_id)
     message = message_queries.get_message(message_id)
     if conversation is None or message is None or message.is_from_account:
@@ -249,6 +252,8 @@ def handle_buyer_message(conversation_id: int, message_id: int) -> str:
     profile = queries.get_profile(account)
     if profile is None or not profile.enabled or Capability.DIRECT_MESSAGE not in get_provider(account.platform).capabilities:
         return "ignored"
+    if message.shared_post_external_id:
+        content_services.ensure_post(account, message.shared_post_external_id)
     with transaction.atomic():
         run = _run_for_buyer(account, conversation)
         if run is None:
@@ -882,6 +887,10 @@ def buyer_message_text(message: DirectMessage) -> str:
         return "(mentioned the account in their story)"
     if message.kind == MessageKind.STORY_REPLY:
         return f"(replying to the account's story) {message.text}".strip()
+    if message.kind == MessageKind.SHARE:
+        post_id = f"post_id {message.shared_post_external_id}" if message.shared_post_external_id else "no post id"
+        caption = " ".join(message.shared_post_caption.split())[:SHARED_CAPTION_PREVIEW]
+        return f'(shared a post, {post_id}, caption: "{caption or "none"}") {message.text}'.strip()
     if message.kind == MessageKind.MEDIA:
-        return f"(sent a photo, video or share) {message.text}".strip()
+        return f"(sent a photo or video) {message.text}".strip()
     return message.text or "(a message Hookd cannot read)"

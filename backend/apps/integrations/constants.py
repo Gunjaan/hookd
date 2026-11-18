@@ -38,7 +38,8 @@ class MessageKind(models.TextChoices):
     TEXT = "text", "Text"
     STORY_REPLY = "story_reply", "Story reply"
     STORY_MENTION = "story_mention", "Story mention"
-    MEDIA = "media", "Photo, video or share"
+    MEDIA = "media", "Photo or video"
+    SHARE = "share", "Shared post"
     UNSUPPORTED = "unsupported", "Not supported"
 
 
