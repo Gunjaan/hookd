@@ -204,24 +204,30 @@ drawn as stacked strokes of one shape (`.mascot`, `__ring--1..5`, `__body`, `__e
 default full width). Include it with a unique `uid` per use (the shape's SVG id): `{% include "core/mascot.html" with uid="closing" size="md" %}`.
 Hooky appears in the "asks you" learn card and the closing card.
 
-Sections, in order: sticky nav (pill of anchor links Pipeline, How it decides, It learns, Studio, FAQ; log in and get started, or "Open studio" when signed in);
+Sections, in order: sticky nav (pill of anchor links How it works, How it decides, It learns, Try it, FAQ, Contact; log in and get started, or "Open studio" when signed in);
 hero with the title, then `.hero-flow` in place of a paragraph (a 5 step stepper with pastel icon circles: buyer comments, checks your brain, replies in their
-language, sends the link in DMs, order placed; steps rise in one after another) and `.hero__stage` (`.hero-visual`: a tilted `.hero-phone` image,
+language, sends the link in DMs, order placed; steps rise in one after another), CTAs (signup and "Try it on Instagram" to `#try`) and `.hero__stage` (`.hero-visual`: a tilted `.hero-phone` image,
 `img/hero-reels.jpg`, with a smaller CSS `.reel` card floating over its lower left: pastel gradient, "Agent on" and answered chips, play button,
 "Handmade jhumkas, only 20 pieces", views and orders; beside it a `.thread` of four `.bubble`s: buyer comments in Hinglish and Tamil and the agent replies, with `.stage-tag` lead
 stages, rising in one after another); an audience strip (`.audience`, pills cycling
-pastel tints); the pipeline board (`#pipeline`: five pastel `.board__col` columns New comment, Answered, In DMs, Ordered, Follow up with `.lead` cards, the
-same buyer outlined as `.lead--focus` in every column, then three `.perk` cards: any language, any post including ones posted outside Hookd, any hour);
-how it decides (`#decide`: `.decide__map` diagram in a white card, comment into voice and brain, out to replies on its own, drafts for you, asks you);
+pastel tints); one comment start to finish (`#pipeline`: five pastel `.journey__step` cards from her comment to the follow up, then a `.funnel` row);
+how it decides (`#decide`: a white `.decide__card` with the agent `.loop` (comment or DM arrives, Claude picks the next tool, our code checks the call, the
+result goes back to Claude, joined by `.decide__arrow`s, vertical under 1024px), a `.loop__repeat` line (8 steps a turn), and `.tools`: four
+`.tools__group`s listing Hooky's 10 tools as `.tool-chip` `<code>` chips; below the card three `.decide-out` outcomes (replies on its own, holds it in
+approval mode, asks you) and a `.decide__note` that every tool call shows in the inbox);
 it learns (`#learns`: four pastel `.learn-step` cards: unknown question, `.ask-card` where Hooky asks the seller, the reply saved as a new
-`.brain-lines__new` line, the next buyer answered instantly); safe by design (`.safe`, three pastel `.safe-tile`s); the studio bonus (`#studio`: "One product
+`.brain-lines__new` line, the next buyer answered instantly); try it live (`#try`: `.try__steps` card with three `.try-step`s to comment on or DM the
+demo shop @while.wanderingg on Instagram, and a blush `.try__side` card linking to `#contact` to see Hooky's side); safe by design (`.safe`, "The guardrails
+are code, not a prompt": six pastel `.safe-tile`s with the real limits from `DEV-agent.md`: number guard, pacing, Meta DM windows, step caps, question
+caps, starts off and approval mode); the studio bonus (`#studio`: "One product
 photo in. A full launch and a trained sales agent out.", four `.bonus-tile`s: upload, AI models, caption and hashtags, agent already knows it); a without /
-with Hookd comparison (`#compare`); an FAQ of rounded `<details>` cards (`#faq`, works without JS); a blush closing card with Hooky; a footer with section
-links. All CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
+with Hookd comparison (`#compare`); an FAQ of rounded `<details>` cards (`#faq`, works without JS); a blush closing card with Hooky; the contact
+section (`#contact`: `.contact__card` with copy and a `data-api` form posting `ContactForm` to `api-contact` with `data-target="contact-box"`, so the
+thank you note from `core/contact_sent.html` replaces the form; errors go to the card's own `#page-messages`; see `DEV-core.md`); a footer with "Built with
+Claude. Hosted on GoDaddy", section links, GitHub and log in. Account CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
 sideways inside itself on narrow screens. The AI model shots are CSS only: `core/model_figure.html` is an inline SVG figure (`.model`, parts `__skin`,
 `__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in `.mini-look--studio/street/cafe` scenes that vary skin tone and pose through
-`--model-skin` and `--model-hair`. Note: the "asks you, then learns" loop is marketing copy; the agent does not yet save inbox replies to the brain
-(`DEV-agent.md`).
+`--model-skin` and `--model-hair`.
 
 Highlight boxes (no library): `<main data-highlights>` scrolls normally. The bold part of each section heading (wrapped in
 `<span data-highlight>`) is the highlight; the hero has none. Each highlight has `margin-inline-end: var(--space-2)` so its box clears the
@@ -237,12 +243,14 @@ screens narrower than 768px. Anchor links scroll with CSS `scroll-behavior: smoo
 
 Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.eyebrow`, `.hero`, `.hero-flow` (`__step`, `__step--butter/lilac/blush/sage/win`,
 `__icon`), `.hero__stage`, `.hero-visual`, `.hero-phone`, `.reel` (`__media`, `__chip`, `__play`, `__caption`, `__meta`), `.thread` (animates the shared `.bubble`s), `.stage-tag`,
-`.section-intro`, `.audience`, `.pipeline`, `.board` (`__col--butter/lilac/blush/sage/sky`, `__head`, `__count`), `.lead` (`--focus`, `__who`,
-`__avatar`, `__text`, `__tag--agent/won`), `.perk` (`--peach/mint/lilac`), `.decide`, `.decide-node`, `.decide-out`, `.learn`, `.learn-step`
-(`--butter/blush/lilac/sage`), `.pill`, `.ask-card`, `.brain-lines`, `.safe`, `.safe-tile` (`--peach/sky/mint`), `.bonus`, `.bonus-tile`, `.flatlay`,
-`.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.landing-footer`
+`.section-intro`, `.audience`, `.pipeline`, `.journey`, `.funnel`, `.decide` (`__card`, `__arrow`, `__outcomes`, `__note`), `.loop` (`__step--claude/code/result`,
+`__repeat`), `.tools` (`__group`, `__label`, `__chips`), `.tool-chip`, `.decide-out`, `.learn`, `.learn-step`
+(`--butter/blush/lilac/sage`), `.pill`, `.ask-card`, `.brain-lines`, `.try` (`__grid`, `__steps`, `__side`, `__side-title`), `.try-step` (`__num`, `__title`,
+`__body`), `.safe`, `.safe-tile` (`--peach/sky/mint/butter/lilac/sage`), `.bonus`, `.bonus-tile`, `.flatlay`,
+`.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.contact` (`__card`, `__copy`,
+`__panel`, `__form`, `__sent`, `__sent-title`), `.landing-footer`
 (`__brand`, `__links`), `.highlight-boxes` (`__path`).
-Landing tokens: `--font-display`, `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
+Landing tokens: `--font-display`, `--font-mono` (tool chips), `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
 `--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, the pastels
 `--color-cream` and `--color-butter/lilac/blush/sage/peach/sky/mint` (each with `-soft`), the mascot colors `--color-mascot`, `--color-mascot-cheek`,
 `--color-mascot-ring-1..5`, and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,

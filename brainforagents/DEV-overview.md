@@ -5,7 +5,7 @@ commenter's language. Product plan: `hookd-plan.md` at the repo root.
 
 ## Current scope
 
-Working today: **public landing page at `/`, login (self serve signup is closed: `/signup/` emails an access request
+Working today: **public landing page at `/` with a contact form that emails support, login (self serve signup is closed: `/signup/` emails an access request
 to support, see `DEV-auth.md`), connect an Instagram professional account, receive its new comments by webhook,
 store its DMs, story replies and story mentions when the `messages` webhook is on,
 the creator studio (recent posts, post and account insights, paged comments), publishing images, reels, carousels and stories, the post studio (product photos in, AI made post photos with an editable

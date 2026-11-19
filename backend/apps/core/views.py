@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
+from apps.core.forms import ContactForm
 from apps.core.model_querysets import database_is_available
 
 
@@ -16,4 +17,6 @@ def health(request):
 @require_GET
 def landing(request):
     """Public homepage, the first page everyone lands on."""
-    return render(request, "core/landing.html", {"signups_open": settings.SIGNUPS_OPEN})
+    return render(
+        request, "core/landing.html", {"signups_open": settings.SIGNUPS_OPEN, "contact_form": ContactForm()}
+    )

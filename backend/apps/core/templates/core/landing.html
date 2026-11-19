@@ -17,8 +17,9 @@
           <a href="#pipeline">How it works</a>
           <a href="#decide">How it decides</a>
           <a href="#learns">It learns</a>
-          <a href="#studio">Studio</a>
+          <a href="#try">Try it</a>
           <a href="#faq">FAQ</a>
+          <a href="#contact">Contact</a>
         </nav>
         <div class="landing-nav__actions">
           {% if user.is_authenticated %}
@@ -73,7 +74,7 @@
 
             <div class="hero__actions">
               <a href="{% url 'signup' %}" class="btn btn--primary btn--lg">{% if signups_open %}Get your agent{% else %}Request early access{% endif %}</a>
-              <a href="#pipeline" class="btn btn--secondary btn--lg">See it work</a>
+              <a href="#try" class="btn btn--secondary btn--lg">Try it on Instagram</a>
             </div>
             <ul class="hero__proof">
               <li><strong>24/7</strong> replies, even at 2am</li>
@@ -209,42 +210,53 @@
             <h2 class="section-intro__title"><span data-highlight>Your voice. Your brain.</span> <em>Your call.</em></h2>
           </div>
 
-          <div class="decide__map">
-            <div class="decide-node decide-node--input">
-              <span class="decide-node__label">New comment</span>
-              <span class="decide-node__eg">"XL milega?"</span>
+          <div class="decide__card">
+            <div class="loop" role="list" aria-label="How Hooky handles every comment and DM">
+              <p class="loop__step" role="listitem">A comment or DM arrives</p>
+              <span class="decide__arrow" aria-hidden="true"></span>
+              <p class="loop__step loop__step--claude" role="listitem">Claude picks the next tool</p>
+              <span class="decide__arrow" aria-hidden="true"></span>
+              <p class="loop__step loop__step--code" role="listitem">Our code checks the call</p>
+              <span class="decide__arrow" aria-hidden="true"></span>
+              <p class="loop__step loop__step--result" role="listitem">The result goes back to Claude</p>
             </div>
+            <p class="loop__repeat">Repeats until the buyer is answered, at most 8 steps a turn. No keywords, flows or rules to build.</p>
 
-            <span class="decide__arrow" aria-hidden="true"></span>
-
-            <div class="decide__sources">
-              <div class="decide-node">
-                <span class="decide-node__label">Your voice</span>
-                <span class="decide-node__eg">Playful, Hinglish, one emoji</span>
+            <div class="tools" aria-label="Hooky's 10 tools">
+              <div class="tools__group">
+                <p class="tools__label">Look things up</p>
+                <p class="tools__chips"><code class="tool-chip">search_brain</code><code class="tool-chip">get_post</code><code class="tool-chip">get_history</code></p>
               </div>
-              <div class="decide-node">
-                <span class="decide-node__label">Your brain</span>
-                <span class="decide-node__eg">Prices, sizes, delivery, every post</span>
+              <div class="tools__group">
+                <p class="tools__label">Answer the buyer</p>
+                <p class="tools__chips"><code class="tool-chip">reply_to_comment</code><code class="tool-chip">send_dm</code></p>
+              </div>
+              <div class="tools__group">
+                <p class="tools__label">Ask and learn</p>
+                <p class="tools__chips"><code class="tool-chip">ask_seller</code><code class="tool-chip">save_fact</code></p>
+              </div>
+              <div class="tools__group">
+                <p class="tools__label">Follow through</p>
+                <p class="tools__chips"><code class="tool-chip">check_tickets</code><code class="tool-chip">create_ticket</code><code class="tool-chip">schedule_followup</code></p>
               </div>
             </div>
-
-            <span class="decide__arrow" aria-hidden="true"></span>
-
-            <ul class="decide__outcomes">
-              <li class="decide-out decide-out--auto">
-                <span class="decide-out__dot" aria-hidden="true"></span>
-                <span><strong>Replies on its own</strong> when it knows the answer</span>
-              </li>
-              <li class="decide-out decide-out--draft">
-                <span class="decide-out__dot" aria-hidden="true"></span>
-                <span><strong>Drafts for you</strong> when you want to check first</span>
-              </li>
-              <li class="decide-out decide-out--ask">
-                <span class="decide-out__dot" aria-hidden="true"></span>
-                <span><strong>Asks you</strong> when it does not know</span>
-              </li>
-            </ul>
           </div>
+
+          <ul class="decide__outcomes">
+            <li class="decide-out decide-out--auto">
+              <span class="decide-out__dot" aria-hidden="true"></span>
+              <span><strong>Replies on its own</strong> when your brain has the answer</span>
+            </li>
+            <li class="decide-out decide-out--draft">
+              <span class="decide-out__dot" aria-hidden="true"></span>
+              <span><strong>Holds it for you</strong> when approval mode is on</span>
+            </li>
+            <li class="decide-out decide-out--ask">
+              <span class="decide-out__dot" aria-hidden="true"></span>
+              <span><strong>Asks you</strong> when it does not know</span>
+            </li>
+          </ul>
+          <p class="decide__note">Every tool call shows up in your inbox, with what went in and what came back.</p>
         </div>
       </section>
 
@@ -310,33 +322,95 @@
         </div>
       </section>
 
+      <section class="try" id="try">
+        <div class="landing-container">
+          <div class="section-intro section-intro--center">
+            <p class="eyebrow">Try it live</p>
+            <h2 class="section-intro__title"><span data-highlight>Comment as a buyer.</span> <em>Watch Hooky answer.</em></h2>
+            <p class="section-intro__lede">No sign up needed. Use your own Instagram on our demo shop.</p>
+          </div>
+          <div class="try__grid">
+            <ol class="try__steps">
+              <li class="try-step">
+                <span class="try-step__num">1</span>
+                <div>
+                  <p class="try-step__title">Open <a href="https://www.instagram.com/while.wanderingg/" target="_blank" rel="noopener">@while.wanderingg</a> on Instagram</p>
+                  <p class="try-step__body">That is our demo shop.</p>
+                </div>
+              </li>
+              <li class="try-step">
+                <span class="try-step__num">2</span>
+                <div>
+                  <p class="try-step__title">Comment on any post, or send a DM</p>
+                  <p class="try-step__body">Ask anything, in any language.</p>
+                </div>
+              </li>
+              <li class="try-step">
+                <span class="try-step__num">3</span>
+                <div>
+                  <p class="try-step__title">Give it a minute</p>
+                  <p class="try-step__body">Hooky replies slowly on purpose. If it does not know, it says it is checking and asks the seller.</p>
+                </div>
+              </li>
+            </ol>
+            <div class="try__side">
+              <p class="try__side-title">Want to see Hooky's side?</p>
+              <p>The inbox, the questions it asks the seller, and every tool call. Write to us and we will walk you through it.</p>
+              <a href="#contact" class="btn btn--primary btn--md">Get in touch</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="safe" aria-labelledby="safe-title">
         <div class="landing-container">
           <div class="section-intro section-intro--center">
             <p class="eyebrow">Safe by design</p>
-            <h2 class="section-intro__title" id="safe-title"><span data-highlight>Sounds like you.</span> <em>Never like spam.</em></h2>
+            <h2 class="section-intro__title" id="safe-title"><span data-highlight>The guardrails are code,</span> <em>not a prompt.</em></h2>
+            <p class="section-intro__lede">When a tool says no, Claude gets the reason back and fixes its next step.</p>
           </div>
           <ul class="safe__grid">
             <li class="safe-tile safe-tile--peach">
               <span class="safe-tile__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
               </span>
-              <p class="safe-tile__title">You switch it on</p>
-              <p class="safe-tile__body">Start by approving drafts. Go hands free when you trust it.</p>
+              <p class="safe-tile__title">No made-up prices</p>
+              <p class="safe-tile__body">A number guard rejects any figure that is not in your brain or the chat. Hooky has to look it up or ask you.</p>
             </li>
             <li class="safe-tile safe-tile--sky">
               <span class="safe-tile__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
               </span>
               <p class="safe-tile__title">Paced like a person</p>
-              <p class="safe-tile__body">Replies are spaced out and capped, so Instagram never sees a bot.</p>
+              <p class="safe-tile__body">One message at a time, 45 to 75 seconds apart. At most 20 an hour and 150 a day.</p>
             </li>
             <li class="safe-tile safe-tile--mint">
               <span class="safe-tile__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 12l2 2 4-4"/></svg>
               </span>
-              <p class="safe-tile__title">Your voice, your call</p>
-              <p class="safe-tile__body">Tricky comments come to you. Turn the agent off any time.</p>
+              <p class="safe-tile__title">Follows Meta's DM rules</p>
+              <p class="safe-tile__body">DMs only inside the 24 hour window, or one private reply to a comment within 7 days.</p>
+            </li>
+            <li class="safe-tile safe-tile--butter">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              </span>
+              <p class="safe-tile__title">Never runs in circles</p>
+              <p class="safe-tile__body">8 steps a turn and 40 a run. After that the buyer is handed to you.</p>
+            </li>
+            <li class="safe-tile safe-tile--lilac">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"/><path d="M12 17h.01"/></svg>
+              </span>
+              <p class="safe-tile__title">Asks you sparingly</p>
+              <p class="safe-tile__body">3 questions a run at most. An unanswered one expires after 24 hours.</p>
+            </li>
+            <li class="safe-tile safe-tile--sage">
+              <span class="safe-tile__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+              </span>
+              <p class="safe-tile__title">You stay in control</p>
+              <p class="safe-tile__body">The agent starts off. Approval mode, an off switch, and a Try it box that sends nothing.</p>
             </li>
           </ul>
         </div>
@@ -433,12 +507,16 @@
               <p>It asks you instead of guessing. Your reply goes to the buyer and is saved to the brain, so the next buyer with the same question gets an instant answer.</p>
             </details>
             <details class="faq__item">
+              <summary>Can it make up a price?</summary>
+              <p>No. A number guard in our code checks every reply and DM. Any price or figure that is not in your brain or the conversation is rejected, so Hooky has to look it up or ask you.</p>
+            </details>
+            <details class="faq__item">
               <summary>Will Instagram flag my account?</summary>
               <p>Hookd replies only on your own posts, spaces replies out, caps them per hour and per day, and never sends the same text over and over.</p>
             </details>
             <details class="faq__item">
               <summary>Can I check replies before they go out?</summary>
-              <p>Yes. The agent starts by drafting replies for you to approve. Let it reply on its own when you trust it.</p>
+              <p>Yes. Switch on approval mode and every reply and DM waits in your inbox until you send it. Switch it off when you trust Hooky to reply on its own.</p>
             </details>
             <details class="faq__item">
               <summary>Do I have to post through Hookd for the agent to reply?</summary>
@@ -474,17 +552,43 @@
         </div>
       </section>
 
+      <section class="contact" id="contact">
+        <div class="landing-container">
+          <div class="contact__card">
+            <div class="contact__copy">
+              <p class="eyebrow">Contact</p>
+              <h2 class="section-intro__title"><span data-highlight>Questions?</span> <em>Write to us.</em></h2>
+              <p class="section-intro__lede">Want a walkthrough of Hooky's side, or help getting your shop set up? Send a message and we will reply by email from <a href="mailto:support@hookd.world">support@hookd.world</a>.</p>
+            </div>
+            <div class="contact__panel">
+              <div id="page-messages" class="messages" aria-live="polite" hidden></div>
+              <div id="contact-box">
+                <form data-api action="{% url 'api-contact' %}" data-target="contact-box" class="contact__form" novalidate>
+                  {% csrf_token %}
+                  {% include "components/field.html" with field=contact_form.name %}
+                  {% include "components/field.html" with field=contact_form.email %}
+                  {% include "components/textarea_field.html" with field=contact_form.message %}
+                  <button type="submit" class="btn btn--primary btn--lg">Send message</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <footer class="landing-footer">
         <div class="landing-container landing-footer__inner">
           <div class="landing-footer__brand">
             {% include "components/brand_logo.html" %}
             <p>AI social media manager for sellers and creators.</p>
+            <p>Built with Claude. Hosted on GoDaddy at hookd.world.</p>
           </div>
           <nav class="landing-footer__links" aria-label="Footer">
             <a href="#pipeline">How it works</a>
-            <a href="#learns">It learns</a>
-            <a href="#studio">Studio</a>
-            <a href="#faq">FAQ</a>
+            <a href="#decide">How it decides</a>
+            <a href="#try">Try it</a>
+            <a href="#contact">Contact</a>
+            <a href="https://github.com/Gunjaan/hookd" target="_blank" rel="noopener">GitHub</a>
             <a href="{% url 'login' %}">Log in</a>
           </nav>
         </div>

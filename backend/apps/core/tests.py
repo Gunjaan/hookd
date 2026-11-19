@@ -1,5 +1,8 @@
 
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.conf import settings
+from django.core import mail
+from django.core.cache import cache
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.model_querysets import create_user
@@ -40,6 +43,11 @@ class LandingViewTests(TestCase):
         self.assertContains(response, "data-highlights")
         self.assertContains(response, "data-highlight")
         self.assertContains(response, "js/landing.js")
+        self.assertContains(response, 'id="try"')
+        self.assertContains(response, "while.wanderingg")
+        self.assertContains(response, "schedule_followup")
+        self.assertContains(response, 'id="contact"')
+        self.assertContains(response, reverse("api-contact"))
 
     def test_signed_in_user_sees_landing_with_studio_link(self):
         user = create_user(email="creator@example.com", password="a-strong-pass-123")
@@ -47,6 +55,47 @@ class LandingViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("studio"))
+
+
+class ContactApiTests(TestCase):
+    url = reverse("api-contact")
+    details = {"name": "Asha", "email": "Asha@Example.com", "message": "Can I see Hooky's inbox?"}
+
+    def setUp(self):
+        cache.clear()
+
+    def test_sends_one_email_to_support_with_reply_to(self):
+        response = self.client.post(self.url, self.details)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Thank you, Asha.", response.json()["html"])
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, [settings.SUPPORT_EMAIL])
+        self.assertEqual(email.reply_to, ["asha@example.com"])
+        self.assertIn("Can I see Hooky's inbox?", email.body)
+
+    def test_field_error(self):
+        response = self.client.post(self.url, {**self.details, "email": "not an email"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Email", response.json()["error"])
+        self.assertEqual(mail.outbox, [])
+
+    def test_rate_limited_per_address(self):
+        for _ in range(5):
+            self.assertEqual(self.client.post(self.url, self.details).status_code, 200)
+        response = self.client.post(self.url, self.details)
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("try again in an hour", response.json()["error"])
+        self.assertEqual(len(mail.outbox), 5)
+        other = self.client.post(self.url, self.details, HTTP_X_FORWARDED_FOR="203.0.113.9")
+        self.assertEqual(other.status_code, 200)
+
+    def test_post_only(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_csrf_enforced(self):
+        response = Client(enforce_csrf_checks=True).post(self.url, self.details)
+        self.assertEqual(response.status_code, 403)
 
 
 class CryptoTests(SimpleTestCase):
