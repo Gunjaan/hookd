@@ -48,6 +48,9 @@ class LandingViewTests(TestCase):
         self.assertContains(response, "schedule_followup")
         self.assertContains(response, 'id="contact"')
         self.assertContains(response, reverse("api-contact"))
+        self.assertContains(response, "data-video-dock")
+        self.assertContains(response, 'data-video-id="7HOha1_jlVM"')
+        self.assertContains(response, 'data-video-id="lWhaOPulgSA"')
 
     def test_signed_in_user_sees_landing_with_studio_link(self):
         user = create_user(email="creator@example.com", password="a-strong-pass-123")

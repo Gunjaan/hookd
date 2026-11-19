@@ -1,4 +1,4 @@
-// Landing page highlight boxes: as each [data-highlight] (the bold part of every section heading) scrolls up to the
+// Landing page scripts. Highlight boxes: as each [data-highlight] (the bold part of every section heading) scrolls up to the
 // middle of the screen, a rounded box draws itself around it. The box starts at the top middle and both halves draw
 // at the same time until they meet at the bottom. Drawing follows the scroll position, so scrolling
 // up undraws it. Box geometry is built once per layout change in page coordinates, so scrolling only moves dash
@@ -144,4 +144,42 @@
   if (document.fonts) document.fonts.ready.then(onResize)
   new ResizeObserver(onResize).observe(landing)
   window.addEventListener('scroll', schedule, { passive: true })
+})()
+
+// Floating video dock: the pill opens a small player with tabs for each video. The YouTube iframe (privacy enhanced
+// domain) is only created when the panel opens and is removed on close, so nothing loads from YouTube until a visitor
+// asks for it and closing stops playback.
+;(() => {
+  const dock = document.querySelector('[data-video-dock]')
+  if (!dock) return
+  const panel = dock.querySelector('.video-dock__panel')
+  const toggle = dock.querySelector('[data-video-toggle]')
+  const player = dock.querySelector('[data-video-player]')
+  const tabs = Array.from(dock.querySelectorAll('[data-video-id]'))
+
+  function play(tab) {
+    tabs.forEach((other) => other.setAttribute('aria-selected', String(other === tab)))
+    const frame = document.createElement('iframe')
+    frame.src = `https://www.youtube-nocookie.com/embed/${tab.dataset.videoId}?autoplay=1&rel=0&modestbranding=1`
+    frame.title = tab.dataset.videoTitle
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'
+    frame.allowFullscreen = true
+    // YouTube refuses embeds without a referrer (error 153); the site wide policy is same-origin, so send the origin here.
+    frame.referrerPolicy = 'strict-origin-when-cross-origin'
+    player.replaceChildren(frame)
+  }
+
+  function setOpen(open) {
+    panel.hidden = !open
+    toggle.setAttribute('aria-expanded', String(open))
+    if (open) play(tabs.find((tab) => tab.getAttribute('aria-selected') === 'true') || tabs[0])
+    else player.replaceChildren()
+  }
+
+  toggle.addEventListener('click', () => setOpen(panel.hidden))
+  dock.querySelector('[data-video-close]').addEventListener('click', () => setOpen(false))
+  tabs.forEach((tab) => tab.addEventListener('click', () => play(tab)))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !panel.hidden) setOpen(false)
+  })
 })()

@@ -35,7 +35,7 @@ backend/
     css/components.css          Design system classes
     css/pages.css               Layout and feature blocks (auth, shell, provider, account, callback, not-found)
     css/landing.css             Public landing page only, loaded through the `head` block of core/landing.html
-    js/landing.js               Landing page highlight boxes (see Landing page), loaded only by core/landing.html
+    js/landing.js               Landing page highlight boxes and floating video dock (see Landing page), loaded only by core/landing.html
     js/app.js                   Page behaviour: api() and showMessage(), data-api forms, confirm dialogs, busy buttons, load more,
                                 photo thumbnails, character counter, post studio draft page
     img/favicon.svg             Brand icon: white geometric "h" plus rose dot on an ink rounded square (same art as brand/icon.svg)
@@ -224,7 +224,10 @@ photo in. A full launch and a trained sales agent out.", four `.bonus-tile`s: up
 with Hookd comparison (`#compare`); an FAQ of rounded `<details>` cards (`#faq`, works without JS); a blush closing card with Hooky; the contact
 section (`#contact`: `.contact__card` with copy and a `data-api` form posting `ContactForm` to `api-contact` with `data-target="contact-box"`, so the
 thank you note from `core/contact_sent.html` replaces the form; errors go to the card's own `#page-messages`; see `DEV-core.md`); a footer with "Built with
-Claude. Hosted on GoDaddy", section links, GitHub and log in. Account CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
+Claude. Hosted on GoDaddy", section links, GitHub and log in. Floating over every section, bottom right: the video dock (`.video-dock`, `data-video-dock`), an
+ink "Watch the demo" pill that opens a white card with two tabs, "Product demo" (YouTube `7HOha1_jlVM`) and "Connect Instagram" (`lWhaOPulgSA`);
+`landing.js` creates the `youtube-nocookie.com` embed iframe (autoplay, `referrerpolicy="strict-origin-when-cross-origin"` because YouTube rejects embeds without a referrer with error 153 and Django's default policy is `same-origin`) only when the card opens or a tab is picked and removes it on close or Escape,
+so nothing loads from YouTube until a visitor asks. To change a video, edit the tab's `data-video-id` and `data-video-title`. Account CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
 sideways inside itself on narrow screens. The AI model shots are CSS only: `core/model_figure.html` is an inline SVG figure (`.model`, parts `__skin`,
 `__hair`, `__top`, `__seam`, `__bottom`) wearing the product, placed in `.mini-look--studio/street/cafe` scenes that vary skin tone and pose through
 `--model-skin` and `--model-hair`.
@@ -248,10 +251,10 @@ Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.ey
 (`--butter/blush/lilac/sage`), `.pill`, `.ask-card`, `.brain-lines`, `.try` (`__grid`, `__steps`, `__side`, `__side-title`), `.try-step` (`__num`, `__title`,
 `__body`), `.safe`, `.safe-tile` (`--peach/sky/mint/butter/lilac/sage`), `.bonus`, `.bonus-tile`, `.flatlay`,
 `.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.contact` (`__card`, `__copy`,
-`__panel`, `__form`, `__sent`, `__sent-title`), `.landing-footer`
+`__panel`, `__form`, `__sent`, `__sent-title`), `.video-dock` (`__toggle`, `__play`, `__panel`, `__head`, `__title`, `__close`, `__tabs`, `__tab`, `__player`), `.landing-footer`
 (`__brand`, `__links`), `.highlight-boxes` (`__path`).
 Landing tokens: `--font-display`, `--font-mono` (tool chips), `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
-`--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, the pastels
+`--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, `--video-dock-width`, `--shadow-lg`, the pastels
 `--color-cream` and `--color-butter/lilac/blush/sage/peach/sky/mint` (each with `-soft`), the mascot colors `--color-mascot`, `--color-mascot-cheek`,
 `--color-mascot-ring-1..5`, and the illustration colors `--color-garment(-shade)`, `--color-model-skin(-alt/-light)`, `--color-model-hair(-alt)`,
 `--color-model-bottom`, `--color-scene-studio/street/cafe`.

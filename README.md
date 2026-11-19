@@ -6,6 +6,20 @@ Django with server rendered templates. Three Docker containers: the app (you sta
 Current scope: creator signup/login and Instagram account connection.
 Detailed docs for every feature: [`brainforagents/`](brainforagents/DEV-overview.md). Rules for contributors and agents: [`AGENTS.md`](AGENTS.md).
 
+Live at [hookd.world](https://hookd.world). Videos: [product demo](https://www.youtube.com/watch?v=7HOha1_jlVM) and [how to connect Instagram](https://youtu.be/lWhaOPulgSA).
+
+## For the judges
+
+Hi, I am Gunjan, and I built Hookd. A few things before you try it:
+
+- **Demo login credentials:** please email me at **gunjanverma0133@gmail.com** and I will share them with you. I am not
+  putting credentials in this public repository.
+- **My Meta app review is pending.** I applied on 15 November 2026 and Meta usually takes about 2 weeks. Until it is
+  approved, Instagram login works only for accounts added as testers on my Meta app, so a new Instagram account cannot
+  connect yet. Email me and I will add you as a tester, or you can use my demo account that is already connected.
+- **Try Hooky without logging in:** comment on or DM my demo shop [@while.wanderingg](https://www.instagram.com/while.wanderingg/)
+  on Instagram and watch the agent reply.
+
 ## Quick start
 
 ```bash

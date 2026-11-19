@@ -115,6 +115,7 @@
   --radius-full: 999px;
   --shadow-sm: 0 1px 2px rgb(20 21 26 / 6%);
   --shadow-md: 0 4px 16px rgb(20 21 26 / 8%);
+  --shadow-lg: 0 18px 48px rgb(20 21 26 / 18%);
   --overlay-media: rgb(20 21 26 / 45%);
   --radius-xl: 28px;
   --radius-2xl: 40px;
@@ -151,4 +152,5 @@
   --preview-width: 440px; /* post studio Instagram preview */
   --thumb-size: 72px;
   --landing-max-width: 1200px;
+  --video-dock-width: 400px; /* landing floating video player */
 }
