@@ -27,7 +27,7 @@ backend/
                                 Block: content. Pages set `nav_section` ("studio", "publishing", "agent", "inbox" or "tickets").
                                 Also holds the shared `<dialog id="modal">` (`.modal`) that `data-modal` links fill
     components/                 Design system partials (see below), including icon.html: line icons (grid, plus, chat,
-                                heart, reel, carousel, refresh, upload, external, sparkle, reply, plug, drafts, back, logout)
+                                heart, reel, carousel, refresh, upload, external, sparkle, reply, plug, drafts, ticket, back, logout, verified)
     404.html                    Shown when DEBUG is false
   static/
     css/tokens.css              Design tokens (the only place raw values live)
@@ -224,7 +224,7 @@ photo in. A full launch and a trained sales agent out.", four `.bonus-tile`s: up
 with Hookd comparison (`#compare`); an FAQ of rounded `<details>` cards (`#faq`, works without JS); a blush closing card with Hooky; the contact
 section (`#contact`: `.contact__card` with copy and a `data-api` form posting `ContactForm` to `api-contact` with `data-target="contact-box"`, so the
 thank you note from `core/contact_sent.html` replaces the form; errors go to the card's own `#page-messages`; see `DEV-core.md`); a footer with "Built with
-Claude. Hosted on GoDaddy", section links, GitHub and log in. Floating over every section, bottom right: the video dock (`.video-dock`, `data-video-dock`), an
+Claude. Hosted on GoDaddy", a "Verified agent" badge (`.landing-footer__verified`, `verified` icon) linking to Hooky's GoDaddy ANS transparency log entry (`DEV-agent.md`), section links, GitHub and log in. Floating over every section, bottom right: the video dock (`.video-dock`, `data-video-dock`), an
 ink "Watch the demo" pill that opens a white card with two tabs, "Product demo" (YouTube `7HOha1_jlVM`) and "Connect Instagram" (`lWhaOPulgSA`);
 `landing.js` creates the `youtube-nocookie.com` embed iframe (autoplay, `referrerpolicy="strict-origin-when-cross-origin"` because YouTube rejects embeds without a referrer with error 153 and Django's default policy is `same-origin`) only when the card opens or a tab is picked and removes it on close or Escape,
 so nothing loads from YouTube until a visitor asks. To change a video, edit the tab's `data-video-id` and `data-video-title`. Account CTAs go to `signup` or `login`. Animations (flow steps, hero bubbles, Hooky floating) are off under `prefers-reduced-motion`; the board scrolls
@@ -252,7 +252,7 @@ Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.ey
 `__body`), `.safe`, `.safe-tile` (`--peach/sky/mint/butter/lilac/sage`), `.bonus`, `.bonus-tile`, `.flatlay`,
 `.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.contact` (`__card`, `__copy`,
 `__panel`, `__form`, `__sent`, `__sent-title`), `.video-dock` (`__toggle`, `__play`, `__panel`, `__head`, `__title`, `__close`, `__tabs`, `__tab`, `__player`), `.landing-footer`
-(`__brand`, `__links`), `.highlight-boxes` (`__path`).
+(`__brand`, `__verified`, `__links`), `.highlight-boxes` (`__path`).
 Landing tokens: `--font-display`, `--font-mono` (tool chips), `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
 `--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, `--video-dock-width`, `--shadow-lg`, the pastels
 `--color-cream` and `--color-butter/lilac/blush/sage/peach/sky/mint` (each with `-soft`), the mascot colors `--color-mascot`, `--color-mascot-cheek`,

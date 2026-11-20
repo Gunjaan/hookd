@@ -1466,6 +1466,22 @@
   font-size: var(--text-sm);
 }
 
+.landing-footer__verified {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.landing-footer__verified:hover {
+  color: var(--color-ink);
+}
+
+.landing-footer__verified .badge {
+  gap: var(--space-1);
+}
+
 .landing-footer__links {
   display: flex;
   flex-wrap: wrap;

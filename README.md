@@ -6,6 +6,10 @@ Django with server rendered templates. Three Docker containers: the app (you sta
 Current scope: creator signup/login and Instagram account connection.
 Detailed docs for every feature: [`brainforagents/`](brainforagents/DEV-overview.md). Rules for contributors and agents: [`AGENTS.md`](AGENTS.md).
 
+Hooky, the reply agent, is a verified agent on GoDaddy's Agent Name Service (Agent Identity by GoDaddy):
+[`ans://v1.0.0.hookd.world`](https://transparency.ans.godaddy.com/v1/agents/734f2707-6867-457d-abf1-0f0dc6451a62),
+with its agent card at [hookd.world/.well-known/agent-card.json](https://hookd.world/.well-known/agent-card.json).
+
 Live at [hookd.world](https://hookd.world). Videos: [product demo](https://www.youtube.com/watch?v=7HOha1_jlVM) and [how to connect Instagram](https://youtu.be/lWhaOPulgSA).
 
 ## For the judges
