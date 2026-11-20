@@ -12,8 +12,9 @@ Live at [hookd.world](https://hookd.world). Videos: [product demo](https://www.y
 
 Hi, I am Gunjan, and I built Hookd. A few things before you try it:
 
-- **Demo login credentials:** please email me at **gunjanverma0133@gmail.com** and I will share them with you. I am not
-  putting credentials in this public repository.
+- **Demo login credentials:** the username and password are in the pitch deck uploaded to HackerEarth as an additional
+  file (slide 14). For privacy and to prevent abuse, I am not putting them in this public repository. If you cannot find
+  them, email me at **gunjanverma0133@gmail.com**.
 - **My Meta app review is pending.** I applied on 15 November 2026 and Meta usually takes about 2 weeks. Until it is
   approved, Instagram login works only for accounts added as testers on my Meta app, so a new Instagram account cannot
   connect yet. Email me and I will add you as a tester, or you can use my demo account that is already connected.
