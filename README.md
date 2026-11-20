@@ -11,6 +11,7 @@ Hooky, the reply agent, is a verified agent on GoDaddy's Agent Name Service (Age
 with its agent card at [hookd.world/.well-known/agent-card.json](https://hookd.world/.well-known/agent-card.json).
 
 Live at [hookd.world](https://hookd.world). Videos: [product demo](https://www.youtube.com/watch?v=7HOha1_jlVM) and [how to connect Instagram](https://youtu.be/lWhaOPulgSA).
+How it was built, with GoDaddy and Claude: [`BUILDING-HOOKD.md`](BUILDING-HOOKD.md).
 
 ## For the judges
 
