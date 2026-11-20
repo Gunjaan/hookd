@@ -31,15 +31,29 @@ frontend framework, no build step. Everything runs in Docker containers.
 This is where I was honestly out of my depth. At work there is always a DevOps team that handles servers, domains and
 certificates. Here it was just me.
 
-GoDaddy helped me a lot here, and I mean that (trust me). I bought `hookd.world` and a VPS from them, and having the
-domain, DNS and server in one place made things much less scary. On top of that:
+GoDaddy helped me a lot here, and I mean that (trust me). Having the domain, DNS, server and email with one provider
+made the whole thing much less scary. Here is everything I ended up using from them:
 
-- **DNS:** pointing the domain and `www` at the VPS was all done from the GoDaddy DNS panel.
-- **Email:** `support@hookd.world` runs on GoDaddy Workspace Email, and the app sends mail through their SMTP server.
-- **Agent identity:** Hooky, the reply agent, is registered on GoDaddy's Agent Name Service as
-  [`ans://v1.0.0.hookd.world`](https://transparency.ans.godaddy.com/v1/agents/734f2707-6867-457d-abf1-0f0dc6451a62),
-  with its agent card served at [`/.well-known/agent-card.json`](https://hookd.world/.well-known/agent-card.json).
-  It felt good to have the agent verifiable, not just "trust me, it is a bot".
+- **Domain:** `hookd.world`, bought on GoDaddy.
+- **VPS:** one Ubuntu VPS with 8 GB of RAM. It runs Caddy on the host and three Docker containers: the app (gunicorn
+  and Celery), Postgres and Redis. I tuned Postgres and Redis to fit that memory budget so nothing fights for RAM.
+- **DNS:** `A` records for `hookd.world` and `www` pointing at the VPS IP. Once those resolved, Caddy picked up Let's
+  Encrypt certificates on its own.
+- **Email (the Email & Office dashboard):** `support@hookd.world` runs on GoDaddy Workspace Email. The MX, SPF and
+  DMARC records were set up for me. The one thing I learned the hard way: SPF only allows GoDaddy's servers, so the app
+  has to send through their SMTP (`smtpout.secureserver.net`, port 465 over SSL), not any random provider. Signup access
+  requests and the landing page contact form both go out this way.
+- **The `gddy` CLI:** later I managed DNS from the terminal with GoDaddy's CLI instead of clicking around the panel.
+  Lesson learned early: always `gddy dns add`, never `gddy dns set`, because `set` replaces every record of that type
+  and the root of the domain also holds the email records. One wrong command and mail stops working.
+- **ANS (Agent Name Service):** Hooky, the reply agent, is a verified agent on GoDaddy's Agent Name Service as
+  [`ans://v1.0.0.hookd.world`](https://transparency.ans.godaddy.com/v1/agents/734f2707-6867-457d-abf1-0f0dc6451a62).
+  To get there I served an agent card at
+  [`/.well-known/agent-card.json`](https://hookd.world/.well-known/agent-card.json), created an EC P-256 identity key
+  and CSR (RSA gets rejected), sent the TLS certificate Caddy already serves, proved I own the domain with an
+  `_acme-challenge` TXT record, then published the `_ans` and `_ans-badge` TXT records with `gddy`. After the DNS check,
+  the agent went `ACTIVE` and it shows up in the public transparency log. It felt good to have the agent verifiable,
+  not just "trust me, it is a bot".
 
 For the server itself I just asked Claude, and it walked me through it step by step: setting up the Ubuntu VPS,
 installing Docker, locking it down with `ufw`, putting Caddy in front for automatic HTTPS with Let's Encrypt, keeping
