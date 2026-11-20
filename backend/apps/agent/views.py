@@ -1,15 +1,23 @@
-"""Reply agent pages (session auth): settings, preview, the inbox and support tickets. Their actions live in api.py."""
+"""Reply agent pages (session auth): settings, preview, the inbox and support tickets. Their actions live in api.py.
+Also the public ANS agent card (no auth)."""
+
+from pathlib import Path
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_GET
 
 from apps.agent import services
 from apps.agent.constants import ReplyStatus, TicketStatus
 from apps.agent.forms import VOICE_PICKS, AgentEnabledForm, AgentSettingsForm, PreviewForm, TicketForm
 from apps.core.exceptions import HookdError
 from apps.integrations import services as integration_services
+
+# GoDaddy ANS registers the SHA256 of these exact bytes, so they are served unchanged. A changed card is a new
+# version file and a new registration (DEV-agent.md).
+AGENT_CARD = (Path(__file__).parent / "agent_card" / "hooky-v1.0.0.json").read_bytes()
 
 # The inbox's first tab lists Hooky's questions to the seller; the others list public replies by status.
 QUESTIONS_TAB = "questions"
@@ -135,3 +143,8 @@ def tickets(request):
         "agent/tickets.html",
         {"nav_section": "tickets", "status": status, "tabs": ticket_tabs(request.user), "tickets": rows},
     )
+
+
+@require_GET
+def agent_card(request):
+    return HttpResponse(AGENT_CARD, content_type="application/json")

@@ -268,6 +268,7 @@ Landing tokens: `--font-display`, `--font-mono` (tool chips), `--text-3xl`, `--t
 | GET | `/signup/requested/` | `access-requested` | | "You are on the list" confirmation |
 | POST | `/logout/` | `logout` | | Ends the session, back to the landing page |
 | GET | `/health/` | `health` | | JSON health check (`DEV-core.md`) |
+| GET | `/.well-known/agent-card.json` | `agent_card` | | Public GoDaddy ANS agent card for Hooky (`DEV-agent.md`) |
 | GET | `/` | `home` | none | `core.views.landing`: the landing page, for everyone (signed in users get an "Open studio" button) |
 | GET | `/connections/` | `connections` | login | One provider card per provider from `services.connection_overview(user)`, then static `coming_soon_card.html` cards for planned platforms (YouTube: "Coming soon" badge, disabled button, no provider or connect route) |
 | POST | `/connections/<platform>/connect/` | `connect-start` | login | Redirects the browser to the platform authorization URL. Used by "Connect", "Connect another" and each account's "Reconnect" button (the callback updates the existing account in place) |

@@ -281,3 +281,48 @@ Updating: `git pull`, then `python3 deploy.py build` only if `requirements.txt` 
 `docker exec hookd_app_dev python manage.py migrate`. A code change without a restart: `docker restart hookd_app_dev`.
 Do not use `run` or `stopall` inside the production container: stopping gunicorn stops the container (Docker then
 restarts it).
+
+## GoDaddy ANS registration
+
+Hooky is listed on GoDaddy ANS (Agent Name Service, "Agent Identity by GoDaddy") as `ans://v1.0.0.hookd.world`, agent
+host `hookd.world`. The agent card is served by Django (`DEV-agent.md`) and must be live before registering: the
+registry checks that the card's `skills` match the registered `functions` (same ids). Registration is a one-off from a
+shell; the app reads none of it. Docs: godaddy.com/ans/developers (Quick Start and API Reference).
+
+- **Registry:** `https://api.godaddy.com/v1/agents`. Transparency log (public): `https://transparency.ans.godaddy.com`.
+- **Auth:** a GoDaddy Personal Access Token (`gd_pat_...`) from developer.godaddy.com/personal-access-token with the
+  `ans.agent-registration:write` permission, sent as `Authorization: Bearer <token>`. Shell-only variable
+  `ANS_TOKEN`, never in `.env`, never committed, never passed as a command line argument (read it from a file or the
+  environment).
+- **Keys and certificates** live in `~/ans/` outside the repository and are never committed.
+
+1. CSRs (EC P-256; ANS rejects RSA). The identity CSR's URI SAN is the ANS name:
+   ```bash
+   mkdir -p ~/ans && cd ~/ans && chmod 700 .
+   openssl ecparam -name prime256v1 -genkey -noout -out identity.key
+   openssl req -new -key identity.key -subj "/O=Hookd/CN=hookd.world" -addext "subjectAltName=URI:ans://v1.0.0.hookd.world" -out identity.csr
+   openssl ecparam -name prime256v1 -genkey -noout -out server.key
+   openssl req -new -key server.key -subj "/O=Hookd/CN=hookd.world" -addext "subjectAltName=DNS:hookd.world" -out server.csr
+   ```
+   The ANS issued server certificate is not installed in Caddy; Caddy keeps serving its Let's Encrypt certificate.
+2. `POST https://api.godaddy.com/v1/agents/register` with JSON: `agentHost` "hookd.world", `version` "1.0.0",
+   `agentDisplayName` "Hooky", `agentDescription`, `identityCsrPEM`, `serverCsrPEM`, and one endpoint:
+   `protocol` "HTTP-API", `transports` ["REST"], `agentUrl` `https://hookd.world/webhooks/instagram/`,
+   `metaDataUrl` `https://hookd.world/.well-known/agent-card.json`, `functions` = the card's skills as
+   `{id, name, tags}` (`comment-replies`, `buyer-dms`, `support-tickets`). The `202` answer has the `agentId`, status
+   `PENDING_VALIDATION` and `challenge.dnsRecord` (an `_acme-challenge` TXT record).
+3. Add that TXT record with the GoDaddy CLI (already logged in for hookd.world). Always `gddy dns add`, which appends,
+   never `gddy dns set` or `delete`: `@` holds the SPF TXT, MX and email records. Caddy uses HTTP and TLS-ALPN
+   challenges, so an `_acme-challenge` record does not affect it.
+   ```bash
+   gddy dns add hookd.world --type TXT --name _acme-challenge --ttl 600 --data "<challenge value>"
+   ```
+4. After a minute or two: `POST /v1/agents/<agentId>/verify-acme`, then poll `GET /v1/agents/<agentId>` until the
+   certificates are issued. `POST /v1/agents/<agentId>/verify-dns` checks the ANS discovery records; add any records
+   it reports missing with `gddy dns add` the same way.
+5. Save the certificates (`GET /v1/agents/<agentId>/certificates/identity` and `.../certificates/server`) to `~/ans/`.
+   Check the listing: `GET /v1/agents?agentHost=hookd.world` and
+   `https://transparency.ans.godaddy.com/v1/agents/<agentId>`.
+
+A new card version (`DEV-agent.md`) means a new registration with the new version. `gddy` itself has no ANS commands;
+GoDaddy's `ans-cli` (Homebrew `agentnameservice/ans/ans-cli`) wraps the same endpoints and can be used instead of curl.

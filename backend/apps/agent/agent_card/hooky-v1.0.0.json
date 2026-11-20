@@ -1,0 +1,38 @@
+{
+  "name": "Hooky",
+  "description": "Hookd's AI community manager. Replies to Instagram comments and buyer DMs in the creator's voice and the commenter's language, asks the seller when it does not know, and opens support tickets. Receives Instagram webhooks from Meta for connected creator accounts and is not open to direct calls.",
+  "url": "https://hookd.world/webhooks/instagram/",
+  "preferredTransport": "REST",
+  "version": "1.0.0",
+  "provider": {
+    "organization": "Hookd",
+    "url": "https://hookd.world"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "comment-replies",
+      "name": "Comment Replies",
+      "description": "Answers comments on a creator's posts publicly and privately, using facts from the creator's brains.",
+      "tags": ["instagram", "comments", "social-media", "multilingual"]
+    },
+    {
+      "id": "buyer-dms",
+      "name": "Buyer DMs",
+      "description": "Answers buyer DMs, story replies and mentions inside Meta's messaging window.",
+      "tags": ["instagram", "dm", "customer-support", "ecommerce"]
+    },
+    {
+      "id": "support-tickets",
+      "name": "Support Tickets",
+      "description": "Opens support tickets for the seller and reports their status to the buyer.",
+      "tags": ["support", "tickets", "customer-support"]
+    }
+  ],
+  "contact": "support@hookd.world"
+}

@@ -1396,3 +1396,16 @@ class RunLimitTests(AgentTestCase):
         with mock.patch.dict(tools.TOOLS, {"search_brain": mock.Mock(side_effect=TypeError("bug"), __signature__=None)}):
             with self.assertRaises(TypeError):
                 tools.execute(ctx, "search_brain", {"topic": "x"})
+
+
+class AgentCardTests(TestCase):
+    def test_card_is_public_json_with_the_exact_registered_bytes(self):
+        response = self.client.get("/.well-known/agent-card.json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        path = settings.BASE_DIR / "apps" / "agent" / "agent_card" / "hooky-v1.0.0.json"
+        self.assertEqual(response.content, path.read_bytes())
+        self.assertEqual(json.loads(response.content)["version"], "1.0.0")
+
+    def test_card_only_answers_get(self):
+        self.assertEqual(self.client.post("/.well-known/agent-card.json").status_code, 405)

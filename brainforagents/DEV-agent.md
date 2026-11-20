@@ -276,6 +276,16 @@ dry run trail items: tool, arguments, result, errors in red), `buyer_said.html` 
 `components/replies_badge.html`. Inbox look: each card reads like an Instagram thread (post, comment, your reply);
 review cards explain why (approval mode, or Hooky could not finish) and have an editable `.reply-composer`.
 
+## ANS agent card (`views.agent_card`, `agent_card/`)
+
+Hooky is registered on GoDaddy ANS (Agent Name Service) as `ans://v1.0.0.hookd.world`. ANS needs a public, fixed agent
+card: `GET /.well-known/agent-card.json` (no auth, GET only) serves `agent_card/hooky-v1.0.0.json` byte for byte
+(`AGENT_CARD`, read once at import). The registration stores the SHA256 of those bytes as `metaDataHash`, so the file
+is never edited in place: a changed card is a new `hooky-v<version>.json`, the view points at it, and Hooky is
+registered again with the new version. The card's `skills` ids must match the registered `functions`. The card describes Hooky's real interface (Meta webhooks at
+`/webhooks/instagram/`, protocol `HTTP-API`); it does not accept direct calls. Registration steps:
+`DEV-infrastructure.md`, "GoDaddy ANS registration".
+
 ## Tests (`tests.py`)
 
 A `ScriptedModel` plays back model turns (`call`, `calls`, `done`) and keeps every transcript it was sent. Covered:
