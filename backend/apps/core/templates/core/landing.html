@@ -36,6 +36,29 @@
       <section class="hero">
         <div class="landing-container hero__grid">
           <div class="hero__copy">
+            <div class="verified-agent">
+              <button type="button" class="verified-agent__pill" aria-describedby="verified-agent-card">
+                {% include "components/icon.html" with name="verified" size=16 %}
+                Verified agent
+                <span class="verified-agent__by">by GoDaddy ANS</span>
+              </button>
+              <div class="verified-agent__card" id="verified-agent-card">
+                <p class="verified-agent__title">Hooky is a verified AI agent</p>
+                <p class="verified-agent__text">Registered on GoDaddy's Agent Name Service, the public registry that gives AI agents a domain backed identity.</p>
+                <dl class="verified-agent__facts">
+                  <dt>ANS name</dt>
+                  <dd><code>ans://v1.0.0.hookd.world</code></dd>
+                  <dt>Domain</dt>
+                  <dd>hookd.world, ownership proven by DNS</dd>
+                  <dt>Status</dt>
+                  <dd><span class="badge badge--success">Active</span> since 20 Nov 2026</dd>
+                </dl>
+                <div class="verified-agent__links">
+                  <a href="https://transparency.ans.godaddy.com/v1/agents/734f2707-6867-457d-abf1-0f0dc6451a62" target="_blank" rel="noopener">Transparency log {% include "components/icon.html" with name="external" size=14 %}</a>
+                  <a href="/.well-known/agent-card.json" target="_blank" rel="noopener">Agent card {% include "components/icon.html" with name="external" size=14 %}</a>
+                </div>
+              </div>
+            </div>
             <p class="eyebrow">AI social media manager for sellers and creators</p>
             <h1 class="hero__title">Your very own agent to get the world <em class="hero__accent">hookd.</em></h1>
 

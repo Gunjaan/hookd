@@ -121,6 +121,112 @@
   font-weight: var(--weight-bold);
 }
 
+/* Verified agent pill: the card opens on hover, tap and keyboard focus (focus-within keeps it open while tabbing to
+   its links). The card's top padding bridges the gap so the pointer can move into it. */
+.verified-agent {
+  position: relative;
+  display: inline-block;
+  margin-bottom: var(--space-4);
+}
+
+.verified-agent__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.verified-agent__by {
+  font-weight: var(--weight-medium);
+}
+
+.verified-agent__card {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+}
+
+.verified-agent__card::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--space-2)) 0 auto;
+  height: var(--space-2);
+}
+
+.verified-agent:hover .verified-agent__card,
+.verified-agent:focus-within .verified-agent__card {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.verified-agent__title {
+  margin: 0 0 var(--space-1);
+  color: var(--color-ink);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+
+.verified-agent__text {
+  margin: 0 0 var(--space-3);
+}
+
+.verified-agent__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.verified-agent__facts dt {
+  color: var(--color-text-subtle);
+  font-weight: var(--weight-semibold);
+}
+
+.verified-agent__facts dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.verified-agent__facts code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.verified-agent__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.verified-agent__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: var(--weight-semibold);
+}
+
 /* Hero flow: the agent's path from comment to order, in place of a paragraph */
 .hero-flow {
   display: grid;

@@ -205,7 +205,8 @@ default full width). Include it with a unique `uid` per use (the shape's SVG id)
 Hooky appears in the "asks you" learn card and the closing card.
 
 Sections, in order: sticky nav (pill of anchor links How it works, How it decides, It learns, Try it, FAQ, Contact; log in and get started, or "Open studio" when signed in);
-hero with the title, then `.hero-flow` in place of a paragraph (a 5 step stepper with pastel icon circles: buyer comments, checks your brain, replies in their
+hero with a "Verified agent by GoDaddy ANS" pill on top (`.verified-agent`: a `__pill` button and a `__card` with the ANS name, domain proof, status and links to
+the transparency log and agent card; CSS only, it opens on hover and on `:focus-within`, so tap and keyboard work too), the title, then `.hero-flow` in place of a paragraph (a 5 step stepper with pastel icon circles: buyer comments, checks your brain, replies in their
 language, sends the link in DMs, order placed; steps rise in one after another), CTAs (signup and "Try it on Instagram" to `#try`) and `.hero__stage` (`.hero-visual`: a tilted `.hero-phone` image,
 `img/hero-reels.jpg`, with a smaller CSS `.reel` card floating over its lower left: pastel gradient, "Agent on" and answered chips, play button,
 "Handmade jhumkas, only 20 pieces", views and orders; beside it a `.thread` of four `.bubble`s: buyer comments in Hinglish and Tamil and the agent replies, with `.stage-tag` lead
@@ -252,7 +253,7 @@ Classes in `landing.css`: `.landing`, `.landing-container`, `.landing-nav`, `.ey
 `__body`), `.safe`, `.safe-tile` (`--peach/sky/mint/butter/lilac/sage`), `.bonus`, `.bonus-tile`, `.flatlay`,
 `.mini-look`, `.mini-caption`, `.mini-tags`, `.mini-bubble`, `.compare`, `.faq`, `.closing` (`__card`, `__mascot`, `__copy`), `.contact` (`__card`, `__copy`,
 `__panel`, `__form`, `__sent`, `__sent-title`), `.video-dock` (`__toggle`, `__play`, `__panel`, `__head`, `__title`, `__close`, `__tabs`, `__tab`, `__player`), `.landing-footer`
-(`__brand`, `__verified`, `__links`), `.highlight-boxes` (`__path`).
+(`__brand`, `__verified`, `__links`), `.verified-agent` (`__pill`, `__by`, `__card`, `__title`, `__text`, `__facts`, `__links`), `.highlight-boxes` (`__path`).
 Landing tokens: `--font-display`, `--font-mono` (tool chips), `--text-3xl`, `--text-display`, `--leading-display`, `--tracking-display`, `--tracking-eyebrow`, `--space-9/10`,
 `--radius-xl`, `--radius-2xl`, `--radius-phone`, `--highlight-color`, `--highlight-width`, `--highlight-pad`, `--highlight-radius`, `--color-ink-soft`, `--color-inverse-muted`, `--transition-reveal`, `--landing-max-width`, `--video-dock-width`, `--shadow-lg`, the pastels
 `--color-cream` and `--color-butter/lilac/blush/sage/peach/sky/mint` (each with `-soft`), the mascot colors `--color-mascot`, `--color-mascot-cheek`,
